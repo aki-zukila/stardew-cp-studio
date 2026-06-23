@@ -108,6 +108,7 @@ type DialogueEntryState = {
   fields: Record<string, string | number>;
 };
 type SpecialDialogueKind = "engagement" | "rain" | "festival";
+type MovieResponse = "love" | "like" | "dislike";
 type WorkflowState = {
   active: boolean;
   completed: boolean;
@@ -1115,6 +1116,10 @@ function PatchCard({ patch, ruleset, onChange, onRemove }: { patch: Patch; rules
 }
 
 function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const visibleEntries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !isNpcManagedEntry(entry));
+
   function addEntry(kind: GameDataEntry["kind"]) {
     const rule = ruleset.game_data_kinds.find((item) => item.kind === kind);
     const template = gameDataTemplate(kind);
@@ -1138,7 +1143,7 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
         {ruleset.game_data_kinds.map((kind) => <button key={kind.kind} onClick={() => addEntry(kind.kind)}><Icon name="plus" />{gameDataLabel(kind.kind, kind.label)}</button>)}
       </div>
       <div className="stack">
-        {project.game_data.map((entry, index) => (
+        {visibleEntries.map(({ entry, index }) => (
           <article className="card" key={entry.id}>
             <div className="card-head">
               <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
@@ -1243,10 +1248,10 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
   );
 }
 
-function CharacterAssetImport({ label, project, npcName, assetKind, currentPath, onImported }: { label: string; project: Project; npcName: string; assetKind: "portrait" | "sprite"; currentPath: string; onImported: (project: Project, storedPath: string) => void }) {
+function CharacterAssetImport({ label, project, npcName, assetKind, currentPath, onImported }: { label: string; project: Project; npcName: string; assetKind: "portrait" | "sprite" | "roommateItem"; currentPath: string; onImported: (project: Project, storedPath: string) => void }) {
   const [status, setStatus] = useState("");
   const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
-  const folder = assetKind === "portrait" ? "Portraits" : "OverworldSprites";
+  const folder = assetKind === "portrait" ? "Portraits" : assetKind === "sprite" ? "OverworldSprites" : "RoommateItems";
 
   return (
     <label className="field character-asset-field">
@@ -1595,7 +1600,7 @@ function DialogueTextTools({ label, project, npcName, value, onChange }: { label
         <button type="button" className="secondary" onClick={() => insertToken("#$b#")}>停顿 #$b#</button>
         <button type="button" className="secondary" onClick={() => insertToken("#$e#")}>中断 #$e#</button>
       </div>
-      <details className="portrait-tools">
+      <details className="portrait-tools" open>
         <summary>头像编号按钮</summary>
         <PortraitTokenPicker project={project} npcName={npcName} onInsert={insertToken} />
       </details>
@@ -1704,7 +1709,102 @@ function WinterStarGiftsEditor({ value, project, ruleset, itemCatalog, onChange 
   );
 }
 
+function MovieReactionEditor({ project, entry, npcName, displayName, onChange }: { project: Project; entry: GameDataEntry; npcName: string; displayName: string; onChange: (entry: GameDataEntry) => void }) {
+  const value = movieReactionValue(entry.value, npcName);
+  const reactions = movieReactionRows(value.Reactions, npcName);
+
+  function updateValue(nextValue: JsonDict) {
+    onChange(withMovieReactionMetadata({
+      ...entry,
+      kind: "custom",
+      target: "Data/MoviesReactions",
+      key: npcName,
+      value: {
+        ...nextValue,
+        NPCName: npcName
+      }
+    }, npcName));
+  }
+
+  function updateReaction(index: number, patch: JsonDict) {
+    const nextReactions = [...reactions];
+    nextReactions[index] = normalizeMovieReaction({ ...nextReactions[index], ...patch }, npcName, index);
+    updateValue({ ...value, Reactions: nextReactions });
+  }
+
+  function updateSpecialResponse(index: number, point: string, patch: JsonDict) {
+    const reaction = reactions[index] || normalizeMovieReaction({}, npcName, index);
+    const specialResponses = movieSpecialResponses(reaction.SpecialResponses);
+    updateReaction(index, {
+      SpecialResponses: {
+        ...specialResponses,
+        [point]: {
+          ...movieResponsePoint(specialResponses[point]),
+          ...patch
+        }
+      }
+    });
+  }
+
+  function addReaction() {
+    const next = [...reactions, normalizeMovieReaction({}, npcName, reactions.length)];
+    updateValue({ ...value, Reactions: next });
+  }
+
+  function removeReaction(index: number) {
+    updateValue({ ...value, Reactions: reactions.filter((_, itemIndex) => itemIndex !== index) });
+  }
+
+  return (
+    <div className="movie-reaction-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>电影观感 MoviesReactions</strong>
+          <span>为 {displayName || npcName} 设置每部电影的喜欢程度和观影前/中/后特殊台词。</span>
+        </div>
+        <button type="button" className="secondary" onClick={addReaction}><Icon name="plus" />添加电影反应</button>
+      </div>
+      {!reactions.length && <div className="empty compact-empty">尚未添加电影反应。</div>}
+      {reactions.map((reaction, index) => {
+        const specialResponses = movieSpecialResponses(reaction.SpecialResponses);
+        return (
+          <details className="movie-reaction-row" key={`${reaction.ID}-${index}`} open={index === reactions.length - 1}>
+            <summary>
+              <strong>{stringField(reaction.Tag || "movie_tag")}</strong>
+              <span>{stringField(reaction.Response || "like")} / {stringField(reaction.ID || `reaction_${index}`)}</span>
+            </summary>
+            <div className="grid two">
+              <Field label="反应 ID" value={stringField(reaction.ID)} onChange={(next) => updateReaction(index, { ID: next })} />
+              <ComboField label="电影 Tag" value={reaction.Tag || "spring_movie_0"} options={MOVIE_TAG_OPTIONS} onChange={(next) => updateReaction(index, { Tag: next })} />
+              <ComboField label="观感 Response" value={reaction.Response || "like"} options={MOVIE_RESPONSE_OPTIONS} onChange={(next) => updateReaction(index, { Response: next })} />
+              <ItemMultiSelect label="Whitelist 白名单物品/条件标记" options={[]} value={arrayOfStrings(reaction.Whitelist)} onChange={(items) => updateReaction(index, { Whitelist: items })} placeholder="可留空；需要特殊白名单时用自定义值添加。" />
+            </div>
+            {MOVIE_RESPONSE_POINTS.map((point) => {
+              const responsePoint = movieResponsePoint(specialResponses[point.key]);
+              return (
+                <details className="movie-response-point" key={point.key}>
+                  <summary>{point.label}</summary>
+                  <div className="grid two">
+                    <Field label="ResponsePoint" value={stringField(responsePoint.ResponsePoint ?? "")} onChange={(next) => updateSpecialResponse(index, point.key, { ResponsePoint: setNullableText(next) })} />
+                    <Field label="Script" value={stringField(responsePoint.Script)} onChange={(next) => updateSpecialResponse(index, point.key, { Script: next })} />
+                    <DialogueTextTools label="Text" project={project} npcName={npcName} value={stringField(responsePoint.Text)} onChange={(next) => updateSpecialResponse(index, point.key, { Text: next })} />
+                  </div>
+                </details>
+              );
+            })}
+            <div className="button-row">
+              <button type="button" className="secondary" onClick={() => removeReaction(index)}>删除该电影反应</button>
+            </div>
+          </details>
+        );
+      })}
+      <JsonField label="MoviesReactions 高级 JSON" value={value} onChange={(next) => isObject(next) && updateValue(next)} />
+    </div>
+  );
+}
+
 function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+  const [expandedNpcEntryId, setExpandedNpcEntryId] = useState("");
   const value = isObject(entry.value) ? entry.value : {};
   const npcName = normalizeInternalName(entry.key || "ExampleNPC");
   const advanced = entry.advanced || {};
@@ -1762,10 +1862,53 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     updateMeta({ roommateItem: { ...roommate, [key]: nextValue } });
   }
 
+  function importRoommateItemTexture(nextProject: Project, storedPath: string) {
+    const textureTarget = stringField(roommate.textureTarget || roommateItemTextureTarget(nextProject, npcName));
+    const itemId = stringField(roommate.itemId || `${nextProject.manifest.UniqueID || "Author.Mod"}.InvitationLetter`);
+    const nextRoommate = { ...roommate, textureTarget, fromFile: storedPath };
+    const texturePatch: Patch = {
+      id: makeId(),
+      name: `${npcName} 室友提案物品贴图`,
+      action: "Load",
+      enabled: true,
+      target: textureTarget,
+      from_file: storedPath,
+      when: {},
+      fields: {},
+      advanced: {}
+    };
+    const nextGameData = nextProject.game_data.map((item) => {
+      if (item.id === entry.id) {
+        return {
+          ...entry,
+          advanced: {
+            ...advanced,
+            StardewCPStudio: {
+              ...studio,
+              npc: {
+                ...npcMeta,
+                roommateItem: nextRoommate
+              }
+            }
+          }
+        };
+      }
+      if (item.target === "Data/Objects" && item.key === itemId && isObject(item.value)) {
+        return { ...item, value: { ...item.value, Texture: textureTarget } };
+      }
+      return item;
+    });
+    setProject({
+      ...nextProject,
+      patches: mergeWorkflowPatches(nextProject.patches, [texturePatch]),
+      game_data: nextGameData
+    });
+  }
+
   function upsertRoommateItem() {
     const itemId = stringField(roommate.itemId || `${project.manifest.UniqueID || "Author.Mod"}.InvitationLetter`);
-    const textureTarget = stringField(roommate.textureTarget || `Mods/${project.manifest.UniqueID || "Author.Mod"}/invitationletter`);
-    const fromFile = stringField(roommate.fromFile || "assets/CharacterFiles/RoommateItems/invitationletter.png");
+    const textureTarget = stringField(roommate.textureTarget || roommateItemTextureTarget(project, npcName));
+    const fromFile = stringField(roommate.fromFile || `assets/CharacterFiles/RoommateItems/${npcName}/invitationletter.png`);
     const displayName = stringField(roommate.displayName || "邀请信");
     const description = stringField(roommate.description || `把这封信交给 ${stringField(value.DisplayName) || npcName}，邀请他/她成为室友。`);
     const price = Number(roommate.price || 5000);
@@ -1901,6 +2044,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
       format,
       i18nKey
     );
+    setExpandedNpcEntryId(mergedEntryId(project, dialogueEntry));
     upsertNpcEntries([dialogueEntry], {
       [i18nKey]: project.i18n[i18nKey] || defaultDialogueText(format.id)
     });
@@ -1908,7 +2052,8 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
 
   function createSpecialDialogue(kind: SpecialDialogueKind) {
     const displayName = stringField(value.DisplayName || npcName);
-    const entry = createSpecialDialogueEntry(npcName, displayName, kind);
+    const entry = createSpecialDialogueEntry(npcName, displayName, kind, project.game_data);
+    setExpandedNpcEntryId(mergedEntryId(project, entry));
     upsertNpcEntries([entry], {
       [extractI18nKey(entry.value)]: defaultSpecialDialogueText(kind)
     });
@@ -1918,6 +2063,13 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     const displayName = stringField(value.DisplayName || npcName);
     upsertNpcEntries([
       npcModuleMetadata(createWorkflowEntry("custom", `${displayName} 礼物喜好`, "Data/NPCGiftTastes", npcName, giftTasteToString(defaultGiftTasteState(displayName))), "giftTaste")
+    ]);
+  }
+
+  function createMovieReactionPlaceholder() {
+    const displayName = stringField(value.DisplayName || npcName);
+    upsertNpcEntries([
+      npcModuleMetadata(withMovieReactionMetadata(createWorkflowEntry("custom", `${displayName} 电影观感`, "Data/MoviesReactions", npcName, defaultMovieReactionValue(npcName)), npcName), "movieReaction")
     ]);
   }
 
@@ -1973,11 +2125,15 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   const marriageDialogueEntries = project.game_data.filter((item) => item.kind === "dialogue" && item.target === `Characters/Dialogue/MarriageDialogue${npcName}`);
   const specialDialogueEntries = project.game_data.filter((item) => isSpecialDialogueEntry(item, npcName));
   const giftTasteEntry = project.game_data.find((item) => item.target === "Data/NPCGiftTastes" && item.key === npcName);
+  const movieReactionEntry = project.game_data.find((item) => item.target === "Data/MoviesReactions" && item.key === npcName);
   const hasGiftTaste = hasEntry("Data/NPCGiftTastes", npcName);
+  const hasMovieReaction = hasEntry("Data/MoviesReactions", npcName);
   const hasSchedule = hasEntry(`Characters/schedules/${npcName}`, "spring");
   const hasMail = hasEntry("Data/Mail", `${npcName}.Welcome`);
   const hasEvent = project.game_data.some((item) => item.target === "Data/Events/Town" && item.key.startsWith(`${workflowEventId(npcName)}/`));
   const canVisitIsland = value.CanVisitIsland ?? value.CanVisitIslandCondition;
+  const hasExpandedSpecialDialogue = specialDialogueEntries.some((item) => item.id === expandedNpcEntryId);
+  const hasExpandedMarriageDialogue = marriageDialogueEntries.some((item) => item.id === expandedNpcEntryId);
 
   return (
     <div className="npc-group">
@@ -2041,9 +2197,10 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
             <Field label="显示名称 DisplayName" value={stringField(roommate.displayName || "邀请信")} onChange={(next) => setRoommateField("displayName", next)} />
             <Field label="描述 Description" value={stringField(roommate.description || `把这封信交给 ${stringField(value.DisplayName) || npcName}，邀请他/她成为室友。`)} onChange={(next) => setRoommateField("description", next)} />
             <Field label="价格 Price" value={String(roommate.price || 5000)} onChange={(next) => setRoommateField("price", numberOrText(next))} />
-            <Field label="贴图目标 Texture" value={stringField(roommate.textureTarget || `Mods/${project.manifest.UniqueID || "Author.Mod"}/invitationletter`)} onChange={(next) => setRoommateField("textureTarget", next)} />
-            <Field label="贴图文件 FromFile" value={stringField(roommate.fromFile || "assets/CharacterFiles/RoommateItems/invitationletter.png")} onChange={(next) => setRoommateField("fromFile", next)} />
+            <Field label="贴图目标 Texture" value={stringField(roommate.textureTarget || roommateItemTextureTarget(project, npcName))} onChange={(next) => setRoommateField("textureTarget", next)} />
+            <Field label="贴图文件 FromFile" value={stringField(roommate.fromFile || `assets/CharacterFiles/RoommateItems/${npcName}/invitationletter.png`)} onChange={(next) => setRoommateField("fromFile", next)} />
             <Field label="SpriteIndex" value={String(roommate.spriteIndex || 0)} onChange={(next) => setRoommateField("spriteIndex", numberOrText(next))} />
+            <CharacterAssetImport label="导入室友物品贴图" project={project} npcName={npcName} assetKind="roommateItem" currentPath={stringField(roommate.fromFile)} onImported={(nextProject, storedPath) => importRoommateItemTexture(nextProject, storedPath)} />
           </div>
           <div className="button-row">
             <button type="button" onClick={upsertRoommateItem}><Icon name="plus" />生成/更新室友提案物品</button>
@@ -2113,15 +2270,15 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </div>
         <details className="dialogue-section" open>
           <summary>普通对话 <span>{normalDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={normalDialogueEntries} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={normalDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
-        <details className="dialogue-section">
+        <details className="dialogue-section" open={hasExpandedSpecialDialogue || undefined}>
           <summary>特殊对话 <span>{specialDialogueEntries.length} 条</span></summary>
-          <SpecialDialogueList entries={specialDialogueEntries} project={project} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateNpcModuleEntry} onRemove={removeDialogueEntry} />
+          <SpecialDialogueList entries={specialDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateNpcModuleEntry} onRemove={removeDialogueEntry} />
         </details>
-        <details className="dialogue-section">
+        <details className="dialogue-section" open={hasExpandedMarriageDialogue || undefined}>
           <summary>婚后/室友对话 <span>{marriageDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={marriageDialogueEntries} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
       </div>
 
@@ -2134,6 +2291,18 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <GiftTasteEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={giftTasteEntry} npcName={npcName} displayName={stringField(value.DisplayName || npcName)} onChange={updateNpcModuleEntry} />
         ) : (
           <div className="empty compact-empty">尚未创建礼物喜好条目。</div>
+        )}
+      </div>
+
+      <div className="subsection">
+        <h3>电影观感</h3>
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={createMovieReactionPlaceholder}><Icon name="plus" />{hasMovieReaction ? "重置/更新草稿" : "创建电影观感"}</button>
+        </div>
+        {movieReactionEntry ? (
+          <MovieReactionEditor project={project} entry={movieReactionEntry} npcName={npcName} displayName={stringField(value.DisplayName || npcName)} onChange={updateNpcModuleEntry} />
+        ) : (
+          <div className="empty compact-empty">尚未创建电影观感条目。</div>
         )}
       </div>
 
@@ -2181,12 +2350,12 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   );
 }
 
-function NpcDialogueList({ entries, project, ruleset, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; project: Project; ruleset: Ruleset; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+function NpcDialogueList({ entries, expandedEntryId, project, ruleset, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
   return (
     <div className="npc-dialogue-list">
       {!entries.length && <div className="empty compact-empty">暂无条目。</div>}
       {entries.map((entry) => (
-        <details className="npc-dialogue-item" key={entry.id}>
+        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
           <summary className="npc-dialogue-head">
             <strong>{entry.key}</strong>
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
@@ -2198,12 +2367,12 @@ function NpcDialogueList({ entries, project, ruleset, i18n, onI18nChange, onChan
   );
 }
 
-function SpecialDialogueList({ entries, project, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; project: Project; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+function SpecialDialogueList({ entries, expandedEntryId, project, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
   return (
     <div className="npc-dialogue-list">
       {!entries.length && <div className="empty compact-empty">暂无条目。</div>}
       {entries.map((entry) => (
-        <details className="npc-dialogue-item" key={entry.id}>
+        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
           <summary className="npc-dialogue-head">
             <strong>{specialDialogueTitle(entry)}</strong>
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
@@ -2225,7 +2394,9 @@ function SpecialDialogueEditor({ project, entry, i18n, onI18nChange, onChange }:
   function updateText(nextText: string) {
     const i18nKey = specialDialogueI18nKey(npcName, kind, entry.target, entry.key);
     onI18nChange({ ...i18n, [i18nKey]: nextText });
-    onChange(withSpecialDialogueMetadata({ ...entry, value: i18nRef(i18nKey) }, kind, npcName));
+    if (entry.value !== i18nRef(i18nKey)) {
+      onChange(withSpecialDialogueMetadata({ ...entry, value: i18nRef(i18nKey) }, kind, npcName));
+    }
   }
 
   function updateFestival(target: string) {
@@ -2263,7 +2434,7 @@ function SpecialDialogueEditor({ project, entry, i18n, onI18nChange, onChange }:
       )}
       <DialogueTextTools label="台词正文（写入 i18n/default.json）" project={project} npcName={npcName} value={text} onChange={updateText} />
       <div className="notice compact-note">
-        当前导出：<code>{entry.target}</code> / Key <code>{entry.key}</code> = <code>{entry.value as string}</code>
+        当前导出：<code>{entry.target}</code> / Key <code>{entry.key}</code> = <code>{stringField(entry.value)}</code>
       </div>
     </div>
   );
@@ -3205,6 +3376,33 @@ const FESTIVAL_DIALOGUE_TARGETS: RulesetOption[] = [
   { label: "冬 25 冬星盛宴 winter25", value: "Data/Festivals/winter25" }
 ];
 
+const MOVIE_RESPONSE_OPTIONS: RulesetOption[] = [
+  { label: "最爱 love", value: "love" },
+  { label: "喜欢 like", value: "like" },
+  { label: "不喜欢 dislike", value: "dislike" }
+];
+
+const MOVIE_TAG_OPTIONS: RulesetOption[] = [
+  { label: "全部电影 *", value: "*" },
+  { label: "任意最爱电影 love", value: "love" },
+  { label: "任意喜欢电影 like", value: "like" },
+  { label: "任意不喜欢电影 dislike", value: "dislike" },
+  { label: "春季电影 0 spring_movie_0", value: "spring_movie_0" },
+  { label: "夏季电影 0 summer_movie_0", value: "summer_movie_0" },
+  { label: "秋季电影 0 fall_movie_0", value: "fall_movie_0" },
+  { label: "冬季电影 0 winter_movie_0", value: "winter_movie_0" },
+  { label: "春季电影 1 spring_movie_1", value: "spring_movie_1" },
+  { label: "夏季电影 1 summer_movie_1", value: "summer_movie_1" },
+  { label: "秋季电影 1 fall_movie_1", value: "fall_movie_1" },
+  { label: "冬季电影 1 winter_movie_1", value: "winter_movie_1" }
+];
+
+const MOVIE_RESPONSE_POINTS = [
+  { key: "BeforeMovie", label: "观影前 BeforeMovie" },
+  { key: "DuringMovie", label: "观影中 DuringMovie" },
+  { key: "AfterMovie", label: "观影后 AfterMovie" }
+];
+
 function marriageKeyOptions(npcName: string): RulesetOption[] {
   const npc = normalizeInternalName(npcName || "ExampleNPC");
   const options: RulesetOption[] = [];
@@ -3652,6 +3850,10 @@ function mergeWorkflowEntries(existing: GameDataEntry[], nextEntries: GameDataEn
   return merged;
 }
 
+function mergedEntryId(project: Project, nextEntry: GameDataEntry) {
+  return project.game_data.find((entry) => entry.target === nextEntry.target && entry.key === nextEntry.key)?.id || nextEntry.id;
+}
+
 function mergeWorkflowPatches(existing: Patch[], nextPatches: Patch[]) {
   let merged = [...existing];
   for (const next of nextPatches) {
@@ -3943,19 +4145,96 @@ function withGiftTasteMetadata(entry: GameDataEntry, state: GiftTasteState): Gam
   };
 }
 
-function createSpecialDialogueEntry(npcName: string, displayName: string, kind: SpecialDialogueKind): GameDataEntry {
-  const target = kind === "engagement"
-    ? "Data/EngagementDialogue"
-    : kind === "rain"
-      ? "Characters/Dialogue/rain"
-      : String(FESTIVAL_DIALOGUE_TARGETS[0].value);
-  const key = kind === "engagement" ? `${npcName}0` : npcName;
+function defaultMovieReactionValue(npcName: string): JsonDict {
+  return {
+    NPCName: npcName,
+    Reactions: [
+      normalizeMovieReaction({}, npcName, 0)
+    ]
+  };
+}
+
+function movieReactionValue(value: unknown, npcName: string): JsonDict {
+  return isObject(value) ? { NPCName: npcName, ...value } : defaultMovieReactionValue(npcName);
+}
+
+function movieReactionRows(value: unknown, npcName: string): JsonDict[] {
+  return Array.isArray(value) ? value.filter(isObject).map((item, index) => normalizeMovieReaction(item, npcName, index)) : [];
+}
+
+function normalizeMovieReaction(value: JsonDict, npcName: string, index: number): JsonDict {
+  return {
+    Tag: stringField(value.Tag || MOVIE_TAG_OPTIONS[Math.min(index, MOVIE_TAG_OPTIONS.length - 1)]?.value || "spring_movie_0"),
+    Response: movieResponseValue(value.Response),
+    Whitelist: arrayOfStrings(value.Whitelist),
+    SpecialResponses: movieSpecialResponses(value.SpecialResponses),
+    ID: stringField(value.ID || `${normalizeInternalName(npcName).toLowerCase()}_reaction_${index}`)
+  };
+}
+
+function movieResponseValue(value: unknown): MovieResponse {
+  return value === "love" || value === "dislike" ? value : "like";
+}
+
+function movieSpecialResponses(value: unknown): JsonDict {
+  const source = isObject(value) ? value : {};
+  return {
+    BeforeMovie: movieResponsePoint(source.BeforeMovie),
+    DuringMovie: movieResponsePoint(source.DuringMovie),
+    AfterMovie: movieResponsePoint(source.AfterMovie)
+  };
+}
+
+function movieResponsePoint(value: unknown): JsonDict {
+  const source = isObject(value) ? value : {};
+  return {
+    ResponsePoint: source.ResponsePoint ?? null,
+    Script: stringField(source.Script),
+    Text: stringField(source.Text)
+  };
+}
+
+function withMovieReactionMetadata(entry: GameDataEntry, npcName: string): GameDataEntry {
+  const existingStudio = isObject(entry.advanced.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  return {
+    ...entry,
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...existingStudio,
+        npcModule: {
+          npcName,
+          module: "movieReaction"
+        }
+      }
+    }
+  };
+}
+
+function createSpecialDialogueEntry(npcName: string, displayName: string, kind: SpecialDialogueKind, existingEntries: GameDataEntry[] = []): GameDataEntry {
+  const existing = new Set(existingEntries.map((entry) => `${entry.target}::${entry.key}`));
+  const target = nextSpecialDialogueTarget(kind, npcName, existing);
+  const key = nextSpecialDialogueKey(kind, npcName, target, existing);
   const i18nKey = specialDialogueI18nKey(npcName, kind, target, key);
   const entry = createWorkflowEntry("custom", specialDialogueName(displayName, kind, target, key), target, key, i18nRef(i18nKey));
   return withSpecialDialogueMetadata({
     ...entry,
     advanced: kind === "engagement" ? { Priority: "Late" } : {}
   }, kind, npcName);
+}
+
+function nextSpecialDialogueTarget(kind: SpecialDialogueKind, npcName: string, existing: Set<string>) {
+  if (kind === "engagement") return "Data/EngagementDialogue";
+  if (kind === "rain") return "Characters/Dialogue/rain";
+  return String(FESTIVAL_DIALOGUE_TARGETS.find((target) => !existing.has(`${target.value}::${npcName}`))?.value || FESTIVAL_DIALOGUE_TARGETS[0].value);
+}
+
+function nextSpecialDialogueKey(kind: SpecialDialogueKind, npcName: string, target: string, existing: Set<string>) {
+  if (kind === "engagement") {
+    const keys = [`${npcName}0`, `${npcName}1`];
+    return keys.find((key) => !existing.has(`${target}::${key}`)) || keys[0];
+  }
+  return npcName;
 }
 
 function withSpecialDialogueMetadata(entry: GameDataEntry, kind: SpecialDialogueKind, npcName: string): GameDataEntry {
@@ -3977,11 +4256,12 @@ function withSpecialDialogueMetadata(entry: GameDataEntry, kind: SpecialDialogue
 
 function isSpecialDialogueEntry(entry: GameDataEntry, npcName: string) {
   const meta = specialDialogueMetadata(entry);
+  if (!meta.valid) return false;
   if (meta.npcName !== npcName) return false;
   return meta.kind === "engagement" || meta.kind === "rain" || meta.kind === "festival";
 }
 
-function specialDialogueMetadata(entry: GameDataEntry): { kind: SpecialDialogueKind; npcName: string } {
+function specialDialogueMetadata(entry: GameDataEntry): { kind: SpecialDialogueKind; npcName: string; valid: boolean } {
   const studio = isObject(entry.advanced.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
   const stored = isObject(studio.specialDialogue) ? studio.specialDialogue as JsonDict : {};
   const kind = stored.kind === "engagement" || stored.kind === "rain" || stored.kind === "festival"
@@ -3989,7 +4269,8 @@ function specialDialogueMetadata(entry: GameDataEntry): { kind: SpecialDialogueK
     : inferSpecialDialogueKind(entry);
   return {
     kind,
-    npcName: stringField(stored.npcName || inferSpecialDialogueNpcName(entry, kind))
+    npcName: stringField(stored.npcName || inferSpecialDialogueNpcName(entry, kind)),
+    valid: isSpecialDialogueTarget(entry.target)
   };
 }
 
@@ -3997,6 +4278,12 @@ function inferSpecialDialogueKind(entry: GameDataEntry): SpecialDialogueKind {
   if (entry.target === "Data/EngagementDialogue") return "engagement";
   if (entry.target === "Characters/Dialogue/rain") return "rain";
   return "festival";
+}
+
+function isSpecialDialogueTarget(target: string) {
+  return target === "Data/EngagementDialogue"
+    || target === "Characters/Dialogue/rain"
+    || FESTIVAL_DIALOGUE_TARGETS.some((item) => item.value === target);
 }
 
 function inferSpecialDialogueNpcName(entry: GameDataEntry, kind: SpecialDialogueKind) {
@@ -4110,6 +4397,11 @@ function spouseRoomTarget(project: Project, npcName: string) {
   return `Mods/${uniqueId}/Custom_${normalizeInternalName(npcName)}SpouseRoom`;
 }
 
+function roommateItemTextureTarget(project: Project, npcName: string) {
+  const uniqueId = project.manifest.UniqueID || "Author.Mod";
+  return `Mods/${uniqueId}/${normalizeInternalName(npcName)}InvitationLetter`;
+}
+
 function isInternalAdvancedKey(key: string) {
   return key === "StardewCPStudio" || key.startsWith("StardewCPStudio.");
 }
@@ -4124,6 +4416,11 @@ function internalAdvanced(advanced: JsonDict = {}) {
 
 function mergePublicAdvanced(previous: JsonDict = {}, nextPublic: JsonDict = {}) {
   return { ...nextPublic, ...internalAdvanced(previous) };
+}
+
+function isNpcManagedEntry(entry: GameDataEntry) {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  return isObject(studio.npcModule) || isObject(studio.specialDialogue) || (entry.kind === "dialogue" && isObject(studio.dialogue));
 }
 
 function rulesetOptions(ruleset: Ruleset, key: string): RulesetOption[] {

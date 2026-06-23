@@ -290,7 +290,14 @@ textarea {
   gap: 12px;
 }
 
+.movie-reaction-editor {
+  display: grid;
+  gap: 12px;
+}
+
 .gift-taste-group,
+.movie-reaction-row,
+.movie-response-point,
 .portrait-tools {
   background: #fbfaf5;
   border: 1px solid #ded7c9;
@@ -299,6 +306,8 @@ textarea {
 }
 
 .gift-taste-group summary,
+.movie-reaction-row summary,
+.movie-response-point summary,
 .portrait-tools summary {
   align-items: center;
   cursor: pointer;
@@ -307,13 +316,16 @@ textarea {
   justify-content: space-between;
 }
 
-.gift-taste-group summary span {
+.gift-taste-group summary span,
+.movie-reaction-row summary span {
   color: #667067;
   font-size: 12px;
   font-weight: 600;
 }
 
-.gift-taste-group .grid {
+.gift-taste-group .grid,
+.movie-reaction-row .grid,
+.movie-response-point .grid {
   margin-top: 12px;
 }
 

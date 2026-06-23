@@ -1700,6 +1700,77 @@
       ]
     },
     {
+      "id": "movie_reactions",
+      "target": "Data/MoviesReactions",
+      "label": "电影观感",
+      "kind": "movie_reaction",
+      "description": "NPC movie theater reactions, including response level and before/during/after movie special dialogue.",
+      "key_hint": "NPC internal name, e.g. Abigail or ExampleNPC.",
+      "fields": [
+        {
+          "name": "NPCName",
+          "label": "NPC 内部名",
+          "type": "string"
+        },
+        {
+          "name": "Reactions",
+          "label": "电影反应列表",
+          "type": "array"
+        }
+      ],
+      "reaction_fields": [
+        {
+          "name": "Tag",
+          "description": "Movie tag or exact movie ID, such as spring_movie_0, love, like, dislike, or *."
+        },
+        {
+          "name": "Response",
+          "description": "Overall response: love, like, or dislike."
+        },
+        {
+          "name": "Whitelist",
+          "description": "Optional whitelist constraints; usually empty."
+        },
+        {
+          "name": "SpecialResponses",
+          "description": "BeforeMovie, DuringMovie, and AfterMovie text/script blocks."
+        },
+        {
+          "name": "ID",
+          "description": "Unique reaction ID."
+        }
+      ],
+      "response_values": [
+        {
+          "label": "最爱 love",
+          "value": "love"
+        },
+        {
+          "label": "喜欢 like",
+          "value": "like"
+        },
+        {
+          "label": "不喜欢 dislike",
+          "value": "dislike"
+        }
+      ],
+      "movie_tag_examples": [
+        "*",
+        "love",
+        "like",
+        "dislike",
+        "spring_movie_0",
+        "summer_movie_0",
+        "fall_movie_0",
+        "winter_movie_0"
+      ],
+      "ai_guidance": [
+        "Create one Data/MoviesReactions entry per NPC.",
+        "Use Reactions entries with Tag, Response, Whitelist, SpecialResponses, and ID.",
+        "SpecialResponses can include BeforeMovie, DuringMovie, and AfterMovie blocks with ResponsePoint, Script, and Text."
+      ]
+    },
+    {
       "id": "gift_tastes",
       "target": "Data/NPCGiftTastes",
       "label": "礼物喜好",

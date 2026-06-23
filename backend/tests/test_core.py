@@ -206,6 +206,46 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(festival["Entries"]["Cale"], "{{i18n:Cale.SpecialDialogue.festival.spring13}}")
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_movie_reactions(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.append(GameDataEntry(
+                kind="custom",
+                target="Data/MoviesReactions",
+                key="Cale",
+                value={
+                    "NPCName": "Cale",
+                    "Reactions": [
+                        {
+                            "Tag": "spring_movie_0",
+                            "Response": "like",
+                            "Whitelist": [],
+                            "SpecialResponses": {
+                                "BeforeMovie": {"ResponsePoint": None, "Script": "", "Text": "Before"},
+                                "DuringMovie": {"ResponsePoint": None, "Script": "/message \"Watching\"", "Text": "During"},
+                                "AfterMovie": {"ResponsePoint": None, "Script": "", "Text": "After"},
+                            },
+                            "ID": "cale_reaction_0",
+                        }
+                    ],
+                },
+                advanced={"StardewCPStudio": {"npcModule": {"npcName": "Cale", "module": "movieReaction"}}},
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            change = next(change for change in content["Changes"] if change.get("Target") == "Data/MoviesReactions")
+
+            self.assertEqual(change["Entries"]["Cale"]["NPCName"], "Cale")
+            self.assertEqual(change["Entries"]["Cale"]["Reactions"][0]["Tag"], "spring_movie_0")
+            self.assertEqual(change["Entries"]["Cale"]["Reactions"][0]["Response"], "like")
+            self.assertNotIn("StardewCPStudio", json.dumps(content))
+
     def test_import_asset_can_use_character_asset_path(self):
         import asyncio
 
@@ -281,6 +321,7 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(event["event_commands"])
         self.assertTrue(schedule["schedule_points"])
         self.assertTrue(gift_taste["taste_groups"])
+        self.assertTrue(any(target["target"] == "Data/MoviesReactions" for target in context["game_data"]["targets"]))
         self.assertTrue(gift_taste["text_operation_templates"])
         self.assertTrue(mail["mail_markers"])
         self.assertTrue(mail["attachment_types"])
