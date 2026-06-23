@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "domain": "content_patcher",
+  "format": "2.9.0",
+  "patch_actions": [
+    {
+      "action": "Load",
+      "label": "Load 加载素材",
+      "description": "Replace a target asset with a file from the content pack.",
+      "required_fields": ["Action", "Target", "FromFile"],
+      "optional_fields": ["When", "LogName", "Priority"],
+      "field_hints": {
+        "Target": "Game asset name to replace.",
+        "FromFile": "File path inside the content pack, usually under assets/."
+      }
+    },
+    {
+      "action": "EditData",
+      "label": "EditData 编辑数据",
+      "description": "Change data assets with Entries, Fields, MoveEntries, or TextOperations.",
+      "required_fields": ["Action", "Target"],
+      "optional_fields": ["Entries", "Fields", "MoveEntries", "TextOperations", "When", "LogName", "Priority"],
+      "field_hints": {
+        "Entries": "Add or replace entries by key.",
+        "Fields": "Patch fields within existing entries.",
+        "TextOperations": "Apply text edits for string data."
+      }
+    },
+    {
+      "action": "EditImage",
+      "label": "EditImage 编辑图片",
+      "description": "Patch an image asset from a source image file.",
+      "required_fields": ["Action", "Target", "FromFile"],
+      "optional_fields": ["FromArea", "ToArea", "PatchMode", "When", "LogName", "Priority"],
+      "field_hints": {
+        "PatchMode": "Overlay by default; Replace should be used when overwriting a full area."
+      }
+    },
+    {
+      "action": "EditMap",
+      "label": "EditMap 编辑地图",
+      "description": "Patch a map asset with a map file or map operations.",
+      "required_fields": ["Action", "Target"],
+      "optional_fields": ["FromFile", "FromArea", "ToArea", "MapTiles", "When", "LogName", "Priority"]
+    },
+    {
+      "action": "Include",
+      "label": "Include 引入补丁",
+      "description": "Include patches from another content file.",
+      "required_fields": ["Action", "FromFile"],
+      "optional_fields": ["When", "LogName"]
+    }
+  ],
+  "tokens": [
+    {"name": "ModId", "kind": "global", "description": "The current content pack unique ID."},
+    {"name": "Season", "kind": "global", "description": "Current season."},
+    {"name": "Day", "kind": "global", "description": "Current day of month."},
+    {"name": "DayOfWeek", "kind": "global", "description": "Current weekday."},
+    {"name": "Weather", "kind": "global", "description": "Current weather."},
+    {"name": "PlayerName", "kind": "global", "description": "Current player name."},
+    {"name": "HasMod", "kind": "condition", "description": "Whether a mod with the given unique ID is installed."},
+    {"name": "Relationship", "kind": "condition", "description": "Relationship conditions for an NPC."},
+    {"name": "i18n", "kind": "translation", "description": "Translation token, usually {{i18n:key}} or with arguments."},
+    {"name": "Target", "kind": "patch", "description": "Patch target token available in some patch contexts."},
+    {"name": "FromFile", "kind": "patch", "description": "Patch source file token available in some patch contexts."}
+  ],
+  "when_conditions": [
+    {"key": "Season", "label": "季节 Season", "valueType": "select", "options": "seasons", "allowCustom": true},
+    {"key": "Day", "label": "日期 Day", "valueType": "number", "allowCustom": true},
+    {"key": "DayOfWeek", "label": "星期 DayOfWeek", "valueType": "select", "options": "days_of_week", "allowCustom": true},
+    {"key": "Weather", "label": "天气 Weather", "valueType": "select", "options": "weather", "allowCustom": true},
+    {"key": "PlayerGender", "label": "玩家性别 PlayerGender", "valueType": "select", "options": "genders", "allowCustom": true},
+    {"key": "PreferredPet", "label": "偏好宠物 PreferredPet", "valueType": "select", "options": "pet_types", "allowCustom": true},
+    {"key": "FarmType", "label": "农场类型 FarmType", "valueType": "select", "options": "farm_types", "allowCustom": true},
+    {"key": "FarmCave", "label": "农场洞穴 FarmCave", "valueType": "select", "options": "farm_caves", "allowCustom": true},
+    {"key": "HasMod", "label": "已安装模组 HasMod", "valueType": "text", "allowCustom": true},
+    {"key": "Relationship", "label": "NPC 关系 Relationship:NPC", "valueType": "relationship", "allowCustom": true}
+  ],
+  "translations": {
+    "folder": "i18n",
+    "default_file": "i18n/default.json",
+    "locale_file_pattern": "i18n/<locale>.json",
+    "token_pattern": "{{i18n:key}}",
+    "notes": [
+      "Use stable translation keys instead of hard-coded user-facing text where practical.",
+      "Keep default.json complete; locale files can override individual keys.",
+      "Translation tokens may be used in content.json fields where token strings are supported."
+    ]
+  },
+  "text_operations": {
+    "description": "Content Patcher TextOperations edit delimited or matched text inside data strings.",
+    "common_fields": ["Operation", "Target", "Value", "Delimiter", "Search", "Replace", "Before", "After"],
+    "operations": [
+      {"operation": "Append", "description": "Append text to an existing value."},
+      {"operation": "Prepend", "description": "Prepend text to an existing value."},
+      {"operation": "Replace", "description": "Replace matching text."},
+      {"operation": "Remove", "description": "Remove matching text."},
+      {"operation": "ReplaceDelimited", "description": "Replace a delimited field within a string."},
+      {"operation": "RemoveDelimited", "description": "Remove a delimited field from a string."}
+    ],
+    "guidance": [
+      "Use TextOperations for string formats where replacing the whole entry would conflict with other mods.",
+      "Gift tastes and other slash-delimited legacy strings often benefit from delimiter-aware operations."
+    ]
+  },
+  "trigger_actions": {
+    "description": "Trigger actions can be defined in game data and invoked by supported game systems or trigger hooks.",
+    "content_patcher_guidance": [
+      "Prefer stable unique IDs for custom trigger actions.",
+      "Use Content Patcher conditions to gate patches which add trigger actions.",
+      "When adding trigger actions through EditData, target Data/TriggerActions."
+    ]
+  },
+  "ai_guidance": [
+    "Always output valid JSON only when asked for a JSON fragment.",
+    "Use Content Patcher field names exactly as documented, including Action, Target, FromFile, When, Entries, Fields, and Include.",
+    "Prefer common tokens and conditions from the rule library; if unsure, explain uncertainty briefly outside JSON only when the user asked for prose.",
+    "For user-facing text, prefer i18n keys when the project already uses translations.",
+    "For legacy slash-delimited data strings, consider TextOperations instead of replacing entire entries."
+  ]
+}

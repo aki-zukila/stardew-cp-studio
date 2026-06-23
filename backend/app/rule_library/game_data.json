@@ -1,0 +1,3170 @@
+{
+  "schema_version": 1,
+  "domain": "game_data",
+  "game_version_hint": "Stardew Valley 1.6+",
+  "targets": [
+    {
+      "id": "characters",
+      "target": "Data/Characters",
+      "label": "NPC / 角色",
+      "kind": "npc",
+      "description": "Character data entries used for NPC definitions.",
+      "key_hint": "NPC internal name, e.g. Abigail or ExampleNPC.",
+      "fields": [
+        {
+          "name": "DisplayName",
+          "label": "显示名称",
+          "type": "string"
+        },
+        {
+          "name": "BirthSeason",
+          "label": "生日季节",
+          "type": "enum",
+          "options": "seasons",
+          "allowCustom": true
+        },
+        {
+          "name": "BirthDay",
+          "label": "生日日期",
+          "type": "integer",
+          "min": 1,
+          "max": 28
+        },
+        {
+          "name": "HomeRegion",
+          "label": "居住地区",
+          "type": "enum",
+          "options": "home_regions",
+          "allowCustom": true
+        },
+        {
+          "name": "Gender",
+          "label": "性别",
+          "type": "enum",
+          "options": "genders",
+          "allowCustom": true
+        },
+        {
+          "name": "CanBeRomanced",
+          "label": "可结婚",
+          "type": "boolean"
+        },
+        {
+          "name": "DefaultMap",
+          "label": "默认地图",
+          "type": "enum",
+          "options": "common_maps",
+          "allowCustom": true
+        },
+        {
+          "name": "TextureName",
+          "label": "贴图路径",
+          "type": "asset_path",
+          "allowCustom": true
+        }
+      ],
+      "related_assets": [
+        {
+          "target": "Data/NPCGiftTastes",
+          "purpose": "Gift tastes for social/giftable NPCs."
+        },
+        {
+          "target": "Characters/Dialogue/<NPC>",
+          "purpose": "Dialogue lines for the NPC."
+        },
+        {
+          "target": "Characters/schedules/<NPC>",
+          "purpose": "Schedule data for the NPC."
+        },
+        {
+          "target": "Characters/<NPC>",
+          "purpose": "Overworld sprite texture."
+        },
+        {
+          "target": "Portraits/<NPC>",
+          "purpose": "Portrait texture."
+        }
+      ],
+      "field_groups": [
+        {
+          "group": "basic_info",
+          "label": "基础信息",
+          "fields": [
+            {
+              "name": "DisplayName",
+              "type": "tokenizable_string"
+            },
+            {
+              "name": "Language",
+              "type": "enum",
+              "options": [
+                {
+                  "label": "默认 Default",
+                  "value": "Default"
+                },
+                {
+                  "label": "矮人语 Dwarvish",
+                  "value": "Dwarvish"
+                }
+              ]
+            },
+            {
+              "name": "Gender",
+              "type": "enum",
+              "options": "genders"
+            },
+            {
+              "name": "Age",
+              "type": "enum",
+              "options": "npc_ages"
+            },
+            {
+              "name": "Manner",
+              "type": "enum",
+              "options": "npc_manners"
+            },
+            {
+              "name": "SocialAnxiety",
+              "type": "enum",
+              "options": "npc_social_anxiety"
+            },
+            {
+              "name": "Optimism",
+              "type": "enum",
+              "options": "npc_optimism"
+            },
+            {
+              "name": "BirthSeason",
+              "type": "enum",
+              "options": "seasons"
+            },
+            {
+              "name": "BirthDay",
+              "type": "integer",
+              "min": 0,
+              "max": 28
+            },
+            {
+              "name": "HomeRegion",
+              "type": "enum",
+              "options": "home_regions"
+            }
+          ]
+        },
+        {
+          "group": "social_features",
+          "label": "社交与关系",
+          "fields": [
+            {
+              "name": "CanSocialize",
+              "type": "game_state_query",
+              "notes": "Wiki 优先：可用 true/false 或游戏状态查询表达式控制是否可社交。"
+            },
+            {
+              "name": "CanBeRomanced",
+              "type": "boolean"
+            },
+            {
+              "name": "CanReceiveGifts",
+              "type": "boolean"
+            },
+            {
+              "name": "CanGreetNearbyCharacters",
+              "type": "boolean"
+            },
+            {
+              "name": "CanVisitIsland",
+              "type": "game_state_query",
+              "notes": "Wiki 优先字段。旧工程中可能出现 CanVisitIslandCondition，本工具会尽量兼容读取。"
+            },
+            {
+              "name": "Calendar",
+              "type": "enum",
+              "options": "calendar_visibility"
+            },
+            {
+              "name": "SocialTab",
+              "type": "enum",
+              "options": "social_tab_visibility"
+            },
+            {
+              "name": "FriendsAndFamily",
+              "type": "dictionary"
+            }
+          ]
+        },
+        {
+          "group": "spawn_rules",
+          "label": "生成与住处",
+          "fields": [
+            {
+              "name": "UnlockConditions",
+              "type": "game_state_query",
+              "notes": "角色解锁条件；留空表示不额外限制。"
+            },
+            {
+              "name": "SpawnIfMissing",
+              "type": "boolean"
+            },
+            {
+              "name": "Home",
+              "type": "array",
+              "item_fields": [
+                "Id",
+                "Location",
+                "Tile",
+                "Direction",
+                "Condition"
+              ]
+            }
+          ]
+        },
+        {
+          "group": "appearance",
+          "label": "素材与外观",
+          "fields": [
+            {
+              "name": "TextureName",
+              "type": "asset_path"
+            },
+            {
+              "name": "Appearance",
+              "type": "array"
+            },
+            {
+              "name": "MugShotSourceRect",
+              "type": "rectangle"
+            },
+            {
+              "name": "Size",
+              "type": "point"
+            },
+            {
+              "name": "Breather",
+              "type": "boolean"
+            },
+            {
+              "name": "Shadow",
+              "type": "object"
+            },
+            {
+              "name": "EmoteOffset",
+              "type": "point"
+            },
+            {
+              "name": "KissSpriteIndex",
+              "type": "integer"
+            }
+          ]
+        },
+        {
+          "group": "festival_and_advanced",
+          "label": "节日与高级",
+          "fields": [
+            {
+              "name": "FlowerDanceCanDance",
+              "type": "nullable_boolean"
+            },
+            {
+              "name": "WinterStarParticipant",
+              "type": "game_state_query",
+              "notes": "是否参与冬星盛宴，可填 true/false 或游戏状态查询。"
+            },
+            {
+              "name": "WinterStarGifts",
+              "type": "item_spawn_list"
+            },
+            {
+              "name": "PerfectionScore",
+              "type": "boolean"
+            },
+            {
+              "name": "EndSlideShow",
+              "type": "enum",
+              "options": "end_slideshow_groups"
+            },
+            {
+              "name": "CustomFields",
+              "type": "dictionary"
+            },
+            {
+              "name": "FormerCharacterNames",
+              "type": "array"
+            }
+          ]
+        }
+      ],
+      "creation_checklist": [
+        "Add Data/Characters entry.",
+        "Add Data/NPCGiftTastes entry if the NPC can receive gifts.",
+        "Add Characters/Dialogue/<NPC> dialogue asset.",
+        "Add Characters/schedules/<NPC> schedule asset if they move around.",
+        "Provide portrait and overworld sprite textures. Use SVE-style folders such as assets/CharacterFiles/Portraits/<NPC>/<file>.png and assets/CharacterFiles/OverworldSprites/<NPC>/<file>.png.",
+        "Load portraits to Portraits/<NPC>. Load custom sprite sheets to a stable Mods/<UniqueID>/... asset path and reference that path from Data/Characters.TextureName.",
+        "Use unique internal NPC IDs for custom NPCs to avoid collisions."
+      ],
+      "ai_guidance": [
+        "For a new social NPC, generate a bundle of Data/Characters, gift tastes, dialogue, schedule, and sprite/portrait asset requirements.",
+        "Use enum values exactly, such as Female/Male/Undefined and Child/Teen/Adult.",
+        "Keep character assets grouped under assets/CharacterFiles/Portraits, assets/CharacterFiles/OverworldSprites, assets/CharacterFiles/Dialogue, and assets/CharacterFiles/Schedules.",
+        "For roommate routes, create a Data/Objects proposal item with ContextTags containing propose_roommate_<npc name>, and Load its texture to the Texture target used by that item.",
+        "Do not assume romance or gifting is enabled unless the user asks for it."
+      ]
+    },
+    {
+      "id": "objects",
+      "target": "Data/Objects",
+      "label": "物品 / 对象",
+      "kind": "item",
+      "description": "Object and basic item data.",
+      "key_hint": "Qualified or internal item ID depending on target data format.",
+      "fields": [
+        {
+          "name": "DisplayName",
+          "label": "显示名称",
+          "type": "string"
+        },
+        {
+          "name": "Description",
+          "label": "描述",
+          "type": "string"
+        },
+        {
+          "name": "Price",
+          "label": "价格",
+          "type": "integer",
+          "min": 0
+        },
+        {
+          "name": "Category",
+          "label": "分类",
+          "type": "enum",
+          "options": "object_categories",
+          "allowCustom": true
+        },
+        {
+          "name": "Edibility",
+          "label": "可食用值",
+          "type": "enum",
+          "options": "edibility",
+          "allowCustom": true
+        }
+      ],
+      "item_data_targets": [
+        {
+          "target": "Data/Objects",
+          "kind": "object",
+          "description": "Basic object/item definitions."
+        },
+        {
+          "target": "Data/BigCraftables",
+          "kind": "big_craftable",
+          "description": "Big craftable object definitions."
+        },
+        {
+          "target": "Data/Crops",
+          "kind": "crop",
+          "description": "Crop growth and harvest data."
+        },
+        {
+          "target": "Data/FruitTrees",
+          "kind": "fruit_tree",
+          "description": "Fruit tree growth and product data."
+        },
+        {
+          "target": "Data/Weapons",
+          "kind": "weapon",
+          "description": "Weapon definitions."
+        },
+        {
+          "target": "Data/Boots",
+          "kind": "boots",
+          "description": "Boot definitions."
+        },
+        {
+          "target": "Data/hats",
+          "kind": "hat",
+          "description": "Hat definitions."
+        },
+        {
+          "target": "Data/Shirts",
+          "kind": "shirt",
+          "description": "Shirt/clothing definitions."
+        },
+        {
+          "target": "Data/Pants",
+          "kind": "pants",
+          "description": "Pants/clothing definitions."
+        },
+        {
+          "target": "Data/Furniture",
+          "kind": "furniture",
+          "description": "Furniture definitions."
+        }
+      ],
+      "item_id_guidance": [
+        "Prefer qualified item IDs like (O)388, (BC)12, or custom qualified IDs when referencing items.",
+        "Use stable custom item IDs and avoid numeric IDs for new items unless matching existing vanilla content.",
+        "When adding gift tastes, shop items, mail attachments, or spawn rules, use the same item ID consistently."
+      ],
+      "field_groups": [
+        {
+          "group": "display",
+          "fields": [
+            "DisplayName",
+            "Description",
+            "Texture",
+            "SpriteIndex"
+          ]
+        },
+        {
+          "group": "economy",
+          "fields": [
+            "Price",
+            "Category",
+            "Edibility"
+          ]
+        },
+        {
+          "group": "behavior",
+          "fields": [
+            "ContextTags",
+            "ExcludeFromRandomSale",
+            "CanBeTrashed",
+            "CanBeGifted"
+          ]
+        },
+        {
+          "group": "crafting_and_recipes",
+          "fields": [
+            "Recipe",
+            "Ingredients",
+            "EdibleBuffs"
+          ]
+        }
+      ],
+      "ai_guidance": [
+        "Choose the correct item data target before generating JSON; do not put all item types in Data/Objects.",
+        "Use Category and Edibility enums when editing basic objects.",
+        "For player-facing item names/descriptions, prefer i18n keys if translations are enabled."
+      ]
+    },
+    {
+      "id": "dialogue",
+      "target": "Characters/Dialogue",
+      "label": "对话",
+      "kind": "dialogue",
+      "description": "Dialogue data for a character-specific dialogue asset.",
+      "key_hint": "Dialogue key such as Mon, Tue, rainy, fall_15, eventSeen_123, or custom keys.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "对话键",
+          "type": "string",
+          "examples": [
+            "Mon",
+            "Tue",
+            "spring_1",
+            "rainy",
+            "eventSeen_123456"
+          ]
+        },
+        {
+          "name": "value",
+          "label": "对话文本",
+          "type": "dialogue_string",
+          "notes": "May include @ for player name, #$b# line breaks, portrait/emote commands, and response blocks."
+        }
+      ],
+      "string_markers": [
+        {
+          "marker": "@",
+          "description": "Player name placeholder."
+        },
+        {
+          "marker": "#$b#",
+          "description": "Line break / next dialogue box."
+        },
+        {
+          "marker": "$h",
+          "description": "Happy portrait/emotion marker."
+        },
+        {
+          "marker": "$s",
+          "description": "Sad portrait/emotion marker."
+        },
+        {
+          "marker": "$a",
+          "description": "Angry portrait/emotion marker."
+        },
+        {
+          "marker": "$u",
+          "description": "Unique/special portrait marker."
+        }
+      ],
+      "key_patterns": [
+        {
+          "pattern": "<weekday>",
+          "examples": [
+            "Mon",
+            "Tue",
+            "Wed"
+          ],
+          "description": "Default dialogue for a day of week."
+        },
+        {
+          "pattern": "<season>_<day>",
+          "examples": [
+            "spring_1",
+            "fall_15"
+          ],
+          "description": "Dialogue for a specific calendar date."
+        },
+        {
+          "pattern": "rainy",
+          "examples": [
+            "rainy"
+          ],
+          "description": "Rainy day dialogue."
+        },
+        {
+          "pattern": "eventSeen_<eventId>",
+          "examples": [
+            "eventSeen_100"
+          ],
+          "description": "Dialogue after the player has seen an event."
+        },
+        {
+          "pattern": "<custom>",
+          "examples": [
+            "CustomGreeting"
+          ],
+          "description": "Custom keys can be referenced by game data, events, or CP edits."
+        }
+      ],
+      "dialogue_key_builder": {
+        "normal_targets": [
+          "Characters/Dialogue/<NPC>"
+        ],
+        "marriage_targets": [
+          "Characters/Dialogue/MarriageDialogue<NPC>"
+        ],
+        "i18n_pattern": {
+          "display_name": "Name.<NPC>",
+          "normal_dialogue": "<NPC>.CharacterDialogue.<key>",
+          "marriage_dialogue": "<NPC>.MarriageDialogue.<key>"
+        },
+        "field_options": {
+          "days_of_week": [
+            {
+              "label": "周一 Mon",
+              "value": "Mon"
+            },
+            {
+              "label": "周二 Tue",
+              "value": "Tue"
+            },
+            {
+              "label": "周三 Wed",
+              "value": "Wed"
+            },
+            {
+              "label": "周四 Thu",
+              "value": "Thu"
+            },
+            {
+              "label": "周五 Fri",
+              "value": "Fri"
+            },
+            {
+              "label": "周六 Sat",
+              "value": "Sat"
+            },
+            {
+              "label": "周日 Sun",
+              "value": "Sun"
+            }
+          ],
+          "seasons": [
+            {
+              "label": "春 spring",
+              "value": "spring"
+            },
+            {
+              "label": "夏 summer",
+              "value": "summer"
+            },
+            {
+              "label": "秋 fall",
+              "value": "fall"
+            },
+            {
+              "label": "冬 winter",
+              "value": "winter"
+            }
+          ],
+          "first_or_later_year": [
+            {
+              "label": "第一年 FirstYear",
+              "value": "1"
+            },
+            {
+              "label": "第二年及以后 LaterYear",
+              "value": "2"
+            }
+          ],
+          "any_or_year": [
+            {
+              "label": "任意年份 AnyYear",
+              "value": "*"
+            },
+            {
+              "label": "第一年 FirstYear",
+              "value": "1"
+            },
+            {
+              "label": "第二年及以后 LaterYear",
+              "value": "2"
+            }
+          ],
+          "generic_hearts": [
+            {
+              "label": "1 心",
+              "value": 1
+            },
+            {
+              "label": "2 心",
+              "value": 2
+            },
+            {
+              "label": "3 心",
+              "value": 3
+            },
+            {
+              "label": "4 心",
+              "value": 4
+            },
+            {
+              "label": "5 心",
+              "value": 5
+            },
+            {
+              "label": "6 心",
+              "value": 6
+            },
+            {
+              "label": "7 心",
+              "value": 7
+            },
+            {
+              "label": "8 心",
+              "value": 8
+            },
+            {
+              "label": "9 心",
+              "value": 9
+            },
+            {
+              "label": "10 心",
+              "value": 10
+            },
+            {
+              "label": "11 心",
+              "value": 11
+            },
+            {
+              "label": "12 心",
+              "value": 12
+            },
+            {
+              "label": "13 心",
+              "value": 13
+            },
+            {
+              "label": "14 心",
+              "value": 14
+            }
+          ],
+          "birthday_gift_reactions": [
+            {
+              "label": "正面 Positive",
+              "value": "Positive"
+            },
+            {
+              "label": "负面 Negative",
+              "value": "Negative"
+            },
+            {
+              "label": "中性 Neutral",
+              "value": "Neutral"
+            }
+          ],
+          "gift_refusals": [
+            {
+              "label": "送花 A give_flowersA",
+              "value": "give_flowersA"
+            },
+            {
+              "label": "送花 B give_flowersB",
+              "value": "give_flowersB"
+            },
+            {
+              "label": "送美人鱼吊坠 give_pendant",
+              "value": "give_pendant"
+            },
+            {
+              "label": "拒绝 NPC A rejectNPCA",
+              "value": "rejectNPCA"
+            },
+            {
+              "label": "拒绝 NPC B rejectNPCB",
+              "value": "rejectNPCB"
+            },
+            {
+              "label": "两心拒绝 A reject_two_heartA",
+              "value": "reject_two_heartA"
+            },
+            {
+              "label": "两心拒绝 B reject_two_heartB",
+              "value": "reject_two_heartB"
+            },
+            {
+              "label": "四心拒绝 A reject_four_heartA",
+              "value": "reject_four_heartA"
+            },
+            {
+              "label": "四心拒绝 B reject_four_heartB",
+              "value": "reject_four_heartB"
+            },
+            {
+              "label": "订婚 A engageA",
+              "value": "engageA"
+            },
+            {
+              "label": "订婚 B engageB",
+              "value": "engageB"
+            },
+            {
+              "label": "已婚 A marriedA",
+              "value": "marriedA"
+            },
+            {
+              "label": "已婚 B marriedB",
+              "value": "marriedB"
+            },
+            {
+              "label": "花束拒绝 A refusal_knownA",
+              "value": "refusal_knownA"
+            },
+            {
+              "label": "花束拒绝 B refusal_knownB",
+              "value": "refusal_knownB"
+            },
+            {
+              "label": "追求打扰 A refusal_botherA",
+              "value": "refusal_botherA"
+            },
+            {
+              "label": "追求打扰 B refusal_botherB",
+              "value": "refusal_botherB"
+            },
+            {
+              "label": "好感不足 A refusal_no_heartsA",
+              "value": "refusal_no_heartsA"
+            },
+            {
+              "label": "好感不足 B refusal_no_heartsB",
+              "value": "refusal_no_heartsB"
+            }
+          ],
+          "resort_keys": [
+            {
+              "label": "进入 Resort_Entering",
+              "value": "Resort_Entering"
+            },
+            {
+              "label": "离开 Resort_Leaving",
+              "value": "Resort_Leaving"
+            },
+            {
+              "label": "海岸 Resort_Shore",
+              "value": "Resort_Shore"
+            },
+            {
+              "label": "椅子 Resort_Chair",
+              "value": "Resort_Chair"
+            },
+            {
+              "label": "酒吧 Resort_Bar",
+              "value": "Resort_Bar"
+            },
+            {
+              "label": "默认 Resort",
+              "value": "Resort"
+            }
+          ],
+          "green_rain_keys": [
+            {
+              "label": "绿雨 GreenRain",
+              "value": "GreenRain"
+            },
+            {
+              "label": "绿雨结束 GreenRainFinished",
+              "value": "GreenRainFinished"
+            },
+            {
+              "label": "第二年绿雨 GreenRain_2",
+              "value": "GreenRain_2"
+            }
+          ],
+          "marriage_npc_suffix_keys": [
+            {
+              "label": "庭院 patio_<NPC>",
+              "value": "patio"
+            },
+            {
+              "label": "配偶房 spouseRoom_<NPC>",
+              "value": "spouseRoom"
+            },
+            {
+              "label": "出门 funLeave_<NPC>",
+              "value": "funLeave"
+            },
+            {
+              "label": "回家 funReturn_<NPC>",
+              "value": "funReturn"
+            },
+            {
+              "label": "季节角色 <season>_<NPC>",
+              "value": "season_npc"
+            }
+          ]
+        },
+        "formats": [
+          {
+            "id": "day_of_month_first_year",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfMonth>",
+            "template": "<dayOfMonth>",
+            "fields": [
+              {
+                "name": "day",
+                "type": "day"
+              }
+            ],
+            "warning": "Wiki: this key is first-year-only; usually prefer <dayOfMonth>_*."
+          },
+          {
+            "id": "day_of_month_year",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfMonth>_<firstOrLaterYear>",
+            "template": "<dayOfMonth>_<year>",
+            "fields": [
+              {
+                "name": "day",
+                "type": "day"
+              },
+              {
+                "name": "year",
+                "type": "select",
+                "options": "first_or_later_year"
+              }
+            ]
+          },
+          {
+            "id": "day_of_month_any_year",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfMonth>_*",
+            "template": "<dayOfMonth>_*",
+            "fields": [
+              {
+                "name": "day",
+                "type": "day"
+              }
+            ]
+          },
+          {
+            "id": "weekday_hearts_year",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfWeek><hearts>_<firstOrLaterYear>",
+            "template": "<dayOfWeek><hearts>_<year>",
+            "fields": [
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              },
+              {
+                "name": "hearts",
+                "type": "select",
+                "options": "generic_hearts"
+              },
+              {
+                "name": "year",
+                "type": "select",
+                "options": "first_or_later_year"
+              }
+            ],
+            "notes": "UI 提供 1-14 心；Wiki 说明原版通用好感 key 通常按 10/8/6/4/2 检查，使用其它数值时请确认目标版本或模组逻辑。"
+          },
+          {
+            "id": "weekday_hearts",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfWeek><hearts>",
+            "template": "<dayOfWeek><hearts>",
+            "fields": [
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              },
+              {
+                "name": "hearts",
+                "type": "select",
+                "options": "generic_hearts"
+              }
+            ],
+            "notes": "UI 提供 1-14 心；Wiki 说明原版通用好感 key 通常按 10/8/6/4/2 检查，使用其它数值时请确认目标版本或模组逻辑。"
+          },
+          {
+            "id": "weekday_year",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfWeek>_<firstOrLaterYear>",
+            "template": "<dayOfWeek>_<year>",
+            "fields": [
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              },
+              {
+                "name": "year",
+                "type": "select",
+                "options": "first_or_later_year"
+              }
+            ]
+          },
+          {
+            "id": "weekday",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<dayOfWeek>",
+            "template": "<dayOfWeek>",
+            "fields": [
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              }
+            ]
+          },
+          {
+            "id": "season_day",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<season>_<dayOfMonth>",
+            "template": "<season>_<dayOfMonth>",
+            "fields": [
+              {
+                "name": "season",
+                "type": "select",
+                "options": "seasons"
+              },
+              {
+                "name": "day",
+                "type": "day"
+              }
+            ]
+          },
+          {
+            "id": "season_weekday",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<season>_<dayOfWeek>",
+            "template": "<season>_<dayOfWeek>",
+            "fields": [
+              {
+                "name": "season",
+                "type": "select",
+                "options": "seasons"
+              },
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              }
+            ]
+          },
+          {
+            "id": "season_weekday_hearts",
+            "scope": "normal",
+            "category": "Generic dialogue",
+            "label": "<season>_<dayOfWeek><hearts>",
+            "template": "<season>_<dayOfWeek><hearts>",
+            "fields": [
+              {
+                "name": "season",
+                "type": "select",
+                "options": "seasons"
+              },
+              {
+                "name": "weekday",
+                "type": "select",
+                "options": "days_of_week"
+              },
+              {
+                "name": "hearts",
+                "type": "select",
+                "options": "generic_hearts"
+              }
+            ],
+            "notes": "UI 提供 1-14 心；Wiki 说明原版通用好感 key 通常按 10/8/6/4/2 检查，使用其它数值时请确认目标版本或模组逻辑。"
+          },
+          {
+            "id": "introduction",
+            "scope": "normal",
+            "category": "Special dialogue",
+            "label": "Introduction",
+            "template": "Introduction",
+            "fields": []
+          },
+          {
+            "id": "divorced",
+            "scope": "normal",
+            "category": "Relationship special",
+            "label": "divorced",
+            "template": "divorced",
+            "fields": []
+          },
+          {
+            "id": "breakup",
+            "scope": "normal",
+            "category": "Relationship special",
+            "label": "breakUp",
+            "template": "breakUp",
+            "fields": []
+          },
+          {
+            "id": "dating_npc",
+            "scope": "normal",
+            "category": "Relationship special",
+            "label": "dating_<NPC>",
+            "template": "dating_<npc>",
+            "fields": [
+              {
+                "name": "npc",
+                "type": "npc"
+              }
+            ]
+          },
+          {
+            "id": "married_npc",
+            "scope": "normal",
+            "category": "Relationship special",
+            "label": "married_<NPC>",
+            "template": "married_<npc>",
+            "fields": [
+              {
+                "name": "npc",
+                "type": "npc"
+              }
+            ]
+          },
+          {
+            "id": "divorced_npc",
+            "scope": "normal",
+            "category": "Relationship special",
+            "label": "divorced_<NPC>",
+            "template": "divorced_<npc>",
+            "fields": [
+              {
+                "name": "npc",
+                "type": "npc"
+              }
+            ]
+          },
+          {
+            "id": "gift_refusal",
+            "scope": "normal",
+            "category": "Gift / proposal",
+            "label": "送礼/求婚/拒绝 key",
+            "template": "<specialKey>",
+            "fields": [
+              {
+                "name": "specialKey",
+                "type": "select",
+                "options": "gift_refusals"
+              }
+            ]
+          },
+          {
+            "id": "accept_gift_item",
+            "scope": "normal",
+            "category": "Gift / proposal",
+            "label": "AcceptGift_<itemId>",
+            "template": "AcceptGift_<itemId>",
+            "fields": [
+              {
+                "name": "itemId",
+                "type": "item"
+              }
+            ]
+          },
+          {
+            "id": "accept_birthday_gift",
+            "scope": "normal",
+            "category": "Gift / proposal",
+            "label": "AcceptBirthdayGift_<reaction>",
+            "template": "AcceptBirthdayGift_<reaction>",
+            "fields": [
+              {
+                "name": "reaction",
+                "type": "select",
+                "options": "birthday_gift_reactions"
+              }
+            ]
+          },
+          {
+            "id": "resort",
+            "scope": "normal",
+            "category": "Resort",
+            "label": "Resort variants",
+            "template": "<resortKey>",
+            "fields": [
+              {
+                "name": "resortKey",
+                "type": "select",
+                "options": "resort_keys"
+              }
+            ]
+          },
+          {
+            "id": "green_rain",
+            "scope": "normal",
+            "category": "Green rain",
+            "label": "GreenRain variants",
+            "template": "<greenRainKey>",
+            "fields": [
+              {
+                "name": "greenRainKey",
+                "type": "select",
+                "options": "green_rain_keys"
+              }
+            ]
+          },
+          {
+            "id": "event_seen",
+            "scope": "normal",
+            "category": "Event / memory",
+            "label": "eventSeen_<eventId>",
+            "template": "eventSeen_<eventId>",
+            "fields": [
+              {
+                "name": "eventId",
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "id": "memory",
+            "scope": "normal",
+            "category": "Event / memory",
+            "label": "<memoryKey>_memory_<duration>",
+            "template": "<memoryKey>_memory_<duration>",
+            "fields": [
+              {
+                "name": "memoryKey",
+                "type": "text"
+              },
+              {
+                "name": "duration",
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "id": "location_tile",
+            "scope": "normal",
+            "category": "Location tile",
+            "label": "<location>_<x>_<y>",
+            "template": "<location>_<x>_<y>",
+            "fields": [
+              {
+                "name": "location",
+                "type": "text"
+              },
+              {
+                "name": "x",
+                "type": "integer"
+              },
+              {
+                "name": "y",
+                "type": "integer"
+              }
+            ]
+          },
+          {
+            "id": "normal_custom",
+            "scope": "normal",
+            "category": "Custom",
+            "label": "自定义 Key",
+            "template": "<customKey>",
+            "fields": [
+              {
+                "name": "customKey",
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "id": "marriage_npc_suffix",
+            "scope": "marriage",
+            "category": "Spouse spaces / schedule",
+            "label": "patio/spouseRoom/funLeave/funReturn_<NPC>",
+            "template": "<scene>_<npc>",
+            "fields": [
+              {
+                "name": "scene",
+                "type": "select",
+                "options": "marriage_npc_suffix_keys"
+              },
+              {
+                "name": "npc",
+                "type": "npc"
+              }
+            ]
+          },
+          {
+            "id": "marriage_key",
+            "scope": "marriage",
+            "category": "Wiki marriage dialogue",
+            "label": "Wiki 婚后/室友真实 Key",
+            "template": "<key>",
+            "fields": [
+              {
+                "name": "key",
+                "type": "marriage_key"
+              }
+            ],
+            "notes": "展开 Wiki 中 <random> 的真实 key；不使用 xxx_n 占位。"
+          },
+          {
+            "id": "marriage_season_npc",
+            "scope": "marriage",
+            "category": "Seasonal spouse dialogue",
+            "label": "<season>_<NPC>",
+            "template": "<season>_<npc>",
+            "fields": [
+              {
+                "name": "season",
+                "type": "select",
+                "options": "seasons"
+              },
+              {
+                "name": "npc",
+                "type": "npc"
+              }
+            ]
+          },
+          {
+            "id": "marriage_season_day",
+            "scope": "marriage",
+            "category": "Seasonal spouse dialogue",
+            "label": "<season>_<dayOfMonth>",
+            "template": "<season>_<dayOfMonth>",
+            "fields": [
+              {
+                "name": "season",
+                "type": "select",
+                "options": "seasons"
+              },
+              {
+                "name": "day",
+                "type": "day"
+              }
+            ]
+          },
+          {
+            "id": "marriage_custom",
+            "scope": "marriage",
+            "category": "Custom",
+            "label": "自定义婚后/室友 Key",
+            "template": "<customKey>",
+            "fields": [
+              {
+                "name": "customKey",
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "extra_targets": [
+          {
+            "target": "Data/EngagementDialogue",
+            "label": "订婚对话"
+          },
+          {
+            "target": "Data/ExtraDialogue",
+            "label": "额外对话"
+          },
+          {
+            "target": "Strings/StringsFromCSFiles",
+            "label": "代码文本字符串"
+          },
+          {
+            "target": "Strings/StringsFromMaps",
+            "label": "地图文本字符串"
+          }
+        ],
+        "ai_guidance": [
+          "Return dialogue suggestions as {target, key, i18n_key, text, category, fields}.",
+          "Use {{i18n:key}} in Entries and put the actual line in i18n/default.json.",
+          "Dialogue key conditions are not CP When conditions; choose a dialogue key format first."
+        ]
+      },
+      "commands": [
+        {
+          "token": "#$b#",
+          "description": "Line break / next dialogue box."
+        },
+        {
+          "token": "$h",
+          "description": "Happy expression."
+        },
+        {
+          "token": "$s",
+          "description": "Sad expression."
+        },
+        {
+          "token": "$a",
+          "description": "Angry expression."
+        },
+        {
+          "token": "$u",
+          "description": "Unique/special expression."
+        },
+        {
+          "token": "$l",
+          "description": "Love/romance expression in supported contexts."
+        },
+        {
+          "token": "$q",
+          "description": "Question/response block marker."
+        },
+        {
+          "token": "$r",
+          "description": "Response option marker."
+        },
+        {
+          "token": "$e",
+          "description": "End response block / jump marker in response dialogue."
+        },
+        {
+          "token": "%revealtaste",
+          "description": "Reveal a gift taste in supported dialogue contexts."
+        },
+        {
+          "token": "%item",
+          "description": "Give an item in supported dialogue contexts."
+        },
+        {
+          "token": "%action",
+          "description": "Run a trigger action in supported dialogue contexts."
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "Mon",
+          "value": "???@?#$b#??????????$h"
+        },
+        {
+          "key": "rainy",
+          "value": "????????#$b#????????$s"
+        }
+      ],
+      "ai_guidance": [
+        "For new NPC dialogue, initialize Characters/Dialogue/<NPC> with a Load patch from assets/blank.json, then apply EditData entries.",
+        "For romance or roommate dialogue, also initialize Characters/Dialogue/MarriageDialogue<NPC> with assets/blank.json.",
+        "Use i18n references in Entries, e.g. {{i18n:Sophia.CharacterDialogue.spring-Mon}}, and place the actual line in i18n/default.json.",
+        "When generating AI dialogue suggestions, return { target, key, i18n_key, text } rather than putting long text directly in Entries.",
+        "Use @ for the player name instead of inventing a player token inside dialogue strings.",
+        "Use #$b# for a new dialogue box rather than literal newlines unless editing JSON makes that clearer.",
+        "Keep dialogue keys stable and avoid overwriting vanilla keys unless the user explicitly wants a replacement."
+      ]
+    },
+    {
+      "id": "shops",
+      "target": "Data/Shops",
+      "label": "商店",
+      "kind": "shop",
+      "description": "Shop definitions and inventory. Each entry key is a shop ID, and the value contains shop settings plus an Items array.",
+      "key_hint": "Unique shop ID, e.g. SeedShop, FishShop, AnimalShop, Saloon, IslandShop, QiGemShop, or a custom shop ID.",
+      "fields": [
+        {
+          "name": "DisplayName",
+          "label": "显示名称",
+          "type": "string"
+        },
+        {
+          "name": "Items",
+          "label": "出售物品",
+          "type": "array",
+          "item_type": "shop_item"
+        },
+        {
+          "name": "Owners",
+          "label": "店主",
+          "type": "array"
+        },
+        {
+          "name": "Currency",
+          "label": "货币",
+          "type": "enum",
+          "options": "shop_currencies",
+          "allowCustom": true
+        },
+        {
+          "name": "OpenSound",
+          "label": "打开音效",
+          "type": "string"
+        },
+        {
+          "name": "PurchaseSound",
+          "label": "购买音效",
+          "type": "string"
+        }
+      ],
+      "item_fields": [
+        {
+          "name": "Id",
+          "required": true,
+          "type": "unique_id",
+          "description": "Unique ID for this shop item entry within the shop."
+        },
+        {
+          "name": "ItemId",
+          "required": true,
+          "type": "qualified_item_id",
+          "description": "Item to sell, preferably a qualified item ID like (O)388 or a custom qualified ID."
+        },
+        {
+          "name": "Price",
+          "required": false,
+          "type": "integer",
+          "description": "Override price."
+        },
+        {
+          "name": "AvailableStock",
+          "required": false,
+          "type": "integer",
+          "description": "Available stock count. Use -1 for unlimited stock in common cases."
+        },
+        {
+          "name": "AvailableStockLimit",
+          "required": false,
+          "type": "integer",
+          "description": "Maximum restockable stock limit when separate from current available stock."
+        },
+        {
+          "name": "Stack",
+          "required": false,
+          "type": "integer",
+          "description": "Stack size sold per purchase."
+        },
+        {
+          "name": "Condition",
+          "required": false,
+          "type": "game_state_query",
+          "description": "Game state query controlling whether the item is sold."
+        },
+        {
+          "name": "ActionsOnPurchase",
+          "required": false,
+          "type": "array",
+          "description": "Trigger actions to run after purchase."
+        }
+      ],
+      "substructures": [
+        {
+          "name": "Items",
+          "description": "Array of shop item models. Minimal custom item rows usually need Id, ItemId, and Price."
+        },
+        {
+          "name": "Owners",
+          "description": "Optional owner definitions used by some shops and shop menus."
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "SeedShop",
+          "value": {
+            "Items": [
+              {
+                "Id": "ExampleObject",
+                "ItemId": "(O)ExampleObject",
+                "Price": 100,
+                "AvailableStock": -1
+              }
+            ]
+          }
+        }
+      ],
+      "ai_guidance": [
+        "Target Data/Shops and use the shop ID as the entry key.",
+        "Use Items as an array of shop item models with Id, ItemId, Price, and optional AvailableStock, AvailableStockLimit, Stack, Condition, and ActionsOnPurchase.",
+        "For Pierre, use SeedShop rather than Pierre as the shop key.",
+        "When adding a custom item to an existing shop, preserve existing shop fields and patch only the Items data needed by the mod.",
+        "Use Condition for date, friendship, mail, event, or config-gated stock instead of hardcoding separate duplicate shop entries."
+      ]
+    },
+    {
+      "id": "events",
+      "target": "Data/Events",
+      "label": "事件",
+      "kind": "event",
+      "description": "Location event script entries.",
+      "key_hint": "Event ID plus slash-separated preconditions, e.g. 999999/f Abigail 2500.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "事件键",
+          "type": "event_key",
+          "examples": [
+            "999999",
+            "999999/f Abigail 2500",
+            "999999/e 12345"
+          ]
+        },
+        {
+          "name": "value",
+          "label": "事件脚本",
+          "type": "event_script",
+          "notes": "Slash-separated commands; supports comments and dialogue commands."
+        }
+      ],
+      "event_commands": [
+        {
+          "command": "pause",
+          "args": [
+            "milliseconds"
+          ],
+          "example": "pause 500"
+        },
+        {
+          "command": "speak",
+          "args": [
+            "speaker",
+            "text"
+          ],
+          "example": "speak Abigail \"???@?\""
+        },
+        {
+          "command": "move",
+          "args": [
+            "character",
+            "x",
+            "y",
+            "facing"
+          ],
+          "example": "move Abigail 0 2 2"
+        },
+        {
+          "command": "faceDirection",
+          "args": [
+            "character",
+            "direction"
+          ],
+          "example": "faceDirection Abigail 2"
+        },
+        {
+          "command": "playSound",
+          "args": [
+            "cue"
+          ],
+          "example": "playSound doorClose"
+        },
+        {
+          "command": "emote",
+          "args": [
+            "character",
+            "emoteId"
+          ],
+          "example": "emote Abigail 20"
+        },
+        {
+          "command": "addObject",
+          "args": [
+            "x",
+            "y",
+            "itemId"
+          ],
+          "example": "addObject 64 15 (O)388"
+        },
+        {
+          "command": "removeObject",
+          "args": [
+            "x",
+            "y"
+          ],
+          "example": "removeObject 64 15"
+        },
+        {
+          "command": "warp",
+          "args": [
+            "character",
+            "map",
+            "x",
+            "y"
+          ],
+          "example": "warp farmer Town 64 15"
+        },
+        {
+          "command": "viewport",
+          "args": [
+            "x",
+            "y"
+          ],
+          "example": "viewport 64 15"
+        },
+        {
+          "command": "end",
+          "args": [],
+          "example": "end"
+        }
+      ],
+      "key_patterns": [
+        {
+          "pattern": "<eventId>",
+          "examples": [
+            "999999"
+          ],
+          "description": "Always use a unique numeric event ID."
+        },
+        {
+          "pattern": "<eventId>/<precondition> <args>",
+          "examples": [
+            "999999/f Abigail 2500",
+            "999999/e 100"
+          ],
+          "description": "Slash-separated preconditions gate the event."
+        }
+      ],
+      "preconditions": [
+        {
+          "code": "f",
+          "description": "Friendship points with an NPC.",
+          "example": "f Abigail 2500"
+        },
+        {
+          "code": "e",
+          "description": "Event seen requirement.",
+          "example": "e 100"
+        },
+        {
+          "code": "d",
+          "description": "Day requirement in supported event key contexts.",
+          "example": "d Mon"
+        },
+        {
+          "code": "y",
+          "description": "Year requirement.",
+          "example": "y 2"
+        },
+        {
+          "code": "s",
+          "description": "Season requirement.",
+          "example": "s spring"
+        },
+        {
+          "code": "w",
+          "description": "Weather requirement.",
+          "example": "w rainy"
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "999999/f Abigail 2500",
+          "value": "pause 500/speak Abigail \"???@????????\"/end"
+        }
+      ],
+      "ai_guidance": [
+        "Event scripts are slash-separated command strings; quote spoken text when needed.",
+        "Use a large unique event ID for custom events and avoid colliding with vanilla event IDs.",
+        "For simple date/weather gating in CP, prefer When conditions outside the event if possible."
+      ]
+    },
+    {
+      "id": "gift_tastes",
+      "target": "Data/NPCGiftTastes",
+      "label": "礼物喜好",
+      "kind": "gift_taste",
+      "description": "Universal and NPC-specific gift taste definitions.",
+      "key_hint": "NPC name, or universal keys such as Universal_Love / Universal_Like.",
+      "fields": [
+        {
+          "name": "Love",
+          "label": "最爱",
+          "type": "item_id_list"
+        },
+        {
+          "name": "Like",
+          "label": "喜欢",
+          "type": "item_id_list"
+        },
+        {
+          "name": "Neutral",
+          "label": "普通",
+          "type": "item_id_list"
+        },
+        {
+          "name": "Dislike",
+          "label": "不喜欢",
+          "type": "item_id_list"
+        },
+        {
+          "name": "Hate",
+          "label": "讨厌",
+          "type": "item_id_list"
+        }
+      ],
+      "recommended_patch": "TextOperations can be safer than replacing a full NPC gift taste string when appending items.",
+      "keys": [
+        {
+          "key": "Universal_Love",
+          "description": "Items loved by most NPCs unless overridden."
+        },
+        {
+          "key": "Universal_Like",
+          "description": "Items liked by most NPCs unless overridden."
+        },
+        {
+          "key": "Universal_Neutral",
+          "description": "Items treated neutrally by most NPCs unless overridden."
+        },
+        {
+          "key": "Universal_Dislike",
+          "description": "Items disliked by most NPCs unless overridden."
+        },
+        {
+          "key": "Universal_Hate",
+          "description": "Items hated by most NPCs unless overridden."
+        },
+        {
+          "key": "<NPC name>",
+          "description": "NPC-specific taste entry."
+        }
+      ],
+      "taste_groups": [
+        {
+          "name": "Love",
+          "order": 0,
+          "label": "??"
+        },
+        {
+          "name": "Like",
+          "order": 1,
+          "label": "??"
+        },
+        {
+          "name": "Neutral",
+          "order": 2,
+          "label": "??"
+        },
+        {
+          "name": "Dislike",
+          "order": 3,
+          "label": "???"
+        },
+        {
+          "name": "Hate",
+          "order": 4,
+          "label": "??"
+        }
+      ],
+      "text_operation_templates": [
+        {
+          "purpose": "append_item_to_taste_group",
+          "target": "Data/NPCGiftTastes",
+          "operation": "Append",
+          "notes": "Use delimiter-aware operations or a focused field edit when adding items to an existing legacy taste string."
+        },
+        {
+          "purpose": "replace_full_taste_entry",
+          "target": "Data/NPCGiftTastes",
+          "operation": "Entries",
+          "notes": "Only replace a full entry when the user intentionally owns the whole taste definition."
+        }
+      ],
+      "ai_examples": [
+        {
+          "description": "Add a custom item to Abigail love list using a focused patch concept.",
+          "patch": {
+            "Action": "EditData",
+            "Target": "Data/NPCGiftTastes",
+            "Entries": {
+              "Abigail": "..."
+            }
+          }
+        }
+      ],
+      "ai_guidance": [
+        "Prefer TextOperations or narrow edits when appending gift tastes, because many mods edit the same entries.",
+        "Use qualified item IDs like (O)388 when the item type matters.",
+        "Do not reorder or replace all universal tastes unless the user explicitly asks."
+      ]
+    },
+    {
+      "id": "schedules",
+      "target": "Characters/schedules",
+      "label": "日程",
+      "kind": "schedule",
+      "description": "NPC schedule assets and daily schedule entries.",
+      "key_hint": "Schedule key such as spring, summer_15, rain, marriage_Mon, or custom condition keys.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "日程键",
+          "type": "string",
+          "examples": [
+            "spring",
+            "rain",
+            "summer_15",
+            "marriage_Mon"
+          ]
+        },
+        {
+          "name": "value",
+          "label": "日程脚本",
+          "type": "schedule_string",
+          "notes": "Usually time map x y direction segments, optionally with dialogue or commands."
+        }
+      ],
+      "key_patterns": [
+        {
+          "pattern": "<season>",
+          "examples": [
+            "spring",
+            "summer"
+          ],
+          "description": "Default schedule for a season."
+        },
+        {
+          "pattern": "<season>_<day>",
+          "examples": [
+            "spring_15"
+          ],
+          "description": "Schedule for a specific season day."
+        },
+        {
+          "pattern": "rain",
+          "examples": [
+            "rain"
+          ],
+          "description": "Rainy schedule."
+        },
+        {
+          "pattern": "marriage_<weekday>",
+          "examples": [
+            "marriage_Mon"
+          ],
+          "description": "Marriage schedule for a weekday."
+        }
+      ],
+      "schedule_points": [
+        {
+          "field": "time",
+          "description": "Time in 24-hour Stardew notation.",
+          "example": "900"
+        },
+        {
+          "field": "map",
+          "description": "Map/location name.",
+          "example": "Town"
+        },
+        {
+          "field": "x",
+          "description": "Tile X coordinate.",
+          "example": "64"
+        },
+        {
+          "field": "y",
+          "description": "Tile Y coordinate.",
+          "example": "15"
+        },
+        {
+          "field": "direction",
+          "description": "Facing direction, commonly 0 up, 1 right, 2 down, 3 left.",
+          "example": "2"
+        },
+        {
+          "field": "animation_or_dialogue",
+          "description": "Optional extra animation, behavior, or dialogue depending on context.",
+          "example": "Hello"
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "spring",
+          "value": "900 Town 64 15 2/1400 Forest 20 23 2/2200 Home 5 8 2"
+        }
+      ],
+      "ai_guidance": [
+        "Build schedules as slash-separated time/location points.",
+        "Keep map names and tile coordinates explicit; do not invent coordinates if the user did not provide them.",
+        "Use CP When conditions or schedule keys for broad timing rules depending on the user goal."
+      ]
+    },
+    {
+      "id": "mail",
+      "target": "Data/Mail",
+      "label": "邮件",
+      "kind": "mail",
+      "description": "Mail message entries with optional attachments, recipes, money, or actions.",
+      "key_hint": "Unique mail ID.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "邮件 ID",
+          "type": "string"
+        },
+        {
+          "name": "value",
+          "label": "邮件正文",
+          "type": "mail_string",
+          "notes": "May include message text, item attachments, recipe unlocks, money, and title markers."
+        }
+      ],
+      "mail_markers": [
+        {
+          "marker": "%item",
+          "description": "Attach or grant an item in supported mail syntax."
+        },
+        {
+          "marker": "%recipe",
+          "description": "Unlock a recipe in supported mail syntax."
+        },
+        {
+          "marker": "%action",
+          "description": "Run a trigger action from mail in supported contexts."
+        },
+        {
+          "marker": "[#]",
+          "description": "Title marker / title separator in mail formats where supported."
+        },
+        {
+          "marker": "^^",
+          "description": "Line or paragraph separator in mail text where supported."
+        }
+      ],
+      "attachment_types": [
+        {
+          "type": "item",
+          "description": "Give one or more items to the player.",
+          "example": "%item object 388 5"
+        },
+        {
+          "type": "recipe",
+          "description": "Unlock a cooking or crafting recipe.",
+          "example": "%recipe Pancakes"
+        },
+        {
+          "type": "money",
+          "description": "Give money when supported by the mail format.",
+          "example": "500g"
+        },
+        {
+          "type": "trigger_action",
+          "description": "Run a Data/TriggerActions action.",
+          "example": "%action Author.Mod.MailReward"
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "Author.Mod.WelcomeMail",
+          "value": "???????@?^^?????????%item object 388 5[#]???"
+        }
+      ],
+      "ai_guidance": [
+        "Use a unique mail key with an author/mod prefix for custom mail.",
+        "Prefer i18n keys for mail title/body when the pack has translations.",
+        "If a mail reward needs logic, create a TriggerAction and call it from the mail instead of packing complex behavior into the text."
+      ]
+    },
+    {
+      "id": "trigger_actions",
+      "target": "Data/TriggerActions",
+      "label": "触发动作",
+      "kind": "trigger_action",
+      "description": "Trigger action definitions which can run actions from dialogue, events, mail, or other triggers.",
+      "key_hint": "Unique trigger action ID.",
+      "fields": [
+        {
+          "name": "Id",
+          "label": "动作 ID",
+          "type": "string"
+        },
+        {
+          "name": "Trigger",
+          "label": "触发器",
+          "type": "enum",
+          "options": "trigger_types",
+          "allowCustom": true
+        },
+        {
+          "name": "Actions",
+          "label": "动作列表",
+          "type": "array"
+        },
+        {
+          "name": "HostOnly",
+          "label": "仅主机",
+          "type": "boolean"
+        }
+      ],
+      "field_details": [
+        {
+          "name": "Id",
+          "required": true,
+          "description": "Stable unique ID for the trigger action."
+        },
+        {
+          "name": "Trigger",
+          "required": true,
+          "description": "Trigger type or custom trigger name."
+        },
+        {
+          "name": "Actions",
+          "required": true,
+          "description": "Actions to run when triggered."
+        },
+        {
+          "name": "HostOnly",
+          "required": false,
+          "description": "Whether only the host should run it in multiplayer."
+        },
+        {
+          "name": "Condition",
+          "required": false,
+          "description": "Optional condition data depending on trigger/action system."
+        },
+        {
+          "name": "Repeatable",
+          "required": false,
+          "description": "Whether it can run more than once when supported."
+        }
+      ],
+      "action_examples": [
+        {
+          "action": "AddMail",
+          "description": "Add a mail flag / send mail in supported action contexts.",
+          "example": "AddMail Author.Mod.WelcomeMail"
+        },
+        {
+          "action": "AddMoney",
+          "description": "Give money in supported action contexts.",
+          "example": "AddMoney 500"
+        },
+        {
+          "action": "AddItem",
+          "description": "Give an item in supported action contexts.",
+          "example": "AddItem (O)388 5"
+        },
+        {
+          "action": "AddQuest",
+          "description": "Add a quest in supported action contexts.",
+          "example": "AddQuest Author.Mod.Quest"
+        },
+        {
+          "action": "MarkEventSeen",
+          "description": "Mark an event as seen in supported action contexts.",
+          "example": "MarkEventSeen 999999"
+        },
+        {
+          "action": "RunTriggerAction",
+          "description": "Run another trigger action by ID.",
+          "example": "RunTriggerAction Author.Mod.OtherAction"
+        }
+      ],
+      "trigger_examples": [
+        {
+          "trigger": "Manual",
+          "description": "Run manually from a mail/dialogue/event action call."
+        },
+        {
+          "trigger": "DayStarted",
+          "description": "Run at the start of a day."
+        },
+        {
+          "trigger": "LocationEntered",
+          "description": "Run when a location is entered."
+        },
+        {
+          "trigger": "EventCommand",
+          "description": "Run from an event command context."
+        }
+      ],
+      "ai_examples": [
+        {
+          "key": "Author.Mod.WelcomeReward",
+          "value": {
+            "Id": "Author.Mod.WelcomeReward",
+            "Trigger": "Manual",
+            "Actions": [
+              "AddItem (O)388 5"
+            ],
+            "HostOnly": true
+          }
+        }
+      ],
+      "ai_guidance": [
+        "Use namespaced IDs for custom trigger actions.",
+        "When actions are invoked from mail/dialogue/event text, keep the TriggerAction entry small and focused.",
+        "Set HostOnly true for rewards that should not duplicate in multiplayer unless the user says otherwise."
+      ]
+    },
+    {
+      "id": "locations",
+      "target": "Data/Locations",
+      "label": "地点",
+      "kind": "location",
+      "description": "Location data entries including fish, forage, artifacts, music, and custom location settings.",
+      "key_hint": "Location name, e.g. Town, Forest, Mountain, or a custom location name.",
+      "fields": [
+        {
+          "name": "DisplayName",
+          "label": "显示名称",
+          "type": "string"
+        },
+        {
+          "name": "CreateOnLoad",
+          "label": "加载时创建",
+          "type": "object"
+        },
+        {
+          "name": "Fish",
+          "label": "鱼类规则",
+          "type": "array"
+        },
+        {
+          "name": "ArtifactSpots",
+          "label": "古物点",
+          "type": "array"
+        },
+        {
+          "name": "Forage",
+          "label": "采集物",
+          "type": "array"
+        },
+        {
+          "name": "Music",
+          "label": "音乐",
+          "type": "array"
+        }
+      ],
+      "field_groups": [
+        {
+          "group": "display_and_creation",
+          "fields": [
+            "DisplayName",
+            "CreateOnLoad",
+            "MapPath",
+            "Context"
+          ]
+        },
+        {
+          "group": "spawning",
+          "fields": [
+            "Fish",
+            "Forage",
+            "ArtifactSpots",
+            "ResourceClumps"
+          ]
+        },
+        {
+          "group": "audio_visual",
+          "fields": [
+            "Music",
+            "AmbientLighting",
+            "CanUseReturnScepter"
+          ]
+        },
+        {
+          "group": "rules",
+          "fields": [
+            "CanPlantHere",
+            "CanBuildHere",
+            "CanHaveGreenRainSpawns",
+            "CustomFields"
+          ]
+        }
+      ],
+      "substructures": [
+        {
+          "name": "Fish",
+          "description": "Fish spawn rules, often conditioned by season, weather, time, and location context."
+        },
+        {
+          "name": "Forage",
+          "description": "Forage spawn rules and item choices."
+        },
+        {
+          "name": "ArtifactSpots",
+          "description": "Artifact spot spawn data and item chances."
+        },
+        {
+          "name": "CreateOnLoad",
+          "description": "Create a custom location when the save loads."
+        },
+        {
+          "name": "Music",
+          "description": "Music rules for location contexts."
+        }
+      ],
+      "creation_checklist": [
+        "Add or edit Data/Locations entry.",
+        "Provide a map asset under Maps/<LocationName> when creating a new location.",
+        "Add warps or map properties separately when needed.",
+        "Add NPC schedules/dialogue/events referencing the location only after the internal name is stable."
+      ],
+      "ai_guidance": [
+        "Do not invent map asset paths or warp coordinates; ask for them or leave placeholders.",
+        "Separate Data/Locations edits from map edits; use EditMap for tile/map changes.",
+        "For fish/forage/artifact rules, keep conditions explicit and prefer arrays/objects over legacy strings when the target uses model data."
+      ]
+    },
+    {
+      "id": "big_craftables",
+      "target": "Data/BigCraftables",
+      "label": "Big craftable object",
+      "kind": "big_craftable",
+      "description": "Big craftable object definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "crops",
+      "target": "Data/Crops",
+      "label": "Crop growth and harvest data.",
+      "kind": "crop",
+      "description": "Crop growth and harvest data.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "fruit_trees",
+      "target": "Data/FruitTrees",
+      "label": "Fruit tree growth and product data.",
+      "kind": "fruit_tree",
+      "description": "Fruit tree growth and product data.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "weapons",
+      "target": "Data/Weapons",
+      "label": "Weapon",
+      "kind": "weapon",
+      "description": "Weapon definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "bootss",
+      "target": "Data/Boots",
+      "label": "Boot",
+      "kind": "boots",
+      "description": "Boot definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "hats",
+      "target": "Data/hats",
+      "label": "Hat",
+      "kind": "hat",
+      "description": "Hat definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "shirts",
+      "target": "Data/Shirts",
+      "label": "Shirt/clothing",
+      "kind": "shirt",
+      "description": "Shirt/clothing definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "pantss",
+      "target": "Data/Pants",
+      "label": "Pants/clothing",
+      "kind": "pants",
+      "description": "Pants/clothing definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    },
+    {
+      "id": "furnitures",
+      "target": "Data/Furniture",
+      "label": "Furniture",
+      "kind": "furniture",
+      "description": "Furniture definitions.",
+      "key_hint": "Use a stable item ID; prefer qualified IDs when referencing this item from other data."
+    }
+  ],
+  "enums": {
+    "seasons": [
+      {
+        "label": "春 spring",
+        "value": "spring"
+      },
+      {
+        "label": "夏 summer",
+        "value": "summer"
+      },
+      {
+        "label": "秋 fall",
+        "value": "fall"
+      },
+      {
+        "label": "冬 winter",
+        "value": "winter"
+      }
+    ],
+    "days_of_week": [
+      {
+        "label": "周一 Monday",
+        "value": "Monday"
+      },
+      {
+        "label": "周二 Tuesday",
+        "value": "Tuesday"
+      },
+      {
+        "label": "周三 Wednesday",
+        "value": "Wednesday"
+      },
+      {
+        "label": "周四 Thursday",
+        "value": "Thursday"
+      },
+      {
+        "label": "周五 Friday",
+        "value": "Friday"
+      },
+      {
+        "label": "周六 Saturday",
+        "value": "Saturday"
+      },
+      {
+        "label": "周日 Sunday",
+        "value": "Sunday"
+      }
+    ],
+    "weather": [
+      {
+        "label": "晴天 Sun",
+        "value": "Sun"
+      },
+      {
+        "label": "雨天 Rain",
+        "value": "Rain"
+      },
+      {
+        "label": "风 Wind",
+        "value": "Wind"
+      },
+      {
+        "label": "风暴 Storm",
+        "value": "Storm"
+      },
+      {
+        "label": "雪 Snow",
+        "value": "Snow"
+      },
+      {
+        "label": "节日 Festival",
+        "value": "Festival"
+      },
+      {
+        "label": "婚礼 Wedding",
+        "value": "Wedding"
+      }
+    ],
+    "genders": [
+      {
+        "label": "未指定 Undefined",
+        "value": "Undefined"
+      },
+      {
+        "label": "男性 Male",
+        "value": "Male"
+      },
+      {
+        "label": "女性 Female",
+        "value": "Female"
+      }
+    ],
+    "home_regions": [
+      {
+        "label": "小镇 Town",
+        "value": "Town"
+      },
+      {
+        "label": "农场 Farm",
+        "value": "Farm"
+      },
+      {
+        "label": "森林 Forest",
+        "value": "Forest"
+      },
+      {
+        "label": "山 Mountain",
+        "value": "Mountain"
+      },
+      {
+        "label": "沙漠 Desert",
+        "value": "Desert"
+      },
+      {
+        "label": "姜岛 Island",
+        "value": "Island"
+      },
+      {
+        "label": "其他 Other",
+        "value": "Other"
+      }
+    ],
+    "common_maps": [
+      {
+        "label": "小镇 Town",
+        "value": "Town"
+      },
+      {
+        "label": "农场 Farm",
+        "value": "Farm"
+      },
+      {
+        "label": "巴士站 BusStop",
+        "value": "BusStop"
+      },
+      {
+        "label": "山区 Mountain",
+        "value": "Mountain"
+      },
+      {
+        "label": "森林 Forest",
+        "value": "Forest"
+      },
+      {
+        "label": "海滩 Beach",
+        "value": "Beach"
+      },
+      {
+        "label": "沙漠 Desert",
+        "value": "Desert"
+      },
+      {
+        "label": "姜岛 IslandSouth",
+        "value": "IslandSouth"
+      }
+    ],
+    "object_categories": [
+      {
+        "label": "宝石 Gem",
+        "value": -2
+      },
+      {
+        "label": "鱼 Fish",
+        "value": -4
+      },
+      {
+        "label": "蛋 Egg",
+        "value": -5
+      },
+      {
+        "label": "奶 Milk",
+        "value": -6
+      },
+      {
+        "label": "烹饪 Cooking",
+        "value": -7
+      },
+      {
+        "label": "材料 Crafting",
+        "value": -8
+      },
+      {
+        "label": "矿物 Minerals",
+        "value": -12
+      },
+      {
+        "label": "肉类 Meat",
+        "value": -14
+      },
+      {
+        "label": "金属资源 MetalResources",
+        "value": -15
+      },
+      {
+        "label": "建材 BuildingResources",
+        "value": -16
+      },
+      {
+        "label": "动物产品 AnimalGoods",
+        "value": -18
+      },
+      {
+        "label": "肥料 Fertilizer",
+        "value": -19
+      },
+      {
+        "label": "垃圾 Trash",
+        "value": -20
+      },
+      {
+        "label": "鱼饵 Bait",
+        "value": -21
+      },
+      {
+        "label": "钓具 Tackle",
+        "value": -22
+      },
+      {
+        "label": "装饰 Decoration",
+        "value": -23
+      },
+      {
+        "label": "家具 Furniture",
+        "value": -24
+      },
+      {
+        "label": "原料 Ingredients",
+        "value": -25
+      },
+      {
+        "label": "大工匠 ArtisanGoods",
+        "value": -26
+      },
+      {
+        "label": "糖浆 Syrup",
+        "value": -27
+      },
+      {
+        "label": "怪物掉落 MonsterLoot",
+        "value": -28
+      },
+      {
+        "label": "装备 Equipment",
+        "value": -29
+      },
+      {
+        "label": "种子 Seeds",
+        "value": -74
+      },
+      {
+        "label": "蔬菜 Vegetables",
+        "value": -75
+      },
+      {
+        "label": "水果 Fruits",
+        "value": -79
+      },
+      {
+        "label": "花 Flowers",
+        "value": -80
+      },
+      {
+        "label": "采集物 Forage",
+        "value": -81
+      },
+      {
+        "label": "帽子 Hat",
+        "value": -95
+      },
+      {
+        "label": "戒指 Ring",
+        "value": -96
+      },
+      {
+        "label": "靴子 Boots",
+        "value": -97
+      },
+      {
+        "label": "武器 Weapon",
+        "value": -98
+      },
+      {
+        "label": "工具 Tool",
+        "value": -99
+      },
+      {
+        "label": "服装 Clothing",
+        "value": -100
+      },
+      {
+        "label": "小饰品 Trinket",
+        "value": -101
+      },
+      {
+        "label": "杂物/Litter",
+        "value": -999
+      }
+    ],
+    "edibility": [
+      {
+        "label": "不可食用 -300",
+        "value": -300
+      },
+      {
+        "label": "很少 5",
+        "value": 5
+      },
+      {
+        "label": "普通 15",
+        "value": 15
+      },
+      {
+        "label": "较多 30",
+        "value": 30
+      },
+      {
+        "label": "很多 60",
+        "value": 60
+      }
+    ],
+    "farm_types": [
+      {
+        "label": "标准 Standard",
+        "value": "Standard"
+      },
+      {
+        "label": "河流 Riverland",
+        "value": "Riverland"
+      },
+      {
+        "label": "森林 Forest",
+        "value": "Forest"
+      },
+      {
+        "label": "山顶 Hilltop",
+        "value": "Hilltop"
+      },
+      {
+        "label": "荒野 Wilderness",
+        "value": "Wilderness"
+      },
+      {
+        "label": "四角 FourCorners",
+        "value": "FourCorners"
+      },
+      {
+        "label": "海滩 Beach",
+        "value": "Beach"
+      },
+      {
+        "label": "草原 Meadowlands",
+        "value": "Meadowlands"
+      }
+    ],
+    "farm_caves": [
+      {
+        "label": "水果蝙蝠 Bats",
+        "value": "Bats"
+      },
+      {
+        "label": "蘑菇 Mushrooms",
+        "value": "Mushrooms"
+      }
+    ],
+    "pet_types": [
+      {
+        "label": "猫 Cat",
+        "value": "Cat"
+      },
+      {
+        "label": "狗 Dog",
+        "value": "Dog"
+      },
+      {
+        "label": "乌龟 Turtle",
+        "value": "Turtle"
+      }
+    ],
+    "directions": [
+      {
+        "label": "上 up / 0",
+        "value": 0
+      },
+      {
+        "label": "右 right / 1",
+        "value": 1
+      },
+      {
+        "label": "下 down / 2",
+        "value": 2
+      },
+      {
+        "label": "左 left / 3",
+        "value": 3
+      }
+    ],
+    "trigger_types": [
+      {
+        "label": "每天开始 DayStarted",
+        "value": "DayStarted"
+      },
+      {
+        "label": "一天结束 DayEnding",
+        "value": "DayEnding"
+      },
+      {
+        "label": "地点进入 LocationEntered",
+        "value": "LocationEntered"
+      },
+      {
+        "label": "按钮按下 ButtonPressed",
+        "value": "ButtonPressed"
+      },
+      {
+        "label": "事件命令 EventCommand",
+        "value": "EventCommand"
+      },
+      {
+        "label": "邮件收到 MailReceived",
+        "value": "MailReceived"
+      },
+      {
+        "label": "手动 Manual",
+        "value": "Manual"
+      }
+    ],
+    "gift_taste_groups": [
+      {
+        "label": "最爱 Love",
+        "value": "Love"
+      },
+      {
+        "label": "喜欢 Like",
+        "value": "Like"
+      },
+      {
+        "label": "一般 Neutral",
+        "value": "Neutral"
+      },
+      {
+        "label": "不喜欢 Dislike",
+        "value": "Dislike"
+      },
+      {
+        "label": "讨厌 Hate",
+        "value": "Hate"
+      }
+    ],
+    "mail_attachment_types": [
+      {
+        "label": "物品 item",
+        "value": "item"
+      },
+      {
+        "label": "配方 recipe",
+        "value": "recipe"
+      },
+      {
+        "label": "金钱 money",
+        "value": "money"
+      },
+      {
+        "label": "触发动作 trigger action",
+        "value": "trigger_action"
+      }
+    ],
+    "npc_ages": [
+      {
+        "label": "儿童 Child",
+        "value": "Child"
+      },
+      {
+        "label": "青少年 Teen",
+        "value": "Teen"
+      },
+      {
+        "label": "成人 Adult",
+        "value": "Adult"
+      }
+    ],
+    "npc_manners": [
+      {
+        "label": "中立 Neutral",
+        "value": "Neutral"
+      },
+      {
+        "label": "礼貌 Polite",
+        "value": "Polite"
+      },
+      {
+        "label": "粗鲁 Rude",
+        "value": "Rude"
+      }
+    ],
+    "npc_social_anxiety": [
+      {
+        "label": "中立 Neutral",
+        "value": "Neutral"
+      },
+      {
+        "label": "外向 Outgoing",
+        "value": "Outgoing"
+      },
+      {
+        "label": "害羞 Shy",
+        "value": "Shy"
+      }
+    ],
+    "npc_optimism": [
+      {
+        "label": "中立 Neutral",
+        "value": "Neutral"
+      },
+      {
+        "label": "消极 Negative",
+        "value": "Negative"
+      },
+      {
+        "label": "积极 Positive",
+        "value": "Positive"
+      }
+    ],
+    "calendar_visibility": [
+      {
+        "label": "始终隐藏 HiddenAlways",
+        "value": "HiddenAlways"
+      },
+      {
+        "label": "认识前隐藏 HiddenUntilMet",
+        "value": "HiddenUntilMet"
+      },
+      {
+        "label": "始终显示 AlwaysShown",
+        "value": "AlwaysShown"
+      }
+    ],
+    "social_tab_visibility": [
+      {
+        "label": "始终隐藏 HiddenAlways",
+        "value": "HiddenAlways"
+      },
+      {
+        "label": "认识前隐藏 HiddenUntilMet",
+        "value": "HiddenUntilMet"
+      },
+      {
+        "label": "认识前未知 UnknownUntilMet",
+        "value": "UnknownUntilMet"
+      },
+      {
+        "label": "始终显示 AlwaysShown",
+        "value": "AlwaysShown"
+      }
+    ],
+    "end_slideshow_groups": [
+      {
+        "label": "隐藏 Hidden",
+        "value": "Hidden"
+      },
+      {
+        "label": "主要组 MainGroup",
+        "value": "MainGroup"
+      },
+      {
+        "label": "结尾组 TrailingGroup",
+        "value": "TrailingGroup"
+      }
+    ],
+    "facing_directions": [
+      {
+        "label": "上 up",
+        "value": "up"
+      },
+      {
+        "label": "右 right",
+        "value": "right"
+      },
+      {
+        "label": "下 down",
+        "value": "down"
+      },
+      {
+        "label": "左 left",
+        "value": "left"
+      }
+    ],
+    "item_id_prefixes": [
+      {
+        "label": "物品/对象 (O)",
+        "value": "(O)"
+      },
+      {
+        "label": "大工匠 (BC)",
+        "value": "(BC)"
+      },
+      {
+        "label": "武器 (W)",
+        "value": "(W)"
+      },
+      {
+        "label": "鞋子 (B)",
+        "value": "(B)"
+      },
+      {
+        "label": "帽子 (H)",
+        "value": "(H)"
+      },
+      {
+        "label": "家具 (F)",
+        "value": "(F)"
+      },
+      {
+        "label": "种子/衬衫 (S)",
+        "value": "(S)"
+      },
+      {
+        "label": "裤子 (P)",
+        "value": "(P)"
+      }
+    ],
+    "location_contexts": [
+      {
+        "label": "室外 Outdoors",
+        "value": "Outdoors"
+      },
+      {
+        "label": "室内 Indoors",
+        "value": "Indoors"
+      },
+      {
+        "label": "矿井 Mine",
+        "value": "Mine"
+      },
+      {
+        "label": "农场 Farm",
+        "value": "Farm"
+      },
+      {
+        "label": "小镇 Town",
+        "value": "Town"
+      }
+    ],
+    "music_contexts": [
+      {
+        "label": "默认 Default",
+        "value": "Default"
+      },
+      {
+        "label": "白天 Day",
+        "value": "Day"
+      },
+      {
+        "label": "夜晚 Night",
+        "value": "Night"
+      },
+      {
+        "label": "雨天 Rain",
+        "value": "Rain"
+      }
+    ],
+    "vanilla_shops": [
+      {
+        "label": "皮埃尔杂货店 SeedShop",
+        "value": "SeedShop"
+      },
+      {
+        "label": "威利鱼店 FishShop",
+        "value": "FishShop"
+      },
+      {
+        "label": "玛妮牧场 AnimalShop",
+        "value": "AnimalShop"
+      },
+      {
+        "label": "木匠商店 Carpenter",
+        "value": "Carpenter"
+      },
+      {
+        "label": "铁匠铺 Blacksmith",
+        "value": "Blacksmith"
+      },
+      {
+        "label": "星之果实餐吧 Saloon",
+        "value": "Saloon"
+      },
+      {
+        "label": "沙漠商店 Sandy",
+        "value": "Sandy"
+      },
+      {
+        "label": "探险家公会 AdventureShop",
+        "value": "AdventureShop"
+      },
+      {
+        "label": "旅行货车 TravelingCart",
+        "value": "TravelingCart"
+      },
+      {
+        "label": "夜市 MagicShopBoat",
+        "value": "MagicShopBoat"
+      },
+      {
+        "label": "科罗布斯 Krobus",
+        "value": "Krobus"
+      },
+      {
+        "label": "矮人 Dwarf",
+        "value": "Dwarf"
+      },
+      {
+        "label": "姜岛商店 IslandShop",
+        "value": "IslandShop"
+      },
+      {
+        "label": "齐钻商店 QiGemShop",
+        "value": "QiGemShop"
+      },
+      {
+        "label": "火山矮人 VolcanoShop",
+        "value": "VolcanoShop"
+      },
+      {
+        "label": "帽子店 HatMouse",
+        "value": "HatMouse"
+      }
+    ],
+    "shop_currencies": [
+      {
+        "label": "金币 money",
+        "value": "money"
+      },
+      {
+        "label": "齐钻 qiGems",
+        "value": "qiGems"
+      },
+      {
+        "label": "节日星币 festivalScore",
+        "value": "festivalScore"
+      },
+      {
+        "label": "煤炭 coal",
+        "value": "(O)382"
+      }
+    ]
+  },
+  "common_field_types": {
+    "unique_id": {
+      "label": "唯一 ID",
+      "description": "A unique namespaced identifier, usually AuthorName.ModName.EntryName.",
+      "examples": [
+        "AuthorName.ModName",
+        "AuthorName.ModName.Entry"
+      ]
+    },
+    "asset_name": {
+      "label": "游戏资源名",
+      "description": "A game asset path such as Data/Objects, Characters/Dialogue/Abigail, or Maps/Town.",
+      "examples": [
+        "Data/Objects",
+        "Data/Characters",
+        "Characters/Dialogue/Abigail",
+        "Maps/Town"
+      ]
+    },
+    "qualified_item_id": {
+      "label": "限定物品 ID",
+      "description": "A qualified item ID where the prefix identifies the item type.",
+      "examples": [
+        "(O)388",
+        "(O)Parsnip",
+        "(BC)12",
+        "(H)8"
+      ]
+    },
+    "item_query": {
+      "label": "物品查询",
+      "description": "A query string used by some data fields to describe matching items.",
+      "examples": [
+        "ANY",
+        "ITEM_ID (O)388",
+        "CATEGORY -75"
+      ]
+    },
+    "translation_key": {
+      "label": "翻译键",
+      "description": "A key in i18n/default.json or locale-specific translation files.",
+      "examples": [
+        "mod.name",
+        "item.example.name",
+        "dialogue.example.mon"
+      ]
+    },
+    "color": {
+      "label": "颜色",
+      "description": "Named color or RGBA-style color depending on field.",
+      "examples": [
+        "Red",
+        "255 255 255",
+        "255 255 255 255"
+      ]
+    },
+    "tile_position": {
+      "label": "瓦片坐标",
+      "description": "X Y tile position.",
+      "examples": [
+        "64 15",
+        "10 20"
+      ]
+    },
+    "rectangle": {
+      "label": "矩形",
+      "description": "X Y width height rectangle.",
+      "examples": [
+        "0 0 16 16",
+        "32 16 16 16"
+      ]
+    },
+    "duration": {
+      "label": "时长",
+      "description": "Usually milliseconds or game-specific time depending on field.",
+      "examples": [
+        "500",
+        "1000"
+      ]
+    },
+    "game_state_query": {
+      "label": "游戏状态查询",
+      "description": "A condition expression evaluated by the game; used by many data fields for unlocks or behavior gates.",
+      "examples": [
+        "TRUE",
+        "PLAYER_HAS_SEEN_EVENT Current 100",
+        "SEASON spring"
+      ]
+    },
+    "tokenizable_string": {
+      "label": "可使用 token 的文本",
+      "description": "A string where Content Patcher tokens or game tokens may be substituted depending on context.",
+      "examples": [
+        "{{i18n:item.name}}",
+        "Hello @"
+      ]
+    },
+    "item_spawn_fields": {
+      "label": "物品生成字段",
+      "description": "Common fields used by item spawn models, usually including Id, ItemId, MinStack, MaxStack, and Condition.",
+      "examples": [
+        "{\"Id\":\"ParsnipGift\",\"ItemId\":\"(O)24\",\"MinStack\":1}"
+      ]
+    }
+  },
+  "ai_guidance": [
+    "For game data edits, prefer EditData patches targeting the exact asset path.",
+    "Preserve raw game field names and enum values; translate labels only in UI.",
+    "When a value might depend on another mod or future game version, keep it as a custom string instead of rejecting it."
+  ]
+}

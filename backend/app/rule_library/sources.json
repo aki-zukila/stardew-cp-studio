@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "library_version": "2026.06.22-initial",
+  "sources": [
+    {
+      "id": "stardew-wiki-modding-index",
+      "title": "Stardew Valley Wiki - Modding:Index",
+      "url": "https://stardewvalleywiki.com/Modding:Index",
+      "kind": "wiki-index",
+      "scope": "Game data, assets, maps, NPCs, items, events, locations, and modding references linked from the index."
+    },
+    {
+      "id": "content-patcher-docs",
+      "title": "Content Patcher documentation",
+      "url": "https://github.com/Pathoschild/StardewMods/tree/stable/ContentPatcher/docs",
+      "kind": "github-docs-index",
+      "scope": "Content pack format, patch actions, tokens, conditions, token strings, includes, i18n, and authoring behavior."
+    },
+    {
+      "id": "wiki-dialogue",
+      "title": "Stardew Valley Wiki - Modding:Dialogue",
+      "url": "https://stardewvalleywiki.com/Modding:Dialogue",
+      "kind": "wiki-page",
+      "scope": "Dialogue asset targets, dialogue key patterns, formatting commands, portrait commands, and dialogue-triggered actions."
+    },
+    {
+      "id": "wiki-items",
+      "title": "Stardew Valley Wiki - Modding:Items",
+      "url": "https://stardewvalleywiki.com/Modding:Items",
+      "kind": "wiki-page",
+      "scope": "Item type identifiers, item data targets, object fields, crop/item examples, and gift taste edit patterns."
+    },
+    {
+      "id": "wiki-event-data",
+      "title": "Stardew Valley Wiki - Modding:Event data",
+      "url": "https://stardewvalleywiki.com/Modding:Event_data",
+      "kind": "wiki-page",
+      "scope": "Event key format, event script structure, event commands, directions, comments, and multiline scripts."
+    },
+    {
+      "id": "wiki-npc-data",
+      "title": "Stardew Valley Wiki - Modding:NPC data",
+      "url": "https://stardewvalleywiki.com/Modding:NPC_data",
+      "kind": "wiki-page",
+      "scope": "Data/Characters fields, NPC spawn/home/appearance data, social fields, and Winter Star gifts."
+    },
+    {
+      "id": "wiki-gift-taste-data",
+      "title": "Stardew Valley Wiki - Modding:Gift taste data",
+      "url": "https://stardewvalleywiki.com/Modding:Gift_taste_data",
+      "kind": "wiki-page",
+      "scope": "Data/NPCGiftTastes format, universal and personal taste keys, taste ordering, and TextOperations-friendly edits."
+    },
+    {
+      "id": "wiki-schedule-data",
+      "title": "Stardew Valley Wiki - Modding:Schedule data",
+      "url": "https://stardewvalleywiki.com/Modding:Schedule_data",
+      "kind": "wiki-page",
+      "scope": "NPC schedule keys, schedule script point format, initial commands, and schedule dialogue references."
+    },
+    {
+      "id": "wiki-mail-data",
+      "title": "Stardew Valley Wiki - Modding:Mail data",
+      "url": "https://stardewvalleywiki.com/Modding:Mail_data",
+      "kind": "wiki-page",
+      "scope": "Data/Mail keys, message formatting, item/recipe/action attachments, and mail titles."
+    },
+    {
+      "id": "wiki-trigger-actions",
+      "title": "Stardew Valley Wiki - Modding:Trigger actions",
+      "url": "https://stardewvalleywiki.com/Modding:Trigger_actions",
+      "kind": "wiki-page",
+      "scope": "Data/TriggerActions fields, triggers, action invocation from dialogue/events/mail, and repeat behavior."
+    },
+    {
+      "id": "wiki-common-data-field-types",
+      "title": "Stardew Valley Wiki - Modding:Common data field types",
+      "url": "https://stardewvalleywiki.com/Modding:Common_data_field_types",
+      "kind": "wiki-page",
+      "scope": "Common field types including unique IDs, asset names, colors, item IDs, item queries, translation keys, points, rectangles, and modifiers."
+    },
+    {
+      "id": "wiki-location-data",
+      "title": "Stardew Valley Wiki - Modding:Location data",
+      "url": "https://stardewvalleywiki.com/Modding:Location_data",
+      "kind": "wiki-page",
+      "scope": "Data/Locations fields, location creation, artifact spots, fish, forage, music, and advanced fields."
+    },
+    {
+      "id": "wiki-shops",
+      "title": "Stardew Valley Wiki - Modding:Shops",
+      "url": "https://stardewvalleywiki.com/Modding:Shops",
+      "kind": "wiki-page",
+      "scope": "Data/Shops shop model fields, stock item fields, vanilla shop IDs, currencies, stock limits, and condition usage."
+    },
+    {
+      "id": "cp-author-guide",
+      "title": "Content Patcher author guide",
+      "url": "https://github.com/Pathoschild/StardewMods/blob/stable/ContentPatcher/docs/author-guide.md",
+      "kind": "github-doc",
+      "scope": "Top-level Content Patcher authoring behavior and links to detailed author-guide pages."
+    },
+    {
+      "id": "cp-tokens",
+      "title": "Content Patcher tokens",
+      "url": "https://github.com/Pathoschild/StardewMods/blob/stable/ContentPatcher/docs/author-guide/tokens.md",
+      "kind": "github-doc",
+      "scope": "Token syntax, token categories, and value substitution behavior."
+    },
+    {
+      "id": "cp-translations",
+      "title": "Content Patcher translations",
+      "url": "https://github.com/Pathoschild/StardewMods/blob/stable/ContentPatcher/docs/author-guide/translations.md",
+      "kind": "github-doc",
+      "scope": "i18n folder behavior, default fallback, i18n token arguments, and dynamic translation patterns."
+    },
+    {
+      "id": "cp-trigger-actions",
+      "title": "Content Patcher trigger actions",
+      "url": "https://github.com/Pathoschild/StardewMods/blob/stable/ContentPatcher/docs/author-guide/trigger-actions.md",
+      "kind": "github-doc",
+      "scope": "Content Patcher guidance for trigger action usage."
+    },
+    {
+      "id": "cp-text-operations",
+      "title": "Content Patcher text operations",
+      "url": "https://github.com/Pathoschild/StardewMods/blob/stable/ContentPatcher/docs/author-guide/text-operations.md",
+      "kind": "github-doc",
+      "scope": "TextOperations for EditData/EditMap including Append, Prepend, RemoveDelimited, and ReplaceDelimited."
+    }
+  ],
+  "update_policy": {
+    "runtime_network_required": false,
+    "notes": "The app ships with a curated offline snapshot. Future updates can import replacement rule packs derived from the same sources."
+  }
+}

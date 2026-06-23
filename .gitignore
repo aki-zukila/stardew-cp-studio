@@ -1,0 +1,14 @@
+.venv/
+.runtime/
+.npm-cache/
+.pnpm-home/
+.pnpm-store/
+logs/
+exports/
+dist/
+frontend/dist/
+frontend/node_modules/
+backend/**/__pycache__/
+backend/**/*.pyc
+*.cpgen
+current-url.txt

@@ -1,0 +1,116 @@
+{
+  "id": "cp-2.9.0",
+  "content_patcher_format": "2.9.0",
+  "smapi_minimum_version": "4.0.0",
+  "patch_actions": [
+    {
+      "action": "Load",
+      "label": "Load asset",
+      "description": "Replace a target asset with a file from the content pack.",
+      "commonFields": [
+        "Target",
+        "FromFile",
+        "When"
+      ]
+    },
+    {
+      "action": "EditData",
+      "label": "Edit data",
+      "description": "Change data assets using Entries, Fields, MoveEntries, or TextOperations.",
+      "commonFields": [
+        "Target",
+        "Entries",
+        "Fields",
+        "MoveEntries",
+        "TextOperations",
+        "When"
+      ]
+    },
+    {
+      "action": "EditImage",
+      "label": "Edit image",
+      "description": "Patch image regions with FromFile, FromArea, and ToArea.",
+      "commonFields": [
+        "Target",
+        "FromFile",
+        "FromArea",
+        "ToArea",
+        "PatchMode",
+        "When"
+      ]
+    },
+    {
+      "action": "EditMap",
+      "label": "Edit map",
+      "description": "Patch map data with a map file or map operations.",
+      "commonFields": [
+        "Target",
+        "FromFile",
+        "FromArea",
+        "ToArea",
+        "MapTiles",
+        "When"
+      ]
+    },
+    {
+      "action": "Include",
+      "label": "Include file",
+      "description": "Include patches from another content file.",
+      "commonFields": [
+        "FromFile",
+        "When"
+      ]
+    }
+  ],
+  "game_data_kinds": [
+    {
+      "kind": "npc",
+      "label": "NPC",
+      "defaultTarget": "Data/Characters",
+      "description": "Character data entries and related Content Patcher edits."
+    },
+    {
+      "kind": "item",
+      "label": "Item/Object",
+      "defaultTarget": "Data/Objects",
+      "description": "Object, item, and basic item data."
+    },
+    {
+      "kind": "dialogue",
+      "label": "Dialogue",
+      "defaultTarget": "Characters/Dialogue",
+      "description": "Dialogue entries for a character file."
+    },
+    {
+      "kind": "shop",
+      "label": "Shop",
+      "defaultTarget": "Data/Shops",
+      "description": "Shop inventory and shop definitions."
+    },
+    {
+      "kind": "event",
+      "label": "Event",
+      "defaultTarget": "Data/Events",
+      "description": "Event script entries."
+    },
+    {
+      "kind": "custom",
+      "label": "Custom",
+      "defaultTarget": "Data/Objects",
+      "description": "Any target not yet represented by a guided form."
+    }
+  ],
+  "condition_examples": [
+    "HasMod |spacechase0.JsonAssets",
+    "Season |spring",
+    "DayOfWeek |Monday",
+    "Relationship:Abigail |Hearts: 4"
+  ],
+  "token_examples": [
+    "{{ModId}}",
+    "{{Season}}",
+    "{{PlayerName}}",
+    "{{i18n:key}}"
+  ],
+  "field_schemas": {}
+}

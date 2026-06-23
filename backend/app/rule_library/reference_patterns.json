@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "domain": "reference_patterns",
+  "references": [
+    {
+      "id": "sve-cp-structure",
+      "title": "Stardew Valley Expanded CP package structure sample",
+      "source_kind": "local_reference",
+      "source_path_hint": "[CP] Stardew Valley Expanded",
+      "notes": [
+        "Used as a structural reference only. Do not copy story text, dialogue, art assets, map files, or unique creative content into generated projects.",
+        "The package uses JSONC-style files with comments and trailing commas, so future import/reference tooling should parse Content Patcher files leniently instead of strict JSON only.",
+        "The top-level content.json acts as an orchestration file and delegates major feature areas through Include patches."
+      ],
+      "observed_format": "2.3.0",
+      "observed_scale": {
+        "parsed_jsonc_files": 153,
+        "top_level_config_keys": 32,
+        "include_patches": 10,
+        "edit_data_patches": 2059,
+        "load_patches": 1010,
+        "edit_map_patches": 517,
+        "edit_image_patches": 466,
+        "text_operation_patches": 240
+      },
+      "package_layout_patterns": [
+        {
+          "pattern": "top_level_orchestrator",
+          "description": "Keep content.json focused on Format, ConfigSchema, and Include entries for large feature areas."
+        },
+        {
+          "pattern": "feature_grouped_code",
+          "description": "Group included patch files by domain such as NPCs, Items, Locations, Shops, Festivals, Other, and OtherEvents."
+        },
+        {
+          "pattern": "asset_grouping",
+          "description": "Group assets by purpose, e.g. CharacterFiles/Portraits, CharacterFiles/OverworldSprites, CharacterFiles/Schedules, CharacterFiles/Dialogue, Maps/Locations, Maps/MapPatches, Items, Buildings, and Trees."
+        },
+        {
+          "pattern": "i18n_first_display_text",
+          "description": "Use {{i18n:key}} for player-facing names and descriptions in item, NPC, map, event, and dialogue-related data."
+        },
+        {
+          "pattern": "conditional_feature_toggles",
+          "description": "Expose user-facing config keys in ConfigSchema, then gate optional patches with When conditions that reference those config tokens."
+        },
+        {
+          "pattern": "targeted_text_operations",
+          "description": "Use TextOperations for appending/removing small pieces from vanilla strings or delimited data, instead of replacing large vanilla records when possible."
+        }
+      ],
+      "common_include_groups": [
+        "Items",
+        "Shops",
+        "NPCs",
+        "Locations",
+        "Festivals",
+        "Other",
+        "OtherEvents",
+        "Character schedules",
+        "Character dialogue"
+      ],
+      "high_frequency_targets": [
+        "Data/Objects",
+        "Data/BigCraftables",
+        "Data/Characters",
+        "Data/NPCGiftTastes",
+        "Data/Shops",
+        "Data/Locations",
+        "Data/Mail",
+        "Data/Events/<location>",
+        "Characters/Dialogue/<NPC>",
+        "Characters/Schedules/<NPC>",
+        "Maps/<location>",
+        "LooseSprites/Cursors",
+        "Strings/StringsFromMaps",
+        "Strings/StringsFromCSFiles"
+      ],
+      "high_frequency_when_keys": [
+        "Season",
+        "Day",
+        "DayOfWeek",
+        "Time",
+        "Weather",
+        "LocationName",
+        "LocationContext",
+        "HasSeenEvent",
+        "HasFlag",
+        "HasMod",
+        "Relationship:<NPC>",
+        "Hearts:<NPC>",
+        "Spouse",
+        "Roommate",
+        "FarmType",
+        "FarmhouseUpgrade",
+        "Year",
+        "IsOddYear",
+        "Random: {{Range:min, max}}",
+        "<ConfigKey>"
+      ],
+      "common_data_field_patterns": [
+        {
+          "target": "Data/Characters",
+          "fields": [
+            "DisplayName",
+            "BirthSeason",
+            "BirthDay",
+            "HomeRegion",
+            "Language",
+            "Gender",
+            "Age",
+            "Manner",
+            "SocialAnxiety",
+            "Optimism",
+            "CanBeRomanced",
+            "Calendar",
+            "SocialTab",
+            "CanSocialize",
+            "CanVisitIsland",
+            "PerfectionScore",
+            "EndSlideShow",
+            "FriendsAndFamily",
+            "Home",
+            "TextureName",
+            "Size",
+            "SpawnIfMissing",
+            "UnlockConditions",
+            "CustomFields"
+          ]
+        },
+        {
+          "target": "Data/Objects",
+          "fields": [
+            "Name",
+            "DisplayName",
+            "Description",
+            "Type",
+            "Category",
+            "Price",
+            "Texture",
+            "SpriteIndex",
+            "Edibility",
+            "IsDrink",
+            "ContextTags",
+            "Buffs",
+            "ExcludeFromFishingCollection",
+            "ExcludeFromShippingCollection",
+            "ExcludeFromRandomSale"
+          ]
+        },
+        {
+          "target": "Data/Shops",
+          "fields": [
+            "Id",
+            "ItemId",
+            "Price",
+            "Items",
+            "Owners",
+            "AvailableStock",
+            "Condition"
+          ]
+        },
+        {
+          "target": "Data/Locations",
+          "fields": [
+            "Id",
+            "CreateOnLoad",
+            "DefaultArrivalTile",
+            "Music",
+            "Condition",
+            "ItemId",
+            "Chance"
+          ]
+        }
+      ],
+      "ai_guidance": [
+        "For small mods, generating a single content.json is acceptable. For multi-feature mods, recommend Include files grouped by feature area.",
+        "When the user asks for a character, suggest a bundle: Data/Characters, dialogue asset, schedule asset, gift tastes, portrait/sprite assets, optional spouse/roommate content, and optional events.",
+        "When the user asks for many items, suggest i18n keys, shared texture path conventions, object fields, shop entries, gift taste edits, recipes, and mail rewards as separate todo steps.",
+        "When generating conditions, prefer common CP When tokens like Season, Day, DayOfWeek, Time, Weather, HasSeenEvent, HasFlag, HasMod, Relationship, Hearts, Spouse, Roommate, FarmType, and config keys.",
+        "Use TextOperations for incremental edits to existing vanilla data when replacing an entire record would be fragile.",
+        "Keep generated custom IDs namespaced and stable, using the manifest UniqueID or author prefix."
+      ]
+    }
+  ]
+}
