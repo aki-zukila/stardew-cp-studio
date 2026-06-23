@@ -160,6 +160,52 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(marriage["Changes"][0]["Entries"]["Rainy_Night_5"], "{{i18n:Sophia.MarriageDialogue.Rainy_Night_5}}")
             self.assertFalse(any(key.endswith("_n") for key in marriage["Changes"][0]["Entries"]))
 
+    def test_export_special_dialogue_stays_in_content_json(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.extend([
+                GameDataEntry(
+                    kind="custom",
+                    target="Data/EngagementDialogue",
+                    key="Cale0",
+                    value="{{i18n:Cale.SpecialDialogue.engagement.Cale0}}",
+                    advanced={"Priority": "Late", "StardewCPStudio": {"specialDialogue": {"kind": "engagement", "npcName": "Cale"}}},
+                ),
+                GameDataEntry(
+                    kind="custom",
+                    target="Characters/Dialogue/rain",
+                    key="Cale",
+                    value="{{i18n:Cale.SpecialDialogue.rain.Cale}}",
+                    advanced={"StardewCPStudio": {"specialDialogue": {"kind": "rain", "npcName": "Cale"}}},
+                ),
+                GameDataEntry(
+                    kind="custom",
+                    target="Data/Festivals/spring13",
+                    key="Cale",
+                    value="{{i18n:Cale.SpecialDialogue.festival.spring13}}",
+                    advanced={"StardewCPStudio": {"specialDialogue": {"kind": "festival", "npcName": "Cale"}}},
+                ),
+            ])
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            changes = content["Changes"]
+
+            engagement = next(change for change in changes if change.get("Target") == "Data/EngagementDialogue")
+            rain = next(change for change in changes if change.get("Target") == "Characters/Dialogue/rain")
+            festival = next(change for change in changes if change.get("Target") == "Data/Festivals/spring13")
+
+            self.assertEqual(engagement["Priority"], "Late")
+            self.assertEqual(engagement["Entries"]["Cale0"], "{{i18n:Cale.SpecialDialogue.engagement.Cale0}}")
+            self.assertEqual(rain["Entries"]["Cale"], "{{i18n:Cale.SpecialDialogue.rain.Cale}}")
+            self.assertEqual(festival["Entries"]["Cale"], "{{i18n:Cale.SpecialDialogue.festival.spring13}}")
+            self.assertNotIn("StardewCPStudio", json.dumps(content))
+
     def test_import_asset_can_use_character_asset_path(self):
         import asyncio
 
@@ -259,17 +305,39 @@ class CoreTests(unittest.TestCase):
                 }
             }), encoding="utf-8")
             previous_paths = item_catalog.KNOWN_OBJECT_PATHS
+            previous_catalog = item_catalog.CATALOG_PATH
             item_catalog.load_item_catalog.cache_clear()
             try:
                 item_catalog.KNOWN_OBJECT_PATHS = [path]
+                item_catalog.CATALOG_PATH = Path(temp_dir) / "missing-catalog.json"
                 catalog = item_catalog.load_item_catalog()
             finally:
                 item_catalog.KNOWN_OBJECT_PATHS = previous_paths
+                item_catalog.CATALOG_PATH = previous_catalog
                 item_catalog.load_item_catalog.cache_clear()
 
             self.assertEqual(catalog.items[0].id, "388")
             self.assertEqual(catalog.items[0].qualified_id, "(O)388")
             self.assertEqual(catalog.items[0].category, -16)
+
+    def test_builtin_item_catalog_has_chinese_names_and_full_object_coverage(self):
+        item_catalog.load_item_catalog.cache_clear()
+        catalog = item_catalog.load_item_catalog()
+
+        self.assertGreaterEqual(len(catalog.items), 807)
+        gold_bar = next(item for item in catalog.items if item.id == "336")
+        self.assertEqual(gold_bar.qualified_id, "(O)336")
+        self.assertTrue(gold_bar.display_name)
+        self.assertNotIn("LocalizedText", gold_bar.display_name)
+
+    def test_object_categories_include_wiki_values(self):
+        ruleset = load_ruleset()
+        categories = {item["value"]: item for item in ruleset.field_schemas["object_categories"]}
+
+        for value in [-9, -17, -23, -102, -103, -999]:
+            self.assertIn(value, categories)
+        self.assertEqual(categories[-2]["context_tag"], "category_gem")
+        self.assertEqual(categories[-999]["internal_constant"], "Object.litterCategory")
 
 
 if __name__ == "__main__":

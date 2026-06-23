@@ -2470,144 +2470,287 @@
     ],
     "object_categories": [
       {
-        "label": "宝石 Gem",
-        "value": -2
+        "label": "矿物 Mineral (-2)",
+        "value": -2,
+        "internal_constant": "Object.GemCategory",
+        "context_tag": "category_gem",
+        "english_translation": "Mineral",
+        "color": "#6E005A"
       },
       {
-        "label": "鱼 Fish",
-        "value": -4
+        "label": "鱼 Fish (-4)",
+        "value": -4,
+        "internal_constant": "Object.FishCategory",
+        "context_tag": "category_fish",
+        "english_translation": "Fish",
+        "color": "#00008B"
       },
       {
-        "label": "蛋 Egg",
-        "value": -5
+        "label": "蛋/动物产品 Animal Product (-5)",
+        "value": -5,
+        "internal_constant": "Object.EggCategory",
+        "context_tag": "category_egg",
+        "english_translation": "Animal Product",
+        "color": "#FF0064"
       },
       {
-        "label": "奶 Milk",
-        "value": -6
+        "label": "奶/动物产品 Animal Product (-6)",
+        "value": -6,
+        "internal_constant": "Object.MilkCategory",
+        "context_tag": "category_milk",
+        "english_translation": "Animal Product",
+        "color": "#FF0064"
       },
       {
-        "label": "烹饪 Cooking",
-        "value": -7
+        "label": "烹饪 Cooking (-7)",
+        "value": -7,
+        "internal_constant": "Object.CookingCategory",
+        "context_tag": "category_cooking",
+        "english_translation": "Cooking",
+        "color": "#DC3C00"
       },
       {
-        "label": "材料 Crafting",
-        "value": -8
+        "label": "材料 Crafting (-8)",
+        "value": -8,
+        "internal_constant": "Object.CraftingCategory",
+        "context_tag": "category_crafting",
+        "english_translation": "Crafting",
+        "color": "#943D28"
       },
       {
-        "label": "矿物 Minerals",
-        "value": -12
+        "label": "大型工匠 Big Craftable (-9)",
+        "value": -9,
+        "internal_constant": "Object.BigCraftableCategory",
+        "context_tag": "category_big_craftable"
       },
       {
-        "label": "肉类 Meat",
-        "value": -14
+        "label": "矿物 Mineral (-12)",
+        "value": -12,
+        "internal_constant": "Object.mineralsCategory",
+        "context_tag": "category_minerals",
+        "english_translation": "Mineral",
+        "color": "#6E005A"
       },
       {
-        "label": "金属资源 MetalResources",
-        "value": -15
+        "label": "肉类/动物产品 Animal Product (-14)",
+        "value": -14,
+        "internal_constant": "Object.meatCategory",
+        "context_tag": "category_meat",
+        "english_translation": "Animal Product",
+        "color": "#FF0064"
       },
       {
-        "label": "建材 BuildingResources",
-        "value": -16
+        "label": "金属资源 Resource (-15)",
+        "value": -15,
+        "internal_constant": "Object.metalResources",
+        "context_tag": "category_metal_resources",
+        "english_translation": "Resource",
+        "color": "#406672"
       },
       {
-        "label": "动物产品 AnimalGoods",
-        "value": -18
+        "label": "建材资源 Resource (-16)",
+        "value": -16,
+        "internal_constant": "Object.buildingResources",
+        "context_tag": "category_building_resources",
+        "english_translation": "Resource",
+        "color": "#406672"
       },
       {
-        "label": "肥料 Fertilizer",
-        "value": -19
+        "label": "皮埃尔出售 Sell At Pierre's (-17)",
+        "value": -17,
+        "internal_constant": "Object.sellAtPierres",
+        "context_tag": "category_sell_at_pierres"
       },
       {
-        "label": "垃圾 Trash",
-        "value": -20
+        "label": "动物产品 Animal Product (-18)",
+        "value": -18,
+        "internal_constant": "Object.sellAtPierresAndMarnies",
+        "context_tag": "category_sell_at_pierres_and_marnies",
+        "english_translation": "Animal Product",
+        "color": "#FF0064"
       },
       {
-        "label": "鱼饵 Bait",
-        "value": -21
+        "label": "肥料 Fertilizer (-19)",
+        "value": -19,
+        "internal_constant": "Object.fertilizerCategory",
+        "context_tag": "category_fertilizer",
+        "english_translation": "Fertilizer",
+        "color": "#708090"
       },
       {
-        "label": "钓具 Tackle",
-        "value": -22
+        "label": "垃圾 Trash (-20)",
+        "value": -20,
+        "internal_constant": "Object.junkCategory",
+        "context_tag": "category_junk",
+        "english_translation": "Trash",
+        "color": "#696969"
       },
       {
-        "label": "装饰 Decoration",
-        "value": -23
+        "label": "鱼饵 Bait (-21)",
+        "value": -21,
+        "internal_constant": "Object.baitCategory",
+        "context_tag": "category_bait",
+        "english_translation": "Bait",
+        "color": "#8B0000"
       },
       {
-        "label": "家具 Furniture",
-        "value": -24
+        "label": "钓具 Fishing Tackle (-22)",
+        "value": -22,
+        "internal_constant": "Object.tackleCategory",
+        "context_tag": "category_tackle",
+        "english_translation": "Fishing Tackle",
+        "color": "#008B8B"
       },
       {
-        "label": "原料 Ingredients",
-        "value": -25
+        "label": "鱼店出售 Sell At Fish Shop (-23)",
+        "value": -23,
+        "internal_constant": "Object.sellAtFishShopCategory",
+        "context_tag": "category_sell_at_fish_shop"
       },
       {
-        "label": "大工匠 ArtisanGoods",
-        "value": -26
+        "label": "家具/装饰 Decor (-24)",
+        "value": -24,
+        "internal_constant": "Object.furnitureCategory",
+        "context_tag": "category_furniture",
+        "english_translation": "Decor",
+        "color": "#9650BE"
       },
       {
-        "label": "糖浆 Syrup",
-        "value": -27
+        "label": "原料 Cooking (-25)",
+        "value": -25,
+        "internal_constant": "Object.ingredientsCategory",
+        "context_tag": "category_ingredients",
+        "english_translation": "Cooking"
       },
       {
-        "label": "怪物掉落 MonsterLoot",
-        "value": -28
+        "label": "工匠物品 Artisan Goods (-26)",
+        "value": -26,
+        "internal_constant": "Object.artisanGoodsCategory",
+        "context_tag": "category_artisan_goods",
+        "english_translation": "Artisan Goods",
+        "color": "#009B6F"
       },
       {
-        "label": "装备 Equipment",
-        "value": -29
+        "label": "糖浆 Artisan Goods (-27)",
+        "value": -27,
+        "internal_constant": "Object.syrupCategory",
+        "context_tag": "category_syrup",
+        "english_translation": "Artisan Goods",
+        "color": "#009B6F"
       },
       {
-        "label": "种子 Seeds",
-        "value": -74
+        "label": "怪物掉落 Monster Loot (-28)",
+        "value": -28,
+        "internal_constant": "Object.monsterLootCategory",
+        "context_tag": "category_monster_loot",
+        "english_translation": "Monster Loot",
+        "color": "#320A46"
       },
       {
-        "label": "蔬菜 Vegetables",
-        "value": -75
+        "label": "装备 Equipment (-29)",
+        "value": -29,
+        "internal_constant": "Object.equipmentCategory",
+        "context_tag": "category_equipment"
       },
       {
-        "label": "水果 Fruits",
-        "value": -79
+        "label": "种子 Seed (-74)",
+        "value": -74,
+        "internal_constant": "Object.SeedsCategory",
+        "context_tag": "category_seeds",
+        "english_translation": "Seed",
+        "color": "#A52A2A"
       },
       {
-        "label": "花 Flowers",
-        "value": -80
+        "label": "蔬菜 Vegetable (-75)",
+        "value": -75,
+        "internal_constant": "Object.VegetableCategory",
+        "context_tag": "category_vegetable",
+        "english_translation": "Vegetable",
+        "color": "#008000"
       },
       {
-        "label": "采集物 Forage",
-        "value": -81
+        "label": "水果 Fruit (-79)",
+        "value": -79,
+        "internal_constant": "Object.FruitsCategory",
+        "context_tag": "category_fruits",
+        "english_translation": "Fruit",
+        "color": "#FF1493"
       },
       {
-        "label": "帽子 Hat",
-        "value": -95
+        "label": "花 Flower (-80)",
+        "value": -80,
+        "internal_constant": "Object.flowersCategory",
+        "context_tag": "category_flowers",
+        "english_translation": "Flower",
+        "color": "#DB36D3"
       },
       {
-        "label": "戒指 Ring",
-        "value": -96
+        "label": "采集物 Forage (-81)",
+        "value": -81,
+        "internal_constant": "Object.GreensCategory",
+        "context_tag": "category_greens",
+        "english_translation": "Forage",
+        "color": "#0A8232"
       },
       {
-        "label": "靴子 Boots",
-        "value": -97
+        "label": "帽子 Hat (-95)",
+        "value": -95,
+        "internal_constant": "Object.hatCategory",
+        "context_tag": "category_hat"
       },
       {
-        "label": "武器 Weapon",
-        "value": -98
+        "label": "戒指 Ring (-96)",
+        "value": -96,
+        "internal_constant": "Object.ringCategory",
+        "context_tag": "category_ring"
       },
       {
-        "label": "工具 Tool",
-        "value": -99
+        "label": "靴子 Boots (-97)",
+        "value": -97,
+        "internal_constant": "Object.bootsCategory",
+        "context_tag": "category_boots"
       },
       {
-        "label": "服装 Clothing",
-        "value": -100
+        "label": "武器 Weapon (-98)",
+        "value": -98,
+        "internal_constant": "Object.weaponCategory",
+        "context_tag": "category_weapon"
       },
       {
-        "label": "小饰品 Trinket",
-        "value": -101
+        "label": "工具 Tool (-99)",
+        "value": -99,
+        "internal_constant": "Object.toolCategory",
+        "context_tag": "category_tool"
       },
       {
-        "label": "杂物/Litter",
-        "value": -999
+        "label": "服装 Clothing (-100)",
+        "value": -100,
+        "internal_constant": "Object.clothingCategory",
+        "context_tag": "category_clothing"
+      },
+      {
+        "label": "小饰品 Trinket (-101)",
+        "value": -101,
+        "internal_constant": "Object.trinketCategory",
+        "context_tag": "category_trinket"
+      },
+      {
+        "label": "书籍 Books (-102)",
+        "value": -102,
+        "internal_constant": "Object.booksCategory",
+        "color": "#552F1B"
+      },
+      {
+        "label": "技能书 Skill Books (-103)",
+        "value": -103,
+        "internal_constant": "Object.skillBooksCategory",
+        "color": "#7A5d27"
+      },
+      {
+        "label": "杂物 Litter (-999)",
+        "value": -999,
+        "internal_constant": "Object.litterCategory",
+        "context_tag": "category_litter"
       }
     ],
     "edibility": [

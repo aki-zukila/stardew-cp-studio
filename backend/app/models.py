@@ -136,6 +136,7 @@ class ItemCatalogEntry(BaseModel):
     qualified_id: str
     name: str = ""
     display_name: str = ""
+    description: str = ""
     category: int | None = None
     type: str = ""
     source: str = "vanilla"

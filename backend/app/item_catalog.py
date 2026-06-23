@@ -8,6 +8,7 @@ from typing import Any
 from .models import ItemCatalogEntry, ItemCatalogResponse
 
 
+CATALOG_PATH = Path(__file__).parent / "rule_library" / "vanilla_object_catalog.zh.json"
 KNOWN_OBJECT_PATHS = [
     Path(r"D:\Steam\steamapps\common\Stardew Valley\Content (unpacked)\Data\Objects.json"),
     Path(r"C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley\Content (unpacked)\Data\Objects.json"),
@@ -16,11 +17,28 @@ KNOWN_OBJECT_PATHS = [
 
 @lru_cache(maxsize=1)
 def load_item_catalog() -> ItemCatalogResponse:
+    if CATALOG_PATH.exists():
+        try:
+            with CATALOG_PATH.open("r", encoding="utf-8") as file:
+                catalog = json.load(file)
+            items = [
+                ItemCatalogEntry.model_validate(item)
+                for item in catalog.get("items", [])
+                if isinstance(item, dict)
+            ]
+            return ItemCatalogResponse(items=items, source_path=str(CATALOG_PATH))
+        except Exception as exc:
+            return ItemCatalogResponse(
+                items=[],
+                source_path=str(CATALOG_PATH),
+                warning=f"读取内置物品目录失败：{exc}",
+            )
+
     path = next((candidate for candidate in KNOWN_OBJECT_PATHS if candidate.exists()), None)
     if path is None:
         return ItemCatalogResponse(
             items=[],
-            warning="未找到解包后的 Data/Objects.json；将只显示工程内新物品和内置类别。",
+            warning="未找到内置物品目录或解包后的 Data/Objects.json；将只显示工程内新物品和内置类别。",
         )
 
     try:
@@ -44,6 +62,7 @@ def load_item_catalog() -> ItemCatalogResponse:
                 qualified_id=f"(O){item_id}",
                 name=_string(raw_value.get("Name")),
                 display_name=_string(raw_value.get("DisplayName")),
+                description=_string(raw_value.get("Description")),
                 category=_integer_or_none(raw_value.get("Category")),
                 type=_string(raw_value.get("Type")),
                 source="vanilla",

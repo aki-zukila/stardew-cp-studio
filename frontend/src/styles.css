@@ -818,6 +818,7 @@ code {
 .npc-dialogue-list {
   display: grid;
   gap: 12px;
+  margin-top: 12px;
 }
 
 .npc-dialogue-list h4 {
@@ -835,8 +836,31 @@ code {
   padding: 12px;
 }
 
+.dialogue-section {
+  background: #fbfaf5;
+  border: 1px solid #ded7c9;
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.dialogue-section > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 750;
+  justify-content: space-between;
+}
+
+.dialogue-section > summary span {
+  color: #667067;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .npc-dialogue-head {
   align-items: center;
+  cursor: pointer;
   display: flex;
   justify-content: space-between;
 }
