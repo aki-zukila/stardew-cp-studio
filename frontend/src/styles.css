@@ -891,6 +891,133 @@ code {
   grid-template-columns: 260px 1fr;
 }
 
+.story-event-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.story-panel {
+  background: #fbfaf5;
+  border: 1px solid #ded7c9;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.story-panel > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-weight: 750;
+  justify-content: space-between;
+}
+
+.story-panel > summary span {
+  color: #667067;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.story-list,
+.story-flow {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.story-flow-map {
+  align-items: center;
+  background: #eef2ea;
+  border: 1px solid #d4ddcf;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+}
+
+.story-flow-chip {
+  background: #ffffff;
+  border: 1px solid #cfc8ba;
+  border-radius: 999px;
+  color: #264b39;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.story-flow-chip.fixed {
+  background: #315f47;
+  border-color: #315f47;
+  color: #ffffff;
+}
+
+.story-flow-arrow {
+  color: #667067;
+  font-weight: 800;
+}
+
+.story-row {
+  align-items: end;
+  background: #fffdf8;
+  border: 1px solid #e5ddcf;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+  padding: 12px;
+}
+
+.story-node {
+  background: #fffdf8;
+  border: 1px solid #e5ddcf;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.story-node-head {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
+}
+
+.story-node-head code,
+.story-preview code {
+  background: #eef2ea;
+  border-radius: 6px;
+  color: #264b39;
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 8px;
+}
+
+.story-preview {
+  background: #eef2ea;
+  border: 1px solid #d4ddcf;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.story-preview strong {
+  color: #2f4f3f;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.story-preview textarea {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  min-height: 170px;
+}
+
+.tight-grid {
+  gap: 10px;
+}
+
 .file-button {
   align-items: center;
   background: #315f47;

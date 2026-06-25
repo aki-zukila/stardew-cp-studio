@@ -246,6 +246,39 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(change["Entries"]["Cale"]["Reactions"][0]["Response"], "like")
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_story_event_filters_builder_metadata(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.i18n = {
+                "Author.TestPack.Event1.speak.node1": "你好，@。#$b#这是剧情台词。",
+                "Author.TestPack.Event1.end.node2": "之后再聊吧。$h",
+            }
+            project.game_data.append(GameDataEntry(
+                kind="event",
+                name="Test Story Event",
+                target="Data/Events/Farm",
+                key="Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost",
+                value='continue/-500 -500/farmer 95 49 2 MorrisTod 95 51 0/pause 1250/speak MorrisTod "{{i18n:Author.TestPack.Event1.speak.node1}}"/globalFade/viewport -1000 -1000/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.end.node2}}"',
+                when={"HasSeenEvent |contains=5553214": True},
+                advanced={"StardewCPStudio": {"storyEvent": {"location": "Farm"}}, "Priority": "Late"},
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+
+            self.assertEqual(change["Action"], "EditData")
+            self.assertEqual(change["Priority"], "Late")
+            self.assertEqual(change["When"], {"HasSeenEvent |contains=5553214": True})
+            self.assertIn("Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost", change["Entries"])
+            self.assertIn("{{i18n:Author.TestPack.Event1.speak.node1}}", change["Entries"]["Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost"])
+            self.assertNotIn("StardewCPStudio", json.dumps(content))
+
     def test_import_asset_can_use_character_asset_path(self):
         import asyncio
 

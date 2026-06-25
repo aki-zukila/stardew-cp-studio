@@ -70,6 +70,20 @@ type WhenConditionSchema = { key: string; label: string; valueType: string; opti
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
+type EventNodeKind = "pause" | "speak" | "message" | "question" | "fork" | "move" | "emote" | "globalFade" | "fade" | "viewport" | "mail" | "end" | "custom";
+type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict };
+type StoryEventMeta = {
+  location: string;
+  eventId: string;
+  music: string;
+  viewportX: number;
+  viewportY: number;
+  actors: { actor: string; x: number; y: number; direction: number }[];
+  preconditions: EventPrecondition[];
+  nodes: StoryEventNode[];
+  i18nPrefix: string;
+};
+type EventPrecondition = { id: string; type: string; data: JsonDict; negated?: boolean };
 type FieldSchemas = Record<string, unknown>;
 type Ruleset = {
   id: string;
@@ -362,6 +376,7 @@ function App() {
           <TabButton icon={<Icon name="box" />} id="overview" label="工程总览" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="settings" />} id="manifest" label="模组信息" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="flow" />} id="flow" label="流程模式" tab={tab} setTab={setTab} />
+          <TabButton icon={<Icon name="story" />} id="story" label="剧情模块" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="json" />} id="patches" label="CP 补丁" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="data" />} id="data" label="游戏数据" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="assets" />} id="assets" label="素材库" tab={tab} setTab={setTab} />
@@ -402,6 +417,7 @@ function App() {
 
         {tab === "manifest" && <ManifestEditor project={project} setProject={updateProject} />}
         {tab === "flow" && <FlowMode project={project} ruleset={ruleset} setProject={updateProject} />}
+        {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "assets" && <AssetManager project={project} setProject={updateProject} />}
@@ -444,6 +460,7 @@ function Icon({ name }: { name: string }) {
     rules: "R",
     save: "S",
     settings: "*",
+    story: "EV",
     upload: "U",
     warn: "!"
   };
@@ -1230,10 +1247,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       {entry.kind === "event" && (
-        <>
-          <Field label="事件条件键" value={entry.key} onChange={(key) => onChange({ ...entry, key })} />
-          <Field label="事件脚本" value={typeof entry.value === "string" ? entry.value : ""} textarea onChange={(next) => onChange({ ...entry, value: next })} />
-        </>
+        <StoryEventForm project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
       )}
 
       {entry.kind === "custom" && (
@@ -2767,6 +2781,309 @@ function I18nEditor({ project, setProject }: { project: Project; setProject: (pr
   );
 }
 
+function StoryEventStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+  const entries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.kind === "event");
+
+  function addStoryEvent() {
+    const meta = defaultStoryEventMeta(project);
+    const entry = storyEntryFromMeta(createWorkflowEntry("event", "新剧情事件", `Data/Events/${meta.location}`, "", ""), meta);
+    setProject({ ...project, game_data: [...project.game_data, entry] });
+  }
+
+  return (
+    <Section title="剧情模块">
+      <div className="notice">
+        事件写入 <code>Data/Events/&lt;LocationName&gt;</code>。当前版本用节点列表表示流程：顺序就是执行顺序，底部会实时生成可导出的事件 Key 与脚本。
+      </div>
+      <div className="toolbar">
+        <button onClick={addStoryEvent}><Icon name="plus" />新增剧情</button>
+      </div>
+      <div className="stack">
+        {entries.map(({ entry, index }) => (
+          <article className="card" key={entry.id}>
+            <div className="card-head">
+              <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
+              <button onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+            </div>
+            <StoryEventForm
+              project={project}
+              entry={entry}
+              ruleset={ruleset}
+              i18n={project.i18n}
+              onI18nChange={(i18n) => setProject({ ...project, i18n })}
+              onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+            />
+          </article>
+        ))}
+        {!entries.length && <div className="empty">暂无剧情。点击“新增剧情”创建第一个事件。</div>}
+      </div>
+    </Section>
+  );
+}
+
+function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+  const meta = storyMetaFromEntry(project, entry);
+  const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
+  const scriptPreview = buildStoryEventScript(meta);
+  const keyPreview = buildStoryEventKey(meta);
+
+  function updateMeta(nextMeta: StoryEventMeta) {
+    onChange(storyEntryFromMeta(entry, nextMeta));
+  }
+
+  function updateNode(nodeIndex: number, node: StoryEventNode, textPatch?: { key: string; text: string }) {
+    const nodes = replaceAt(meta.nodes, nodeIndex, node);
+    updateMeta({ ...meta, nodes });
+    if (textPatch && onI18nChange) {
+      onI18nChange({ ...i18n, [textPatch.key]: textPatch.text });
+    }
+  }
+
+  function addNode(kind: EventNodeKind) {
+    updateMeta({ ...meta, nodes: [...meta.nodes, defaultStoryNode(kind, meta)] });
+  }
+
+  function moveNode(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= meta.nodes.length) return;
+    const nodes = [...meta.nodes];
+    [nodes[index], nodes[target]] = [nodes[target], nodes[index]];
+    updateMeta({ ...meta, nodes });
+  }
+
+  return (
+    <div className="story-event-editor">
+      <div className="grid two">
+        <ComboField label="事件地点 Location" value={meta.location} options={mapLocationOptions(project)} onChange={(location) => updateMeta({ ...meta, location: String(location) })} />
+        <Field label="事件 ID" value={meta.eventId} onChange={(eventId) => updateMeta({ ...meta, eventId })} />
+        <Field label="开场音乐" value={meta.music} onChange={(music) => updateMeta({ ...meta, music })} />
+        <div className="grid two tight-grid">
+          <Field label="开场视角 X" value={stringField(meta.viewportX)} onChange={(value) => updateMeta({ ...meta, viewportX: integerInRange(value, -10000, 10000, 0) })} />
+          <Field label="开场视角 Y" value={stringField(meta.viewportY)} onChange={(value) => updateMeta({ ...meta, viewportY: integerInRange(value, -10000, 10000, 0) })} />
+        </div>
+        <Field label="i18n 前缀" value={meta.i18nPrefix} onChange={(i18nPrefix) => updateMeta({ ...meta, i18nPrefix })} />
+      </div>
+
+      <details className="story-panel" open>
+        <summary>初始角色位置 <span>{meta.actors.length} 个角色</span></summary>
+        <div className="story-list">
+          {meta.actors.map((actor, index) => (
+            <div className="story-row" key={`${actor.actor}-${index}`}>
+              <Field label="角色" value={actor.actor} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, actor: value }) })} />
+              <Field label="X" value={stringField(actor.x)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, x: integerInRange(value, -10000, 10000, actor.x) }) })} />
+              <Field label="Y" value={stringField(actor.y)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, y: integerInRange(value, -10000, 10000, actor.y) }) })} />
+              <ComboField label="方向" value={actor.direction} options={STORY_DIRECTION_OPTIONS} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, direction: Number(value) }) })} />
+              <button className="secondary" onClick={() => updateMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+            </div>
+          ))}
+          <button className="secondary" onClick={() => updateMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
+        </div>
+      </details>
+
+      <details className="story-panel" open>
+        <summary>触发条件 Key Preconditions <span>{meta.preconditions.length} 条</span></summary>
+        <div className="story-list">
+          {meta.preconditions.map((condition, index) => (
+            <StoryPreconditionEditor
+              key={condition.id}
+              condition={condition}
+              ruleset={ruleset}
+              onChange={(next) => updateMeta({ ...meta, preconditions: replaceAt(meta.preconditions, index, next) })}
+              onRemove={() => updateMeta({ ...meta, preconditions: meta.preconditions.filter((item) => item.id !== condition.id) })}
+            />
+          ))}
+          <button className="secondary" onClick={() => updateMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
+        </div>
+      </details>
+
+      <details className="story-panel" open>
+        <summary>流程节点 <span>{meta.nodes.length} 个节点</span></summary>
+        <div className="toolbar">
+          <select value={nodeKind} onChange={(event) => setNodeKind(event.target.value as EventNodeKind)}>
+            {STORY_NODE_OPTIONS.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+          </select>
+          <button onClick={() => addNode(nodeKind)}><Icon name="plus" />添加节点</button>
+        </div>
+        <div className="story-flow-map" aria-label="剧情流程图预览">
+          <div className="story-flow-chip fixed">音乐 / 视角 / 初始角色</div>
+          {meta.nodes.map((node, index) => (
+            <React.Fragment key={`map-${node.id}`}>
+              <span className="story-flow-arrow">→</span>
+              <div className="story-flow-chip">{index + 1}. {node.label || storyNodeLabel(node.kind)}</div>
+            </React.Fragment>
+          ))}
+        </div>
+        <div className="story-flow">
+          {meta.nodes.map((node, index) => (
+            <StoryNodeEditor
+              key={node.id}
+              node={node}
+              index={index}
+              meta={meta}
+              i18n={i18n}
+              onChange={(next, textPatch) => updateNode(index, next, textPatch)}
+              onRemove={() => updateMeta({ ...meta, nodes: meta.nodes.filter((item) => item.id !== node.id) })}
+              onMove={moveNode}
+            />
+          ))}
+        </div>
+      </details>
+
+      <div className="story-preview">
+        <div>
+          <strong>最终事件 Key</strong>
+          <code>{keyPreview}</code>
+        </div>
+        <div>
+          <strong>最终事件脚本</strong>
+          <textarea value={scriptPreview} readOnly />
+        </div>
+      </div>
+
+      <div className="grid two">
+        <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+        <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
+      </div>
+    </div>
+  );
+}
+
+function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { condition: EventPrecondition; ruleset: Ruleset; onChange: (condition: EventPrecondition) => void; onRemove: () => void }) {
+  const data = condition.data || {};
+  return (
+    <div className="story-row">
+      <ComboField label="条件类型" value={condition.type} options={STORY_PRECONDITION_OPTIONS} onChange={(type) => onChange({ ...defaultStoryPrecondition(String(type)), id: condition.id, negated: condition.negated })} />
+      <BoolField label="取反 !" value={Boolean(condition.negated)} onChange={(negated) => onChange({ ...condition, negated })} />
+      {condition.type === "Friendship" && (
+        <>
+          <Field label="NPC" value={stringField(data.npc)} onChange={(npc) => onChange({ ...condition, data: { ...data, npc } })} />
+          <Field label="友情点" value={stringField(data.points)} onChange={(points) => onChange({ ...condition, data: { ...data, points: integerInRange(points, 0, 5000, 2500) } })} />
+        </>
+      )}
+      {condition.type === "Time" && (
+        <>
+          <Field label="开始时间" value={stringField(data.min)} onChange={(min) => onChange({ ...condition, data: { ...data, min: integerInRange(min, 600, 2600, 600) } })} />
+          <Field label="结束时间" value={stringField(data.max)} onChange={(max) => onChange({ ...condition, data: { ...data, max: integerInRange(max, 600, 2600, 2600) } })} />
+        </>
+      )}
+      {condition.type === "Season" && <ComboField label="季节" value={data.season || "Spring"} options={rulesetOptions(ruleset, "seasons")} onChange={(season) => onChange({ ...condition, data: { ...data, season } })} />}
+      {condition.type === "DayOfWeek" && <ComboField label="星期" value={data.day || "Tue"} options={WEEKDAY_OPTIONS} onChange={(day) => onChange({ ...condition, data: { ...data, day } })} />}
+      {condition.type === "DayOfMonth" && <Field label="日期" value={stringField(data.day)} onChange={(day) => onChange({ ...condition, data: { ...data, day: clampDay(day) } })} />}
+      {condition.type === "Weather" && <ComboField label="天气" value={data.weather || "sunny"} options={STORY_WEATHER_OPTIONS} onChange={(weather) => onChange({ ...condition, data: { ...data, weather } })} />}
+      {condition.type === "SawEvent" && <Field label="已看事件 ID" value={stringField(data.eventId)} onChange={(eventId) => onChange({ ...condition, data: { ...data, eventId } })} />}
+      {condition.type === "LocalMail" && <Field label="邮件 ID" value={stringField(data.mailId)} onChange={(mailId) => onChange({ ...condition, data: { ...data, mailId } })} />}
+      {condition.type === "HostMail" && <Field label="主机邮件 ID" value={stringField(data.mailId)} onChange={(mailId) => onChange({ ...condition, data: { ...data, mailId } })} />}
+      {condition.type === "DaysPlayed" && <Field label="游玩天数" value={stringField(data.days)} onChange={(days) => onChange({ ...condition, data: { ...data, days: integerInRange(days, 1, 99999, 1) } })} />}
+      {condition.type === "IsHost" && <div className="notice compact-note">无参数。多人联机中要求当前玩家是主机。</div>}
+      {condition.type === "GameStateQuery" && <Field label="Game State Query" value={stringField(data.query)} onChange={(query) => onChange({ ...condition, data: { ...data, query } })} />}
+      {condition.type === "Raw" && <Field label="原始条件片段" value={stringField(data.raw)} onChange={(raw) => onChange({ ...condition, data: { ...data, raw } })} />}
+      <button className="secondary" onClick={onRemove}>删除</button>
+    </div>
+  );
+}
+
+function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+  const data = node.data || {};
+  const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
+  const textValue = stringField(i18n[textKey] ?? data.text ?? "");
+  const patchData = (patch: JsonDict) => onChange({ ...node, data: { ...data, ...patch } });
+  const patchText = (text: string) => onChange({ ...node, data: { ...data, i18nKey: textKey } }, { key: textKey, text });
+
+  return (
+    <div className="story-node">
+      <div className="story-node-head">
+        <strong>{index + 1}. {node.label || storyNodeLabel(node.kind)}</strong>
+        <code>{buildStoryCommand(node, meta)}</code>
+        <div className="button-row">
+          <button className="secondary" onClick={() => onMove(index, -1)}>上移</button>
+          <button className="secondary" onClick={() => onMove(index, 1)}>下移</button>
+          <button className="secondary" onClick={onRemove}>删除</button>
+        </div>
+      </div>
+      <div className="grid two">
+        <ComboField label="节点类型" value={node.kind} options={STORY_NODE_OPTIONS} onChange={(kind) => onChange(defaultStoryNode(String(kind) as EventNodeKind, meta, node.id))} />
+        <Field label="节点标题" value={node.label} onChange={(label) => onChange({ ...node, label })} />
+        {node.kind === "pause" && <Field label="等待毫秒" value={stringField(data.duration)} onChange={(duration) => patchData({ duration: integerInRange(duration, 0, 600000, 500) })} />}
+        {node.kind === "speak" && (
+          <>
+            <Field label="说话角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="台词文本" value={textValue} textarea onChange={patchText} />
+          </>
+        )}
+        {node.kind === "message" && (
+          <>
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="消息文本" value={textValue} textarea onChange={patchText} />
+          </>
+        )}
+        {node.kind === "question" && (
+          <>
+            <Field label="fork 标记" value={stringField(data.forkId)} onChange={(forkId) => patchData({ forkId })} />
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="问题文本" value={textValue} textarea onChange={patchText} />
+          </>
+        )}
+        {node.kind === "fork" && (
+          <>
+            <Field label="条件/回答 ID" value={stringField(data.requirement)} onChange={(requirement) => patchData({ requirement })} />
+            <Field label="跳转事件 ID" value={stringField(data.eventId)} onChange={(eventId) => patchData({ eventId })} />
+          </>
+        )}
+        {node.kind === "move" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="X 偏移" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -999, 999, 0) })} />
+            <Field label="Y 偏移" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -999, 999, 0) })} />
+            <ComboField label="结束朝向" value={data.direction ?? 2} options={STORY_DIRECTION_OPTIONS} onChange={(direction) => patchData({ direction: Number(direction) })} />
+            <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
+          </>
+        )}
+        {node.kind === "emote" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <ComboField label="表情 ID" value={data.emote ?? 16} options={STORY_EMOTE_OPTIONS} onChange={(emote) => patchData({ emote: Number(emote) })} />
+          </>
+        )}
+        {node.kind === "fade" && <BoolField label="unfade" value={Boolean(data.unfade)} onChange={(unfade) => patchData({ unfade })} />}
+        {node.kind === "globalFade" && (
+          <>
+            <Field label="速度 speed" value={stringField(data.speed)} onChange={(speed) => patchData({ speed })} />
+            <BoolField label="continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
+          </>
+        )}
+        {node.kind === "viewport" && (
+          <>
+            <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, -1000) })} />
+            <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, -1000) })} />
+          </>
+        )}
+        {node.kind === "mail" && (
+          <>
+            <ComboField label="邮件命令" value={data.command || "mailReceived"} options={STORY_MAIL_COMMAND_OPTIONS} onChange={(command) => patchData({ command })} />
+            <Field label="邮件 ID" value={stringField(data.mailId)} onChange={(mailId) => patchData({ mailId })} />
+          </>
+        )}
+        {node.kind === "end" && (
+          <>
+            <ComboField label="结束模式" value={data.mode || "end"} options={STORY_END_OPTIONS} onChange={(mode) => patchData({ mode })} />
+            {(data.mode === "dialogue" || data.mode === "dialogueWarpOut") && (
+              <>
+                <Field label="对话 NPC" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+                <Field label="结束后对话 i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+                <Field label="结束后对话文本" value={textValue} textarea onChange={patchText} />
+              </>
+            )}
+          </>
+        )}
+        {node.kind === "custom" && <Field label="原始事件命令" value={stringField(data.raw)} textarea onChange={(raw) => patchData({ raw })} />}
+      </div>
+    </div>
+  );
+}
+
 function RuleLibraryView() {
   const [library, setLibrary] = useState<RuleLibrary | null>(null);
   const [error, setError] = useState("");
@@ -3403,6 +3720,78 @@ const MOVIE_RESPONSE_POINTS = [
   { key: "AfterMovie", label: "观影后 AfterMovie" }
 ];
 
+const STORY_NODE_OPTIONS: RulesetOption[] = [
+  { label: "角色说话 speak", value: "speak" },
+  { label: "等待 pause", value: "pause" },
+  { label: "消息 message", value: "message" },
+  { label: "提问 question", value: "question" },
+  { label: "分支 fork", value: "fork" },
+  { label: "移动 move", value: "move" },
+  { label: "表情 emote", value: "emote" },
+  { label: "全局淡出 globalFade", value: "globalFade" },
+  { label: "淡入淡出 fade", value: "fade" },
+  { label: "视角 viewport", value: "viewport" },
+  { label: "邮件 mailReceived", value: "mail" },
+  { label: "结束 end", value: "end" },
+  { label: "自定义命令", value: "custom" }
+];
+
+const STORY_PRECONDITION_OPTIONS: RulesetOption[] = [
+  { label: "友情 Friendship", value: "Friendship" },
+  { label: "时间 Time", value: "Time" },
+  { label: "季节 Season", value: "Season" },
+  { label: "星期 DayOfWeek", value: "DayOfWeek" },
+  { label: "日期 DayOfMonth", value: "DayOfMonth" },
+  { label: "天气 Weather", value: "Weather" },
+  { label: "已看事件 SawEvent", value: "SawEvent" },
+  { label: "本地邮件 LocalMail", value: "LocalMail" },
+  { label: "主机邮件 HostMail", value: "HostMail" },
+  { label: "游玩天数 DaysPlayed", value: "DaysPlayed" },
+  { label: "主机玩家 IsHost", value: "IsHost" },
+  { label: "GameStateQuery", value: "GameStateQuery" },
+  { label: "原始片段 Raw", value: "Raw" }
+];
+
+const STORY_DIRECTION_OPTIONS: RulesetOption[] = [
+  { label: "上 0", value: 0 },
+  { label: "右 1", value: 1 },
+  { label: "下 2", value: 2 },
+  { label: "左 3", value: 3 }
+];
+
+const STORY_WEATHER_OPTIONS: RulesetOption[] = [
+  { label: "晴天 sunny", value: "sunny" },
+  { label: "雨天 rainy", value: "rainy" },
+  { label: "绿雨 greenrain", value: "greenrain" },
+  { label: "婚礼 wedding", value: "wedding" }
+];
+
+const STORY_EMOTE_OPTIONS: RulesetOption[] = [
+  { label: "感叹 16", value: 16 },
+  { label: "心 20", value: 20 },
+  { label: "问号 8", value: 8 },
+  { label: "生气 12", value: 12 },
+  { label: "惊讶 28", value: 28 },
+  { label: "音乐 32", value: 32 },
+  { label: "睡觉 24", value: 24 }
+];
+
+const STORY_MAIL_COMMAND_OPTIONS: RulesetOption[] = [
+  { label: "mailReceived（已收到）", value: "mailReceived" },
+  { label: "mail（明天邮件）", value: "mail" },
+  { label: "mailToday（今天邮件）", value: "mailToday" },
+  { label: "addMailReceived（旧别名）", value: "addMailReceived" }
+];
+
+const STORY_END_OPTIONS: RulesetOption[] = [
+  { label: "end", value: "end" },
+  { label: "end warpOut", value: "warpOut" },
+  { label: "end dialogue", value: "dialogue" },
+  { label: "end dialogueWarpOut", value: "dialogueWarpOut" },
+  { label: "end invisible", value: "invisible" },
+  { label: "end newDay", value: "newDay" }
+];
+
 function marriageKeyOptions(npcName: string): RulesetOption[] {
   const npc = normalizeInternalName(npcName || "ExampleNPC");
   const options: RulesetOption[] = [];
@@ -4008,6 +4397,254 @@ function compactObject(value: JsonDict) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
+function defaultStoryEventMeta(project: Project): StoryEventMeta {
+  const baseId = project.manifest.UniqueID ? `${project.manifest.UniqueID}.Event1` : "ExampleMod.Event1";
+  return {
+    location: "Town",
+    eventId: baseId,
+    music: "continue",
+    viewportX: -1000,
+    viewportY: -1000,
+    actors: [
+      { actor: "farmer", x: -500, y: -500, direction: 2 },
+      { actor: "ExampleNPC", x: 64, y: 15, direction: 2 }
+    ],
+    preconditions: [],
+    nodes: [
+      defaultStoryNode("pause", { eventId: baseId, i18nPrefix: baseId }),
+      defaultStoryNode("speak", { eventId: baseId, i18nPrefix: baseId }),
+      defaultStoryNode("end", { eventId: baseId, i18nPrefix: baseId })
+    ],
+    i18nPrefix: baseId
+  };
+}
+
+function storyMetaFromEntry(project: Project, entry: GameDataEntry): StoryEventMeta {
+  const namespace = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const stored = isObject(namespace.storyEvent) ? namespace.storyEvent as JsonDict : {};
+  const locationFromTarget = (entry.target || "Data/Events/Town").replace(/^Data\/Events\//i, "") || "Town";
+  const fallback = defaultStoryEventMeta(project);
+  const [eventId, ...rawPreconditions] = (entry.key || fallback.eventId).split("/");
+  return {
+    location: typeof stored.location === "string" ? stored.location : locationFromTarget,
+    eventId: typeof stored.eventId === "string" ? stored.eventId : eventId || fallback.eventId,
+    music: typeof stored.music === "string" ? stored.music : inferStoryStart(entry).music,
+    viewportX: Number(stored.viewportX ?? inferStoryStart(entry).viewportX ?? fallback.viewportX),
+    viewportY: Number(stored.viewportY ?? inferStoryStart(entry).viewportY ?? fallback.viewportY),
+    actors: Array.isArray(stored.actors) ? stored.actors as StoryEventMeta["actors"] : inferStoryStart(entry).actors,
+    preconditions: Array.isArray(stored.preconditions) ? stored.preconditions as EventPrecondition[] : rawPreconditions.filter(Boolean).map((raw) => ({ id: makeId(), type: "Raw", data: { raw } })),
+    nodes: Array.isArray(stored.nodes) ? stored.nodes as StoryEventNode[] : [{ id: makeId(), kind: "custom", label: "旧脚本", data: { raw: stripStoryStart(typeof entry.value === "string" ? entry.value : "") } }],
+    i18nPrefix: typeof stored.i18nPrefix === "string" ? stored.i18nPrefix : `${project.manifest.UniqueID || "ExampleMod"}.${sanitizeI18nPart(eventId || fallback.eventId)}`
+  };
+}
+
+function storyEntryFromMeta(entry: GameDataEntry, meta: StoryEventMeta): GameDataEntry {
+  return {
+    ...entry,
+    kind: "event",
+    target: `Data/Events/${meta.location || "Town"}`,
+    key: buildStoryEventKey(meta),
+    value: buildStoryEventScript(meta),
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+        storyEvent: meta
+      }
+    }
+  };
+}
+
+function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, id = makeId()): StoryEventNode {
+  const i18nKey = storyNodeI18nKey(meta, { id, kind, label: "", data: {} });
+  const defaults: Record<EventNodeKind, JsonDict> = {
+    pause: { duration: 500 },
+    speak: { actor: "ExampleNPC", i18nKey, text: "你好，@。#$b#这是一个剧情节点。$h" },
+    message: { i18nKey, text: "剧情消息。" },
+    question: { forkId: "fork0", i18nKey, text: "你要怎么回答？" },
+    fork: { requirement: "fork0", eventId: `${meta.eventId || "ExampleEvent"}_Branch` },
+    move: { actor: "farmer", x: 0, y: 1, direction: 2, continue: false },
+    emote: { actor: "ExampleNPC", emote: 16 },
+    globalFade: { speed: "", continue: false },
+    fade: { unfade: false },
+    viewport: { x: -1000, y: -1000 },
+    mail: { command: "mailReceived", mailId: "ExampleMail" },
+    end: { mode: "end", actor: "ExampleNPC", i18nKey, text: "今天的事，之后再聊吧。$h" },
+    custom: { raw: "-- custom command" }
+  };
+  return { id, kind, label: storyNodeLabel(kind), data: defaults[kind] };
+}
+
+function defaultStoryPrecondition(type: string): EventPrecondition {
+  const defaults: Record<string, JsonDict> = {
+    Friendship: { npc: "ExampleNPC", points: 2500 },
+    Time: { min: 600, max: 1100 },
+    Season: { season: "spring" },
+    DayOfWeek: { day: "Tue" },
+    DayOfMonth: { day: 1 },
+    Weather: { weather: "sunny" },
+    SawEvent: { eventId: "100" },
+    LocalMail: { mailId: "ExampleMail" },
+    HostMail: { mailId: "ExampleMail" },
+    DaysPlayed: { days: 1 },
+    IsHost: {},
+    GameStateQuery: { query: "SEASON Spring" },
+    Raw: { raw: "H" }
+  };
+  return { id: makeId(), type, data: defaults[type] || { raw: "" }, negated: false };
+}
+
+function storyNodeLabel(kind: EventNodeKind) {
+  const option = STORY_NODE_OPTIONS.find((item) => item.value === kind);
+  return option ? String(option.label).split(" ")[0] : kind;
+}
+
+function buildStoryEventKey(meta: StoryEventMeta) {
+  const eventId = meta.eventId || "ExampleEvent";
+  const preconditions = meta.preconditions.map(buildStoryPrecondition).filter(Boolean);
+  return `${eventId}/${preconditions.join("/")}`;
+}
+
+function buildStoryPrecondition(condition: EventPrecondition) {
+  const data = condition.data || {};
+  let text = "";
+  switch (condition.type) {
+    case "Friendship":
+      text = `Friendship ${data.npc || "ExampleNPC"} ${data.points || 2500}`;
+      break;
+    case "Time":
+      text = `Time ${data.min || 600} ${data.max || 2600}`;
+      break;
+    case "Season":
+      text = `Season ${data.season || "spring"}`;
+      break;
+    case "DayOfWeek":
+      text = `DayOfWeek ${data.day || "Tue"}`;
+      break;
+    case "DayOfMonth":
+      text = `DayOfMonth ${data.day || 1}`;
+      break;
+    case "Weather":
+      text = `Weather ${data.weather || "sunny"}`;
+      break;
+    case "SawEvent":
+      text = `SawEvent ${data.eventId || "100"}`;
+      break;
+    case "LocalMail":
+      text = `LocalMail ${data.mailId || "ExampleMail"}`;
+      break;
+    case "HostMail":
+      text = `HostMail ${data.mailId || "ExampleMail"}`;
+      break;
+    case "DaysPlayed":
+      text = `DaysPlayed ${data.days || 1}`;
+      break;
+    case "IsHost":
+      text = "IsHost";
+      break;
+    case "GameStateQuery":
+      text = `GameStateQuery ${quoteEventArg(String(data.query || "SEASON Spring"))}`;
+      break;
+    case "Raw":
+      text = String(data.raw || "");
+      break;
+  }
+  if (!text) return "";
+  return condition.negated && !text.startsWith("!") ? `!${text}` : text;
+}
+
+function buildStoryEventScript(meta: StoryEventMeta) {
+  const start = [
+    meta.music || "continue",
+    `${integerInRange(meta.viewportX, -10000, 10000, -1000)} ${integerInRange(meta.viewportY, -10000, 10000, -1000)}`,
+    buildStoryActors(meta.actors)
+  ];
+  const commands = meta.nodes.map((node) => buildStoryCommand(node, meta)).filter(Boolean);
+  return [...start, ...commands].join("/");
+}
+
+function buildStoryActors(actors: StoryEventMeta["actors"]) {
+  const safeActors = actors.length ? actors : [{ actor: "farmer", x: -500, y: -500, direction: 2 }];
+  return safeActors.map((actor) => `${actor.actor || "farmer"} ${integerInRange(actor.x, -10000, 10000, 0)} ${integerInRange(actor.y, -10000, 10000, 0)} ${integerInRange(actor.direction, 0, 3, 2)}`).join(" ");
+}
+
+function buildStoryCommand(node: StoryEventNode, meta: StoryEventMeta) {
+  const data = node.data || {};
+  const textRef = `{{i18n:${stringField(data.i18nKey) || storyNodeI18nKey(meta, node)}}}`;
+  switch (node.kind) {
+    case "pause":
+      return `pause ${integerInRange(data.duration, 0, 600000, 500)}`;
+    case "speak":
+      return `speak ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
+    case "message":
+      return `message ${quoteEventArg(textRef)}`;
+    case "question":
+      return `question ${data.forkId || "fork0"} ${quoteEventArg(textRef)}`;
+    case "fork":
+      return `fork ${data.requirement || "fork0"} ${data.eventId || `${meta.eventId}_Branch`}`;
+    case "move":
+      return `move ${data.actor || "farmer"} ${integerInRange(data.x, -999, 999, 0)} ${integerInRange(data.y, -999, 999, 1)} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
+    case "emote":
+      return `emote ${data.actor || "ExampleNPC"} ${integerInRange(data.emote, 0, 99, 16)}`;
+    case "globalFade":
+      return `globalFade${data.speed ? ` ${data.speed}` : ""}${data.continue ? " true" : ""}`;
+    case "fade":
+      return data.unfade ? "fade unfade" : "fade";
+    case "viewport":
+      return `viewport ${integerInRange(data.x, -10000, 10000, -1000)} ${integerInRange(data.y, -10000, 10000, -1000)}`;
+    case "mail":
+      return `${data.command || "mailReceived"} ${data.mailId || "ExampleMail"}`;
+    case "end":
+      if (data.mode === "warpOut") return "end warpOut";
+      if (data.mode === "newDay") return "end newDay";
+      if (data.mode === "invisible") return `end invisible ${data.actor || "ExampleNPC"}`;
+      if (data.mode === "dialogue") return `end dialogue ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
+      if (data.mode === "dialogueWarpOut") return `end dialogueWarpOut ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
+      return "end";
+    case "custom":
+      return String(data.raw || "").trim();
+    default:
+      return "";
+  }
+}
+
+function storyNodeI18nKey(meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, node: Pick<StoryEventNode, "id" | "kind">) {
+  return `${sanitizeI18nPart(meta.i18nPrefix || meta.eventId || "Event")}.${node.kind}.${sanitizeI18nPart(node.id).slice(0, 8)}`;
+}
+
+function quoteEventArg(value: string) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+
+function inferStoryStart(entry: GameDataEntry): Pick<StoryEventMeta, "music" | "viewportX" | "viewportY" | "actors"> {
+  const parts = typeof entry.value === "string" ? entry.value.split("/") : [];
+  const viewport = (parts[1] || "-1000 -1000").split(/\s+/);
+  return {
+    music: parts[0] || "continue",
+    viewportX: Number(viewport[0] || -1000),
+    viewportY: Number(viewport[1] || -1000),
+    actors: parseStoryActors(parts[2] || "farmer -500 -500 2")
+  };
+}
+
+function parseStoryActors(value: string): StoryEventMeta["actors"] {
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const actors: StoryEventMeta["actors"] = [];
+  for (let index = 0; index + 3 < tokens.length; index += 4) {
+    actors.push({
+      actor: tokens[index],
+      x: Number(tokens[index + 1]) || 0,
+      y: Number(tokens[index + 2]) || 0,
+      direction: Number(tokens[index + 3]) || 2
+    });
+  }
+  return actors.length ? actors : [{ actor: "farmer", x: -500, y: -500, direction: 2 }];
+}
+
+function stripStoryStart(script: string) {
+  return script.split("/").slice(3).join("/") || script;
+}
+
 const COMMON_LOCATION_OPTIONS: RulesetOption[] = [
   "Town", "Farm", "FarmHouse", "BusStop", "Mountain", "Forest", "Beach", "SeedShop", "Saloon", "ScienceHouse", "Hospital", "CommunityCenter", "JojaMart", "Blacksmith", "ManorHouse", "ArchaeologyHouse", "AnimalShop", "Carpenter", "AdventureGuild", "Railroad", "Desert", "IslandSouth", "IslandWest", "IslandNorth", "IslandEast"
 ].map((value) => ({ label: value, value }));
@@ -4053,7 +4690,7 @@ function itemSelectionOptions(project: Project, ruleset: Ruleset, catalog: ItemC
 
   if (mode === "gift") {
     for (const category of rulesetOptions(ruleset, "object_categories")) {
-      add(category.value, `${category.value} - ${category.label}`, "category");
+      add(typeof category.value === "boolean" ? String(category.value) : category.value, `${category.value} - ${category.label}`, "category");
     }
   }
 

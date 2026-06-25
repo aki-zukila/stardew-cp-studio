@@ -28,6 +28,14 @@ def merged_field_schemas() -> dict[str, Any]:
     dialogue = next((target for target in game_data.get("targets", []) if target.get("kind") == "dialogue"), None)
     if dialogue:
         schemas["dialogue_key_builder"] = dialogue.get("dialogue_key_builder", {})
+    events = next((target for target in game_data.get("targets", []) if target.get("kind") == "event"), None)
+    if events:
+        schemas["event_builder"] = {
+            "preconditions": events.get("preconditions", []),
+            "event_commands": events.get("event_commands", []),
+            "script_format": events.get("script_format", {}),
+            "flow_builder": events.get("flow_builder", {}),
+        }
     return schemas
 
 
