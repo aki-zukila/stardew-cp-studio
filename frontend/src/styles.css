@@ -941,15 +941,24 @@ code {
   border: 1px solid #cfc8ba;
   border-radius: 999px;
   color: #264b39;
+  cursor: pointer;
   font-size: 13px;
   font-weight: 700;
   padding: 7px 10px;
+  text-align: left;
 }
 
 .story-flow-chip.fixed {
   background: #315f47;
   border-color: #315f47;
   color: #ffffff;
+  cursor: default;
+}
+
+.story-flow-chip.active {
+  background: #fff7e8;
+  border-color: #9b5f2f;
+  color: #5b4026;
 }
 
 .story-flow-arrow {
@@ -1028,6 +1037,11 @@ code {
 .story-canvas-node.dragging {
   cursor: grabbing;
   outline: 2px solid #315f47;
+}
+
+.story-canvas-node.active {
+  border-color: #9b5f2f;
+  box-shadow: 0 0 0 2px rgba(155, 95, 47, 0.2), 0 3px 8px rgba(32, 36, 33, 0.08);
 }
 
 .story-canvas-node.start {

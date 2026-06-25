@@ -2801,14 +2801,14 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
         事件写入 <code>Data/Events/&lt;LocationName&gt;</code>。当前版本用节点列表表示流程：顺序就是执行顺序，底部会实时生成可导出的事件 Key 与脚本。
       </div>
       <div className="toolbar">
-        <button onClick={addStoryEvent}><Icon name="plus" />新增剧情</button>
+        <button type="button" onClick={addStoryEvent}><Icon name="plus" />新增剧情</button>
       </div>
       <div className="stack">
         {entries.map(({ entry, index }) => (
           <article className="card" key={entry.id}>
             <div className="card-head">
               <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
-              <button onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+              <button type="button" onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
             </div>
             <StoryEventForm
               project={project}
@@ -2829,9 +2829,12 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
 function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
   const meta = storyMetaFromEntry(project, entry);
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
+  const [selectedNodeId, setSelectedNodeId] = useState(meta.nodes[0]?.id || "");
   const scriptPreview = buildStoryEventScript(meta);
   const keyPreview = buildStoryEventKey(meta);
   const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch) }));
+  const selectedNodeIndex = Math.max(0, meta.nodes.findIndex((node) => node.id === selectedNodeId));
+  const selectedNode = meta.nodes[selectedNodeIndex] || meta.nodes[0];
 
   function updateMeta(nextMeta: StoryEventMeta) {
     onChange(storyEntryFromMeta(entry, nextMeta));
@@ -2848,6 +2851,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
   function addNode(kind: EventNodeKind) {
     const node = defaultStoryNode(kind, meta, makeId(), meta.nodes.length);
     updateMeta({ ...meta, nodes: [...meta.nodes, node] });
+    setSelectedNodeId(node.id);
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
 
@@ -2882,6 +2886,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     while (nodes[insertIndex]?.kind === "fork") insertIndex += 1;
     nodes.splice(insertIndex, 0, forkNode);
     updateMeta({ ...meta, nodes, branches: [...meta.branches, branch] });
+    setSelectedNodeId(forkNode.id);
     if (onI18nChange) {
       onI18nChange({
         ...i18n,
@@ -2897,6 +2902,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     const nodes = [...meta.nodes];
     [nodes[index], nodes[target]] = [nodes[target], nodes[index]];
     updateMeta({ ...meta, nodes });
+    setSelectedNodeId(nodes[target].id);
   }
 
   return (
@@ -2921,10 +2927,10 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               <Field label="X" value={stringField(actor.x)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, x: integerInRange(value, -10000, 10000, actor.x) }) })} />
               <Field label="Y" value={stringField(actor.y)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, y: integerInRange(value, -10000, 10000, actor.y) }) })} />
               <ComboField label="方向" value={actor.direction} options={STORY_DIRECTION_OPTIONS} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, direction: Number(value) }) })} />
-              <button className="secondary" onClick={() => updateMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+              <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
             </div>
           ))}
-          <button className="secondary" onClick={() => updateMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
+          <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
         </div>
       </details>
 
@@ -2940,7 +2946,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               onRemove={() => updateMeta({ ...meta, preconditions: meta.preconditions.filter((item) => item.id !== condition.id) })}
             />
           ))}
-          <button className="secondary" onClick={() => updateMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
+          <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
         </div>
       </details>
 
@@ -2950,14 +2956,14 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
           <select value={nodeKind} onChange={(event) => setNodeKind(event.target.value as EventNodeKind)}>
             {STORY_NODE_OPTIONS.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
           </select>
-          <button onClick={() => addNode(nodeKind)}><Icon name="plus" />添加节点</button>
+          <button type="button" onClick={() => addNode(nodeKind)}><Icon name="plus" />添加节点</button>
         </div>
         <div className="story-flow-map" aria-label="剧情流程图预览">
           <div className="story-flow-chip fixed">音乐 / 视角 / 初始角色</div>
           {meta.nodes.map((node, index) => (
             <React.Fragment key={`map-${node.id}`}>
               <span className="story-flow-arrow">→</span>
-              <div className="story-flow-chip">{index + 1}. {node.label || storyNodeLabel(node.kind)}</div>
+              <button type="button" className={`story-flow-chip ${selectedNode?.id === node.id ? "active" : ""}`} onClick={() => setSelectedNodeId(node.id)}>{index + 1}. {node.label || storyNodeLabel(node.kind)}</button>
             </React.Fragment>
           ))}
         </div>
@@ -2966,29 +2972,35 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
           startLabel="音乐 / 视角 / 初始角色"
           nodes={meta.nodes}
           branches={meta.branches}
-          onNodePositionChange={(nodeId, position) => updateMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
+          selectedNodeId={selectedNode?.id || ""}
+          onNodeSelect={setSelectedNodeId}
+          onNodePositionCommit={(nodeId, position) => updateMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
         />
         <div className="story-flow">
-          {meta.nodes.map((node, index) => (
+          {selectedNode ? (
             <StoryNodeEditor
-              key={node.id}
-              node={node}
-              index={index}
+              key={selectedNode.id}
+              node={selectedNode}
+              index={selectedNodeIndex}
               meta={meta}
               branches={meta.branches}
               i18n={i18n}
-              onChange={(next, textPatch) => updateNode(index, next, textPatch)}
+              onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
               onCreateBranch={(currentNode) => {
                 const branch = defaultStoryBranch(meta);
                 const nextNode = { ...currentNode, data: { ...currentNode.data, eventId: branch.key } };
-                updateMeta({ ...meta, nodes: replaceAt(meta.nodes, index, nextNode), branches: [...meta.branches, branch] });
+                updateMeta({ ...meta, nodes: replaceAt(meta.nodes, selectedNodeIndex, nextNode), branches: [...meta.branches, branch] });
                 if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
               }}
-              onAddQuestionAnswer={(currentNode) => addQuestionAnswer(index, currentNode)}
-              onRemove={() => updateMeta({ ...meta, nodes: meta.nodes.filter((item) => item.id !== node.id) })}
+              onAddQuestionAnswer={(currentNode) => addQuestionAnswer(selectedNodeIndex, currentNode)}
+              onRemove={() => {
+                const remaining = meta.nodes.filter((item) => item.id !== selectedNode.id);
+                updateMeta({ ...meta, nodes: remaining });
+                setSelectedNodeId(remaining[Math.max(0, selectedNodeIndex - 1)]?.id || "");
+              }}
               onMove={moveNode}
             />
-          ))}
+          ) : <div className="empty">还没有流程节点。请选择类型后点击“添加节点”。</div>}
         </div>
       </details>
 
@@ -2996,7 +3008,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
         <summary>分支 Entries <span>{meta.branches.length} 个分支</span></summary>
         <div className="notice compact-note">用于 question/fork 后跳转的脚本，例如 SVE 示例里的 <code>746153081_PurchasedAuroraVineyard</code>。分支脚本不会重复音乐、视角、初始角色三段。</div>
         <div className="toolbar">
-          <button onClick={addBranch}><Icon name="plus" />添加分支 Entry</button>
+          <button type="button" onClick={addBranch}><Icon name="plus" />添加分支 Entry</button>
         </div>
         <div className="story-list">
           {meta.branches.map((branch, branchIndex) => (
@@ -3067,13 +3079,16 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
       {condition.type === "IsHost" && <div className="notice compact-note">无参数。多人联机中要求当前玩家是主机。</div>}
       {condition.type === "GameStateQuery" && <Field label="Game State Query" value={stringField(data.query)} onChange={(query) => onChange({ ...condition, data: { ...data, query } })} />}
       {condition.type === "Raw" && <Field label="原始条件片段" value={stringField(data.raw)} onChange={(raw) => onChange({ ...condition, data: { ...data, raw } })} />}
-      <button className="secondary" onClick={onRemove}>删除</button>
+      <button type="button" className="secondary" onClick={onRemove}>删除</button>
     </div>
   );
 }
 
 function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (branch: StoryEventBranch) => void; onRemove: () => void }) {
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
+  const [selectedNodeId, setSelectedNodeId] = useState(branch.nodes[0]?.id || "");
+  const selectedNodeIndex = Math.max(0, branch.nodes.findIndex((node) => node.id === selectedNodeId));
+  const selectedNode = branch.nodes[selectedNodeIndex] || branch.nodes[0];
 
   function updateNode(nodeIndex: number, node: StoryEventNode, textPatch?: { key: string; text: string }) {
     onChange({ ...branch, nodes: replaceAt(branch.nodes, nodeIndex, node) });
@@ -3083,6 +3098,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
   function addNode(kind: EventNodeKind) {
     const node = defaultStoryNode(kind, { eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }, makeId(), branch.nodes.length);
     onChange({ ...branch, nodes: [...branch.nodes, node] });
+    setSelectedNodeId(node.id);
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
 
@@ -3092,6 +3108,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
     const nodes = [...branch.nodes];
     [nodes[index], nodes[target]] = [nodes[target], nodes[index]];
     onChange({ ...branch, nodes });
+    setSelectedNodeId(nodes[target].id);
   }
 
   return (
@@ -3099,7 +3116,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
       <div className="story-node-head">
         <strong>{branch.label || "分支 Entry"}</strong>
         <code>{branch.key}</code>
-        <button className="secondary" onClick={onRemove}>删除分支</button>
+        <button type="button" className="secondary" onClick={onRemove}>删除分支</button>
       </div>
       <div className="grid two">
         <Field label="分支标题" value={branch.label} onChange={(label) => onChange({ ...branch, label })} />
@@ -3109,14 +3126,14 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
         <select value={nodeKind} onChange={(event) => setNodeKind(event.target.value as EventNodeKind)}>
           {STORY_NODE_OPTIONS.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
         </select>
-        <button onClick={() => addNode(nodeKind)}><Icon name="plus" />添加分支节点</button>
+        <button type="button" onClick={() => addNode(nodeKind)}><Icon name="plus" />添加分支节点</button>
       </div>
       <div className="story-flow-map" aria-label="分支流程图预览">
         <div className="story-flow-chip fixed">{branch.key}</div>
         {branch.nodes.map((node, index) => (
           <React.Fragment key={`branch-map-${node.id}`}>
             <span className="story-flow-arrow">→</span>
-            <div className="story-flow-chip">{index + 1}. {node.label || storyNodeLabel(node.kind)}</div>
+            <button type="button" className={`story-flow-chip ${selectedNode?.id === node.id ? "active" : ""}`} onClick={() => setSelectedNodeId(node.id)}>{index + 1}. {node.label || storyNodeLabel(node.kind)}</button>
           </React.Fragment>
         ))}
       </div>
@@ -3125,35 +3142,42 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
         startLabel={branch.key}
         nodes={branch.nodes}
         branches={meta.branches}
-        onNodePositionChange={(nodeId, position) => onChange({ ...branch, nodes: updateStoryNodePosition(branch.nodes, nodeId, position) })}
+        selectedNodeId={selectedNode?.id || ""}
+        onNodeSelect={setSelectedNodeId}
+        onNodePositionCommit={(nodeId, position) => onChange({ ...branch, nodes: updateStoryNodePosition(branch.nodes, nodeId, position) })}
       />
       <div className="story-flow">
-        {branch.nodes.map((node, index) => (
+        {selectedNode ? (
           <StoryNodeEditor
-            key={node.id}
-            node={node}
-            index={index}
+            key={selectedNode.id}
+            node={selectedNode}
+            index={selectedNodeIndex}
             meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
             branches={meta.branches}
             i18n={i18n}
-            onChange={(next, textPatch) => updateNode(index, next, textPatch)}
-            onRemove={() => onChange({ ...branch, nodes: branch.nodes.filter((item) => item.id !== node.id) })}
+            onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
+            onRemove={() => {
+              const remaining = branch.nodes.filter((item) => item.id !== selectedNode.id);
+              onChange({ ...branch, nodes: remaining });
+              setSelectedNodeId(remaining[Math.max(0, selectedNodeIndex - 1)]?.id || "");
+            }}
             onMove={moveNode}
           />
-        ))}
+        ) : <div className="empty">这个分支还没有节点。</div>}
       </div>
     </div>
   );
 }
 
-function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositionChange }: { title: string; startLabel: string; nodes: StoryEventNode[]; branches?: StoryEventBranch[]; onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void }) {
-  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+function StoryFlowCanvas({ title, startLabel, nodes, branches = [], selectedNodeId = "", onNodeSelect, onNodePositionCommit }: { title: string; startLabel: string; nodes: StoryEventNode[]; branches?: StoryEventBranch[]; selectedNodeId?: string; onNodeSelect?: (nodeId: string) => void; onNodePositionCommit: (nodeId: string, position: { x: number; y: number }) => void }) {
+  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number; position: { x: number; y: number } } | null>(null);
+  const [draftPositions, setDraftPositions] = useState<Record<string, { x: number; y: number }>>({});
   const canvasWidth = Math.max(760, 210 + nodes.length * 170);
   const canvasHeight = Math.max(260, 160 + Math.ceil(nodes.length / 5) * 70);
   const start = { x: 24, y: 92 };
 
   function nodePosition(node: StoryEventNode, index: number) {
-    return node.position || { x: 210 + index * 150, y: 92 + (index % 2) * 70 };
+    return draftPositions[node.id] || node.position || { x: 210 + index * 150, y: 92 + (index % 2) * 70 };
   }
 
   function branchPosition(branchKey: string) {
@@ -3162,7 +3186,10 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositi
   }
 
   function pointerPosition(event: React.PointerEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
+    const canvas = event.currentTarget.classList.contains("story-canvas")
+      ? event.currentTarget
+      : event.currentTarget.closest(".story-canvas");
+    const rect = (canvas || event.currentTarget).getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
@@ -3178,12 +3205,19 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositi
         onPointerMove={(event) => {
           if (!dragging) return;
           const point = pointerPosition(event);
-          onNodePositionChange(dragging.id, {
+          const position = {
             x: Math.max(140, Math.min(canvasWidth - 150, Math.round(point.x - dragging.offsetX))),
             y: Math.max(18, Math.min(canvasHeight - 70, Math.round(point.y - dragging.offsetY)))
-          });
+          };
+          setDragging({ ...dragging, position });
+          setDraftPositions((positions) => ({ ...positions, [dragging.id]: position }));
         }}
-        onPointerUp={() => setDragging(null)}
+        onPointerUp={() => {
+          if (dragging) {
+            onNodePositionCommit(dragging.id, dragging.position);
+          }
+          setDragging(null);
+        }}
         onPointerCancel={() => setDragging(null)}
       >
         <svg className="story-canvas-lines" width={canvasWidth} height={canvasHeight} aria-hidden="true">
@@ -3211,14 +3245,16 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositi
           const position = nodePosition(node, index);
           return (
             <div
-              className={`story-canvas-node ${dragging?.id === node.id ? "dragging" : ""}`}
+              className={`story-canvas-node ${selectedNodeId === node.id ? "active" : ""} ${dragging?.id === node.id ? "dragging" : ""}`}
               key={node.id}
               style={{ left: position.x, top: position.y }}
               onPointerDown={(event) => {
                 const point = pointerPosition(event);
-                setDragging({ id: node.id, offsetX: point.x - position.x, offsetY: point.y - position.y });
+                onNodeSelect?.(node.id);
+                setDragging({ id: node.id, offsetX: point.x - position.x, offsetY: point.y - position.y, position });
                 event.currentTarget.setPointerCapture(event.pointerId);
               }}
+              onClick={() => onNodeSelect?.(node.id)}
             >
               <span>{index + 1}. {node.label || storyNodeLabel(node.kind)}</span>
               <code>{node.kind}</code>
@@ -3248,9 +3284,9 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
         <strong>{index + 1}. {node.label || storyNodeLabel(node.kind)}</strong>
         <code>{buildStoryCommand(node, meta)}</code>
         <div className="button-row">
-          <button className="secondary" onClick={() => onMove(index, -1)}>上移</button>
-          <button className="secondary" onClick={() => onMove(index, 1)}>下移</button>
-          <button className="secondary" onClick={onRemove}>删除</button>
+          <button type="button" className="secondary" onClick={() => onMove(index, -1)}>上移</button>
+          <button type="button" className="secondary" onClick={() => onMove(index, 1)}>下移</button>
+          <button type="button" className="secondary" onClick={onRemove}>删除</button>
         </div>
       </div>
       <div className="grid two">
@@ -3312,13 +3348,13 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
                     const answers = replaceAt(questionAnswers, answerIndex, { ...answer, branchKey: String(branchKey) });
                     patchQuestion(storyQuestionPrompt(textValue), answers);
                   }} />
-                  <button className="secondary" onClick={() => {
+                  <button type="button" className="secondary" onClick={() => {
                     const answers = questionAnswers.filter((_, itemIndex) => itemIndex !== answerIndex);
                     patchQuestion(storyQuestionPrompt(textValue), answers);
                   }}>删除选项</button>
                 </div>
               ))}
-              {onAddQuestionAnswer && <button className="secondary" onClick={() => onAddQuestionAnswer(node)}>添加回答并创建分支</button>}
+              {onAddQuestionAnswer && <button type="button" className="secondary" onClick={() => onAddQuestionAnswer(node)}>添加回答并创建分支</button>}
               <div className="notice compact-note">最终问题文本会按 Wiki 的 <code>question forkN "问题#回答0#回答1"</code> 形式写入；每个回答建议对应一个后续 fork 节点和分支 Entry。</div>
             </div>
           </>
@@ -3334,7 +3370,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
           <>
             <Field label="条件/回答 ID" value={stringField(data.requirement)} onChange={(requirement) => patchData({ requirement })} />
             <ComboField label="跳转分支 Entry" value={data.eventId || ""} options={storyBranchOptions(branches)} onChange={(eventId) => patchData({ eventId })} />
-            {onCreateBranch && <button className="secondary" onClick={() => onCreateBranch(node)}>创建并关联分支</button>}
+            {onCreateBranch && <button type="button" className="secondary" onClick={() => onCreateBranch(node)}>创建并关联分支</button>}
           </>
         )}
         {node.kind === "questionAnswered" && (
