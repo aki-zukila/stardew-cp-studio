@@ -164,19 +164,33 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
         return f"pause {_int_value(data.get('duration'), 500)}"
     if kind == "speak":
         return f"speak {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
+    if kind == "splitSpeak":
+        return f"splitSpeak {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
     if kind == "textAboveHead":
         return f"textAboveHead {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
     if kind == "message":
         return f"message {_quote_event_arg(text_ref)}"
     if kind == "question":
         return f"question {data.get('forkId') or 'fork0'} {_quote_event_arg(text_ref)}"
+    if kind == "quickQuestion":
+        return f"quickQuestion {_quote_event_arg(text_ref)}"
     if kind == "fork":
         return f"fork {data.get('requirement') or 'fork0'} {data.get('eventId') or f'{event_id}_Branch'}"
+    if kind == "questionAnswered":
+        suffix = " false" if data.get("answered") is False else ""
+        return f"questionAnswered {data.get('answerId') or 'event_answer'}{suffix}"
     if kind == "move":
         suffix = " true" if data.get("continue") else ""
         return f"move {data.get('actor') or 'farmer'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 1)} {_int_value(data.get('direction'), 2)}{suffix}"
+    if kind == "advancedMove":
+        return f"advancedMove {data.get('actor') or 'ExampleNPC'} {_bool_text(data.get('loop'), False)} {data.get('path') or '0 3 2 0'}"
+    if kind == "positionOffset":
+        suffix = " true" if data.get("continue") else ""
+        return f"positionOffset {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 0)}{suffix}"
     if kind == "warp":
         return f"warp {data.get('actor') or 'farmer'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 0)}"
+    if kind == "warpFarmers":
+        return f"warpFarmers {data.get('placements') or '64 15 2'} {_int_value(data.get('defaultOffset'), 0)} {_int_value(data.get('defaultX'), 64)} {_int_value(data.get('defaultY'), 15)} {_int_value(data.get('direction'), 2)}"
     if kind == "faceDirection":
         suffix = " true" if data.get("continue") else ""
         return f"faceDirection {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('direction'), 2)}{suffix}"
@@ -185,9 +199,14 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
     if kind == "animate":
         return f"animate {data.get('actor') or 'ExampleNPC'} {_bool_text(data.get('flip'), False)} {_bool_text(data.get('loop'), True)} {_int_value(data.get('frameDuration'), 120)} {data.get('frames') or '0 1 2'}"
     if kind == "showFrame":
-        return f"showFrame {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('frame'), 0)}"
+        suffix = " true" if data.get("flip") else ""
+        return f"showFrame {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('frame'), 0)}{suffix}"
     if kind == "stopAnimation":
         return f"stopAnimation {data.get('actor') or 'ExampleNPC'}"
+    if kind == "shake":
+        return f"shake {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('duration'), 1000)}"
+    if kind == "jump":
+        return f"jump {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('intensity'), 8)}"
     if kind == "playSound":
         return f"playSound {data.get('sound') or 'doorClose'}"
     if kind == "stopSound":
@@ -204,16 +223,68 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
         if data.get("continue"):
             parts.append("true")
         return " ".join(parts)
+    if kind == "globalFadeToClear":
+        parts = ["globalFadeToClear"]
+        if data.get("speed"):
+            parts.append(str(data.get("speed")))
+        if data.get("continue"):
+            parts.append("true")
+        return " ".join(parts)
     if kind == "fade":
         return "fade unfade" if data.get("unfade") else "fade"
     if kind == "viewport":
         return f"viewport {_int_value(data.get('x'), -1000)} {_int_value(data.get('y'), -1000)}"
     if kind == "mail":
         return f"{data.get('command') or 'mailReceived'} {data.get('mailId') or 'ExampleMail'}"
+    if kind == "eventSeen":
+        suffix = " false" if data.get("seen") is False else ""
+        return f"eventSeen {data.get('eventId') or event_id or 'ExampleEvent'}{suffix}"
     if kind == "addItem":
         return f"addItem {data.get('itemId') or '(O)388'} {_int_value(data.get('count'), 1)} {_int_value(data.get('quality'), 0)}"
+    if kind == "removeItem":
+        return f"removeItem {data.get('itemId') or '(O)388'} {_int_value(data.get('count'), 1)}"
+    if kind == "addObject":
+        suffix = f" {data.get('layerDepth')}" if data.get("layerDepth") else ""
+        return f"addObject {_int_value(data.get('x'), 64)} {_int_value(data.get('y'), 15)} {data.get('itemId') or '(O)388'}{suffix}"
+    if kind == "removeObject":
+        return f"removeObject {_int_value(data.get('x'), 64)} {_int_value(data.get('y'), 15)}"
+    if kind == "removeSprite":
+        return f"removeSprite {_int_value(data.get('x'), 64)} {_int_value(data.get('y'), 15)}"
+    if kind == "addTemporaryActor":
+        parts = [
+            "addTemporaryActor",
+            _quote_event_arg(str(data.get("spriteAssetName") or "Ghost")),
+            str(_int_value(data.get("spriteWidth"), 16)),
+            str(_int_value(data.get("spriteHeight"), 32)),
+            str(_int_value(data.get("x"), 64)),
+            str(_int_value(data.get("y"), 15)),
+            str(_int_value(data.get("direction"), 2)),
+        ]
+        if data.get("breather") not in (None, ""):
+            parts.append(str(data.get("breather")))
+        if data.get("actorType"):
+            parts.append(str(data.get("actorType")))
+        if data.get("overrideName"):
+            parts.append(_quote_event_arg(str(data.get("overrideName"))))
+        return " ".join(parts)
+    if kind == "changeLocation":
+        return f"changeLocation {data.get('location') or 'Farm'}"
+    if kind == "changeMapTile":
+        return f"changeMapTile {data.get('layer') or 'Buildings'} {_int_value(data.get('x'), 64)} {_int_value(data.get('y'), 15)} {_int_value(data.get('tileIndex'), 0)}"
+    if kind == "changePortrait":
+        suffix = f" {data.get('portrait')}" if data.get("portrait") else ""
+        return f"changePortrait {data.get('npc') or 'ExampleNPC'}{suffix}"
+    if kind == "changeSprite":
+        suffix = f" {data.get('sprite')}" if data.get("sprite") else ""
+        return f"changeSprite {data.get('actor') or 'ExampleNPC'}{suffix}"
+    if kind == "farmerEat":
+        return f"farmerEat {data.get('objectId') or '200'}"
+    if kind == "farmerAnimation":
+        return f"farmerAnimation {data.get('animation') or 'drink'}"
     if kind == "friendship":
         return f"friendship {data.get('npc') or 'ExampleNPC'} {_int_value(data.get('amount'), 250)}"
+    if kind == "money":
+        return f"money {_int_value(data.get('amount'), 100)}"
     if kind == "end":
         mode = data.get("mode") or "end"
         if mode == "warpOut":

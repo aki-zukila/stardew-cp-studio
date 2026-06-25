@@ -1565,44 +1565,282 @@
           "example": "speak Abigail \"???@?\""
         },
         {
+          "command": "splitSpeak",
+          "args": [
+            "actor",
+            "text"
+          ],
+          "example": "splitSpeak Abigail \"Line one#$b#Line two\""
+        },
+        {
+          "command": "textAboveHead",
+          "args": [
+            "actor",
+            "text"
+          ],
+          "example": "textAboveHead MorrisTod \"{{i18n:Event.Bubble}}\"",
+          "note": "@ is not replaced; use {{PlayerName}} for the farmer name."
+        },
+        {
+          "command": "message",
+          "args": [
+            "text"
+          ],
+          "example": "message \"{{i18n:Event.Message}}\""
+        },
+        {
+          "command": "question",
+          "args": [
+            "fork id",
+            "question text"
+          ],
+          "example": "question fork0 \"Question#Answer 0#Answer 1\""
+        },
+        {
+          "command": "quickQuestion",
+          "args": [
+            "question and branch scripts"
+          ],
+          "example": "quickQuestion \"Question#Yes#No(break)message yes(break)message no\""
+        },
+        {
+          "command": "fork",
+          "args": [
+            "answer id",
+            "event ID"
+          ],
+          "example": "fork fork0 MyMod.Event_Branch"
+        },
+        {
+          "command": "questionAnswered",
+          "args": [
+            "answer ID",
+            "answered"
+          ],
+          "example": "questionAnswered event_answer false"
+        },
+        {
           "command": "move",
+          "args": [
+            "actor",
+            "x",
+            "y",
+            "facing",
+            "continue"
+          ],
+          "example": "move farmer 0 -1 0 true"
+        },
+        {
+          "command": "advancedMove",
+          "args": [
+            "actor",
+            "loop",
+            "path parts"
+          ],
+          "example": "advancedMove Robin false 0 3 2 0 0 2 -2 0 0 -2 2 0"
+        },
+        {
+          "command": "positionOffset",
+          "args": [
+            "actor",
+            "x",
+            "y",
+            "continue"
+          ],
+          "example": "positionOffset Abigail 0 -1 true"
+        },
+        {
+          "command": "warp",
           "args": [
             "character",
             "x",
-            "y",
-            "facing"
+            "y"
           ],
-          "example": "move Abigail 0 2 2"
+          "example": "warp farmer 64 15"
+        },
+        {
+          "command": "warpFarmers",
+          "args": [
+            "placements",
+            "default offset",
+            "default x",
+            "default y",
+            "direction"
+          ],
+          "example": "warpFarmers 64 15 2 0 64 15 2"
         },
         {
           "command": "faceDirection",
           "args": [
-            "character",
-            "direction"
+            "actor",
+            "direction",
+            "continue"
           ],
-          "example": "faceDirection Abigail 2"
-        },
-        {
-          "command": "playSound",
-          "args": [
-            "cue"
-          ],
-          "example": "playSound doorClose"
+          "example": "faceDirection farmer 2 true"
         },
         {
           "command": "emote",
           "args": [
-            "character",
-            "emoteId"
+            "actor",
+            "emote ID"
           ],
           "example": "emote Abigail 20"
+        },
+        {
+          "command": "animate",
+          "args": [
+            "actor",
+            "flip",
+            "loop",
+            "frame duration",
+            "frames"
+          ],
+          "example": "animate MorrisTod false true 120 0 1 2"
+        },
+        {
+          "command": "showFrame",
+          "args": [
+            "actor",
+            "frame",
+            "flip"
+          ],
+          "example": "showFrame MorrisTod 4 true"
+        },
+        {
+          "command": "stopAnimation",
+          "args": [
+            "actor"
+          ],
+          "example": "stopAnimation MorrisTod"
+        },
+        {
+          "command": "shake",
+          "args": [
+            "actor",
+            "duration"
+          ],
+          "example": "shake Pam 2000"
+        },
+        {
+          "command": "jump",
+          "args": [
+            "actor",
+            "intensity"
+          ],
+          "example": "jump Abigail 8"
+        },
+        {
+          "command": "playSound",
+          "args": [
+            "sound"
+          ],
+          "example": "playSound doorClose"
+        },
+        {
+          "command": "stopSound",
+          "args": [
+            "sound ID",
+            "immediate"
+          ],
+          "example": "stopSound doorClose false"
+        },
+        {
+          "command": "playMusic",
+          "args": [
+            "track"
+          ],
+          "example": "playMusic event1"
+        },
+        {
+          "command": "stopMusic",
+          "args": [],
+          "example": "stopMusic"
+        },
+        {
+          "command": "globalFade",
+          "args": [
+            "speed",
+            "continue"
+          ],
+          "example": "globalFade 0.02 true"
+        },
+        {
+          "command": "globalFadeToClear",
+          "args": [
+            "speed",
+            "continue"
+          ],
+          "example": "globalFadeToClear 0.02 true"
+        },
+        {
+          "command": "fade",
+          "args": [
+            "unfade"
+          ],
+          "example": "fade unfade"
+        },
+        {
+          "command": "viewport",
+          "args": [
+            "x",
+            "y"
+          ],
+          "example": "viewport 64 15"
+        },
+        {
+          "command": "mail",
+          "args": [
+            "letter ID"
+          ],
+          "example": "mail ExampleMail"
+        },
+        {
+          "command": "mailReceived",
+          "args": [
+            "letter ID",
+            "add"
+          ],
+          "example": "mailReceived ExampleMail"
+        },
+        {
+          "command": "mailToday",
+          "args": [
+            "letter ID"
+          ],
+          "example": "mailToday ExampleMail"
+        },
+        {
+          "command": "eventSeen",
+          "args": [
+            "event ID",
+            "seen"
+          ],
+          "example": "eventSeen 999999 false"
+        },
+        {
+          "command": "addItem",
+          "args": [
+            "item ID",
+            "count",
+            "quality"
+          ],
+          "example": "addItem (O)388 2 0"
+        },
+        {
+          "command": "removeItem",
+          "args": [
+            "object ID",
+            "count"
+          ],
+          "example": "removeItem (O)388 1"
         },
         {
           "command": "addObject",
           "args": [
             "x",
             "y",
-            "itemId"
+            "item ID",
+            "layer depth"
           ],
           "example": "addObject 64 15 (O)388"
         },
@@ -1615,63 +1853,94 @@
           "example": "removeObject 64 15"
         },
         {
-          "command": "warp",
+          "command": "removeSprite",
           "args": [
-            "character",
-            "map",
             "x",
             "y"
           ],
-          "example": "warp farmer Town 64 15"
+          "example": "removeSprite 64 15"
         },
         {
-          "command": "viewport",
+          "command": "addTemporaryActor",
           "args": [
-            "x",
-            "y"
+            "spriteAssetName",
+            "sprite width",
+            "sprite height",
+            "tile x",
+            "tile y",
+            "direction",
+            "breather",
+            "type",
+            "override name"
           ],
-          "example": "viewport 64 15"
+          "example": "addTemporaryActor \"White Chicken\" 16 32 64 15 2 true Animal Chicken"
+        },
+        {
+          "command": "changeLocation",
+          "args": [
+            "location"
+          ],
+          "example": "changeLocation Town"
+        },
+        {
+          "command": "changeMapTile",
+          "args": [
+            "layer",
+            "x",
+            "y",
+            "tile index"
+          ],
+          "example": "changeMapTile Buildings 64 15 123"
+        },
+        {
+          "command": "changePortrait",
+          "args": [
+            "npc",
+            "portrait"
+          ],
+          "example": "changePortrait Shane JojaMart"
+        },
+        {
+          "command": "changeSprite",
+          "args": [
+            "actor",
+            "sprite"
+          ],
+          "example": "changeSprite Shane JojaMart"
+        },
+        {
+          "command": "farmerEat",
+          "args": [
+            "object ID"
+          ],
+          "example": "farmerEat 200"
+        },
+        {
+          "command": "farmerAnimation",
+          "args": [
+            "animation"
+          ],
+          "example": "farmerAnimation drink"
+        },
+        {
+          "command": "friendship",
+          "args": [
+            "npc",
+            "amount"
+          ],
+          "example": "friendship MorrisTod 250"
+        },
+        {
+          "command": "money",
+          "args": [
+            "amount"
+          ],
+          "example": "money -100"
         },
         {
           "command": "end",
           "args": [],
           "example": "end"
-        },
-        {
-          "command": "textAboveHead",
-          "example": "textAboveHead MorrisTod \"{{i18n:Event.Bubble}}\""
-        },
-        {
-          "command": "animate",
-          "example": "animate MorrisTod false true 120 0 1 2"
-        },
-        {
-          "command": "showFrame",
-          "example": "showFrame MorrisTod 4"
-        },
-        {
-          "command": "stopAnimation",
-          "example": "stopAnimation MorrisTod"
-        },
-        {
-          "command": "stopSound",
-          "example": "stopSound doorClose false"
-        },
-        {
-          "command": "playMusic",
-          "example": "playMusic event1"
-        },
-        {
-          "command": "stopMusic",
-          "example": "stopMusic"
-        },
-        {
-          "command": "addItem",
-          "example": "addItem (O)388 2 0"
-        },
-        {
-          "command": "friendship",
-          "example": "friendship MorrisTod 250"
         }
       ],
       "key_patterns": [

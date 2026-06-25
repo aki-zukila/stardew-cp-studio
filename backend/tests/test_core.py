@@ -309,8 +309,22 @@ class CoreTests(unittest.TestCase):
                                         {"kind": "animate", "data": {"actor": "MorrisTod", "flip": False, "loop": True, "frameDuration": 120, "frames": "0 1 2"}},
                                         {"kind": "showFrame", "data": {"actor": "MorrisTod", "frame": 4}},
                                         {"kind": "stopAnimation", "data": {"actor": "MorrisTod"}},
+                                        {"kind": "advancedMove", "data": {"actor": "MorrisTod", "loop": False, "path": "0 3 2 0"}},
+                                        {"kind": "positionOffset", "data": {"actor": "MorrisTod", "x": 1, "y": -1, "continue": True}},
+                                        {"kind": "shake", "data": {"actor": "MorrisTod", "duration": 1200}},
+                                        {"kind": "jump", "data": {"actor": "MorrisTod", "intensity": 8}},
+                                        {"kind": "eventSeen", "data": {"eventId": "Author.TestPack.Event1", "seen": False}},
                                         {"kind": "addItem", "data": {"itemId": "(O)388", "count": 2, "quality": 0}},
+                                        {"kind": "removeItem", "data": {"itemId": "(O)388", "count": 1}},
+                                        {"kind": "addObject", "data": {"x": 64, "y": 15, "itemId": "(O)388"}},
+                                        {"kind": "removeObject", "data": {"x": 64, "y": 15}},
+                                        {"kind": "removeSprite", "data": {"x": 64, "y": 15}},
+                                        {"kind": "changeLocation", "data": {"location": "Town"}},
+                                        {"kind": "changeMapTile", "data": {"layer": "Buildings", "x": 64, "y": 15, "tileIndex": 123}},
+                                        {"kind": "changePortrait", "data": {"npc": "MorrisTod", "portrait": "Happy"}},
+                                        {"kind": "changeSprite", "data": {"actor": "MorrisTod", "sprite": "Winter"}},
                                         {"kind": "friendship", "data": {"npc": "MorrisTod", "amount": 250}},
+                                        {"kind": "money", "data": {"amount": -100}},
                                         {"kind": "end", "data": {"mode": "dialogue", "actor": "MorrisTod", "i18nKey": "Author.TestPack.Event1.branch.end"}},
                                     ],
                                 }
@@ -327,7 +341,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(set(change["Entries"]), {"Author.TestPack.Event1/IsHost", "Author.TestPack.Event1_Branch1"})
             self.assertEqual(
                 change["Entries"]["Author.TestPack.Event1_Branch1"],
-                'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/textAboveHead MorrisTod "{{i18n:Author.TestPack.Event1.branch.bubble}}"/faceDirection farmer 1 true/warp farmer 95 49/playSound doorClose/animate MorrisTod false true 120 0 1 2/showFrame MorrisTod 4/stopAnimation MorrisTod/addItem (O)388 2 0/friendship MorrisTod 250/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
+                'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/textAboveHead MorrisTod "{{i18n:Author.TestPack.Event1.branch.bubble}}"/faceDirection farmer 1 true/warp farmer 95 49/playSound doorClose/animate MorrisTod false true 120 0 1 2/showFrame MorrisTod 4/stopAnimation MorrisTod/advancedMove MorrisTod false 0 3 2 0/positionOffset MorrisTod 1 -1 true/shake MorrisTod 1200/jump MorrisTod 8/eventSeen Author.TestPack.Event1 false/addItem (O)388 2 0/removeItem (O)388 1/addObject 64 15 (O)388/removeObject 64 15/removeSprite 64 15/changeLocation Town/changeMapTile Buildings 64 15 123/changePortrait MorrisTod Happy/changeSprite MorrisTod Winter/friendship MorrisTod 250/money -100/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
             )
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 

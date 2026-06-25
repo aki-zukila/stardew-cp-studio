@@ -70,7 +70,7 @@ type WhenConditionSchema = { key: string; label: string; valueType: string; opti
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
-type EventNodeKind = "pause" | "speak" | "textAboveHead" | "message" | "question" | "fork" | "move" | "warp" | "faceDirection" | "emote" | "animate" | "showFrame" | "stopAnimation" | "playSound" | "stopSound" | "playMusic" | "stopMusic" | "globalFade" | "fade" | "viewport" | "mail" | "addItem" | "friendship" | "end" | "custom";
+type EventNodeKind = "pause" | "speak" | "splitSpeak" | "textAboveHead" | "message" | "question" | "quickQuestion" | "fork" | "questionAnswered" | "move" | "advancedMove" | "positionOffset" | "warp" | "warpFarmers" | "faceDirection" | "emote" | "animate" | "showFrame" | "stopAnimation" | "playSound" | "stopSound" | "playMusic" | "stopMusic" | "globalFade" | "globalFadeToClear" | "fade" | "viewport" | "mail" | "eventSeen" | "addItem" | "removeItem" | "addObject" | "removeObject" | "removeSprite" | "addTemporaryActor" | "changeLocation" | "changeMapTile" | "changePortrait" | "changeSprite" | "farmerEat" | "farmerAnimation" | "friendship" | "money" | "shake" | "jump" | "end" | "custom";
 type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict; position?: { x: number; y: number } };
 type StoryEventMeta = {
   location: string;
@@ -3229,6 +3229,13 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <Field label="台词文本" value={textValue} textarea onChange={patchText} />
           </>
         )}
+        {node.kind === "splitSpeak" && (
+          <>
+            <Field label="说话角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="分段台词文本" value={textValue} textarea onChange={patchText} />
+          </>
+        )}
         {node.kind === "textAboveHead" && (
           <>
             <Field label="气泡角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
@@ -3250,11 +3257,24 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <Field label="问题文本" value={textValue} textarea onChange={patchText} />
           </>
         )}
+        {node.kind === "quickQuestion" && (
+          <>
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="问题与回答脚本" value={textValue} textarea onChange={patchText} />
+            <div className="notice compact-note">格式：问题#选项1#选项2(break)选项1脚本(break)选项2脚本。Wiki 提醒：事件开头直接用 quickQuestion 可能循环，建议前面加 pause 1。</div>
+          </>
+        )}
         {node.kind === "fork" && (
           <>
             <Field label="条件/回答 ID" value={stringField(data.requirement)} onChange={(requirement) => patchData({ requirement })} />
             <ComboField label="跳转分支 Entry" value={data.eventId || ""} options={storyBranchOptions(branches)} onChange={(eventId) => patchData({ eventId })} />
             {onCreateBranch && <button className="secondary" onClick={() => onCreateBranch(node)}>创建并关联分支</button>}
+          </>
+        )}
+        {node.kind === "questionAnswered" && (
+          <>
+            <Field label="回答 ID" value={stringField(data.answerId)} onChange={(answerId) => patchData({ answerId })} />
+            <BoolField label="设为已回答" value={data.answered !== false} onChange={(answered) => patchData({ answered })} />
           </>
         )}
         {node.kind === "move" && (
@@ -3266,11 +3286,36 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
           </>
         )}
+        {node.kind === "advancedMove" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <BoolField label="循环 loop" value={Boolean(data.loop)} onChange={(loop) => patchData({ loop })} />
+            <Field label="路径片段" value={stringField(data.path)} textarea onChange={(path) => patchData({ path })} />
+            <div className="notice compact-note">按 Wiki 原始参数填写路径片段，例如 <code>0 3 2 0 0 2 -2 0 0 -2 2 0</code>。暂停片段可用方向 1/2/3/4 + 毫秒。</div>
+          </>
+        )}
+        {node.kind === "positionOffset" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="X 偏移" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -999, 999, 0) })} />
+            <Field label="Y 偏移" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -999, 999, 0) })} />
+            <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
+          </>
+        )}
         {node.kind === "warp" && (
           <>
             <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="目标 X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 0) })} />
             <Field label="目标 Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 0) })} />
+          </>
+        )}
+        {node.kind === "warpFarmers" && (
+          <>
+            <Field label="玩家位置列表" value={stringField(data.placements)} textarea onChange={(placements) => patchData({ placements })} />
+            <Field label="默认偏移 default offset" value={stringField(data.defaultOffset)} onChange={(defaultOffset) => patchData({ defaultOffset: integerInRange(defaultOffset, -999, 999, 0) })} />
+            <Field label="默认 X" value={stringField(data.defaultX)} onChange={(defaultX) => patchData({ defaultX: integerInRange(defaultX, -10000, 10000, 64) })} />
+            <Field label="默认 Y" value={stringField(data.defaultY)} onChange={(defaultY) => patchData({ defaultY: integerInRange(defaultY, -10000, 10000, 15) })} />
+            <ComboField label="默认朝向" value={data.direction ?? 2} options={STORY_DIRECTION_OPTIONS} onChange={(direction) => patchData({ direction: Number(direction) })} />
           </>
         )}
         {node.kind === "faceDirection" && (
@@ -3299,9 +3344,22 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
           <>
             <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="帧编号" value={stringField(data.frame)} onChange={(frame) => patchData({ frame: integerInRange(frame, 0, 9999, 0) })} />
+            <BoolField label="水平翻转 flip" value={Boolean(data.flip)} onChange={(flip) => patchData({ flip })} />
           </>
         )}
         {node.kind === "stopAnimation" && <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />}
+        {node.kind === "shake" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="持续毫秒" value={stringField(data.duration)} onChange={(duration) => patchData({ duration: integerInRange(duration, 0, 600000, 1000) })} />
+          </>
+        )}
+        {node.kind === "jump" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="强度 intensity" value={stringField(data.intensity)} onChange={(intensity) => patchData({ intensity: integerInRange(intensity, 0, 9999, 8) })} />
+          </>
+        )}
         {node.kind === "playSound" && <Field label="音效 ID" value={stringField(data.sound)} onChange={(sound) => patchData({ sound })} />}
         {node.kind === "stopSound" && (
           <>
@@ -3313,6 +3371,12 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
         {node.kind === "stopMusic" && <div className="notice compact-note">无参数。停止当前音乐。</div>}
         {node.kind === "fade" && <BoolField label="unfade" value={Boolean(data.unfade)} onChange={(unfade) => patchData({ unfade })} />}
         {node.kind === "globalFade" && (
+          <>
+            <Field label="速度 speed" value={stringField(data.speed)} onChange={(speed) => patchData({ speed })} />
+            <BoolField label="continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
+          </>
+        )}
+        {node.kind === "globalFadeToClear" && (
           <>
             <Field label="速度 speed" value={stringField(data.speed)} onChange={(speed) => patchData({ speed })} />
             <BoolField label="continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
@@ -3330,6 +3394,12 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <Field label="邮件 ID" value={stringField(data.mailId)} onChange={(mailId) => patchData({ mailId })} />
           </>
         )}
+        {node.kind === "eventSeen" && (
+          <>
+            <Field label="事件 ID" value={stringField(data.eventId)} onChange={(eventId) => patchData({ eventId })} />
+            <BoolField label="设为已看" value={data.seen !== false} onChange={(seen) => patchData({ seen })} />
+          </>
+        )}
         {node.kind === "addItem" && (
           <>
             <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
@@ -3337,12 +3407,75 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <Field label="品质 quality" value={stringField(data.quality)} onChange={(quality) => patchData({ quality: integerInRange(quality, 0, 4, 0) })} />
           </>
         )}
+        {node.kind === "removeItem" && (
+          <>
+            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <Field label="数量 count" value={stringField(data.count)} onChange={(count) => patchData({ count: integerInRange(count, 1, 999, 1) })} />
+          </>
+        )}
+        {node.kind === "addObject" && (
+          <>
+            <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
+            <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
+            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <Field label="layer depth（可空）" value={stringField(data.layerDepth)} onChange={(layerDepth) => patchData({ layerDepth })} />
+          </>
+        )}
+        {node.kind === "removeObject" && (
+          <>
+            <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
+            <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
+          </>
+        )}
+        {node.kind === "removeSprite" && (
+          <>
+            <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
+            <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
+          </>
+        )}
+        {node.kind === "addTemporaryActor" && (
+          <>
+            <Field label="spriteAssetName" value={stringField(data.spriteAssetName)} onChange={(spriteAssetName) => patchData({ spriteAssetName })} />
+            <Field label="sprite width" value={stringField(data.spriteWidth)} onChange={(spriteWidth) => patchData({ spriteWidth: integerInRange(spriteWidth, 1, 9999, 16) })} />
+            <Field label="sprite height" value={stringField(data.spriteHeight)} onChange={(spriteHeight) => patchData({ spriteHeight: integerInRange(spriteHeight, 1, 9999, 32) })} />
+            <Field label="tile X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
+            <Field label="tile Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
+            <ComboField label="朝向" value={data.direction ?? 2} options={STORY_DIRECTION_OPTIONS} onChange={(direction) => patchData({ direction: Number(direction) })} />
+            <Field label="breather（可空）" value={stringField(data.breather)} onChange={(breather) => patchData({ breather })} />
+            <ComboField label="类型（可空）" value={data.actorType || ""} options={STORY_TEMP_ACTOR_TYPE_OPTIONS} onChange={(actorType) => patchData({ actorType })} />
+            <Field label="override name（可空）" value={stringField(data.overrideName)} onChange={(overrideName) => patchData({ overrideName })} />
+          </>
+        )}
+        {node.kind === "changeLocation" && <Field label="地点" value={stringField(data.location)} onChange={(location) => patchData({ location })} />}
+        {node.kind === "changeMapTile" && (
+          <>
+            <ComboField label="图层" value={data.layer || "Buildings"} options={STORY_MAP_LAYER_OPTIONS} onChange={(layer) => patchData({ layer })} />
+            <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
+            <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
+            <Field label="tile index" value={stringField(data.tileIndex)} onChange={(tileIndex) => patchData({ tileIndex: integerInRange(tileIndex, -1, 999999, 0) })} />
+          </>
+        )}
+        {node.kind === "changePortrait" && (
+          <>
+            <Field label="NPC" value={stringField(data.npc)} onChange={(npc) => patchData({ npc })} />
+            <Field label="portrait 后缀（可空）" value={stringField(data.portrait)} onChange={(portrait) => patchData({ portrait })} />
+          </>
+        )}
+        {node.kind === "changeSprite" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="sprite 后缀（可空）" value={stringField(data.sprite)} onChange={(sprite) => patchData({ sprite })} />
+          </>
+        )}
+        {node.kind === "farmerEat" && <Field label="物品 ID" value={stringField(data.objectId)} onChange={(objectId) => patchData({ objectId })} />}
+        {node.kind === "farmerAnimation" && <Field label="动画 ID" value={stringField(data.animation)} onChange={(animation) => patchData({ animation })} />}
         {node.kind === "friendship" && (
           <>
             <Field label="NPC" value={stringField(data.npc)} onChange={(npc) => patchData({ npc })} />
             <Field label="增减值" value={stringField(data.amount)} onChange={(amount) => patchData({ amount: integerInRange(amount, -5000, 5000, 250) })} />
           </>
         )}
+        {node.kind === "money" && <Field label="金额" value={stringField(data.amount)} onChange={(amount) => patchData({ amount: integerInRange(amount, -9999999, 9999999, 100) })} />}
         {node.kind === "end" && (
           <>
             <ComboField label="结束模式" value={data.mode || "end"} options={STORY_END_OPTIONS} onChange={(mode) => patchData({ mode })} />
@@ -3999,28 +4132,50 @@ const MOVIE_RESPONSE_POINTS = [
 
 const STORY_NODE_OPTIONS: RulesetOption[] = [
   { label: "角色说话 speak", value: "speak" },
+  { label: "分段说话 splitSpeak", value: "splitSpeak" },
   { label: "角色气泡 textAboveHead", value: "textAboveHead" },
   { label: "等待 pause", value: "pause" },
   { label: "消息 message", value: "message" },
   { label: "提问 question", value: "question" },
+  { label: "快速提问 quickQuestion", value: "quickQuestion" },
   { label: "分支 fork", value: "fork" },
+  { label: "回答状态 questionAnswered", value: "questionAnswered" },
   { label: "移动 move", value: "move" },
+  { label: "高级移动 advancedMove", value: "advancedMove" },
+  { label: "位置偏移 positionOffset", value: "positionOffset" },
   { label: "传送 warp", value: "warp" },
+  { label: "传送所有农夫 warpFarmers", value: "warpFarmers" },
   { label: "转向 faceDirection", value: "faceDirection" },
   { label: "表情 emote", value: "emote" },
   { label: "动画 animate", value: "animate" },
   { label: "显示帧 showFrame", value: "showFrame" },
   { label: "停止动画 stopAnimation", value: "stopAnimation" },
+  { label: "震动 shake", value: "shake" },
+  { label: "跳跃 jump", value: "jump" },
   { label: "播放音效 playSound", value: "playSound" },
   { label: "停止音效 stopSound", value: "stopSound" },
   { label: "播放音乐 playMusic", value: "playMusic" },
   { label: "停止音乐 stopMusic", value: "stopMusic" },
   { label: "全局淡出 globalFade", value: "globalFade" },
+  { label: "全局淡入 globalFadeToClear", value: "globalFadeToClear" },
   { label: "淡入淡出 fade", value: "fade" },
   { label: "视角 viewport", value: "viewport" },
   { label: "邮件 mailReceived", value: "mail" },
+  { label: "事件已看 eventSeen", value: "eventSeen" },
   { label: "获得物品 addItem", value: "addItem" },
+  { label: "移除物品 removeItem", value: "removeItem" },
+  { label: "放置物体 addObject", value: "addObject" },
+  { label: "移除物体 removeObject", value: "removeObject" },
+  { label: "移除临时图 removeSprite", value: "removeSprite" },
+  { label: "临时演员 addTemporaryActor", value: "addTemporaryActor" },
+  { label: "切换地点 changeLocation", value: "changeLocation" },
+  { label: "改地图图块 changeMapTile", value: "changeMapTile" },
+  { label: "切换头像 changePortrait", value: "changePortrait" },
+  { label: "切换行走图 changeSprite", value: "changeSprite" },
+  { label: "农夫吃东西 farmerEat", value: "farmerEat" },
+  { label: "农夫动画 farmerAnimation", value: "farmerAnimation" },
   { label: "友情增减 friendship", value: "friendship" },
+  { label: "金钱 money", value: "money" },
   { label: "结束 end", value: "end" },
   { label: "自定义命令", value: "custom" }
 ];
@@ -4079,6 +4234,21 @@ const STORY_END_OPTIONS: RulesetOption[] = [
   { label: "end dialogueWarpOut", value: "dialogueWarpOut" },
   { label: "end invisible", value: "invisible" },
   { label: "end newDay", value: "newDay" }
+];
+
+const STORY_TEMP_ACTOR_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "不指定", value: "" },
+  { label: "Character", value: "Character" },
+  { label: "Animal", value: "Animal" },
+  { label: "Monster", value: "Monster" }
+];
+
+const STORY_MAP_LAYER_OPTIONS: RulesetOption[] = [
+  { label: "Back", value: "Back" },
+  { label: "Buildings", value: "Buildings" },
+  { label: "Front", value: "Front" },
+  { label: "AlwaysFront", value: "AlwaysFront" },
+  { label: "Paths", value: "Paths" }
 ];
 
 function marriageKeyOptions(npcName: string): RulesetOption[] {
@@ -4791,27 +4961,49 @@ function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "event
   const defaults: Record<EventNodeKind, JsonDict> = {
     pause: { duration: 500 },
     speak: { actor: "ExampleNPC", i18nKey, text: "你好，@。#$b#这是一个剧情节点。$h" },
+    splitSpeak: { actor: "ExampleNPC", i18nKey, text: "第一段台词。#$b#第二段台词。" },
     textAboveHead: { actor: "ExampleNPC", i18nKey, text: "你好，{{PlayerName}}。" },
     message: { i18nKey, text: "剧情消息。" },
     question: { forkId: "fork0", i18nKey, text: "你要怎么回答？" },
+    quickQuestion: { i18nKey, text: "你要怎么回答？#选项一#选项二(break)message \"{{i18n:Example.Answer1}}\"(break)message \"{{i18n:Example.Answer2}}\"" },
     fork: { requirement: "fork0", eventId: `${meta.eventId || "ExampleEvent"}_Branch` },
+    questionAnswered: { answerId: "event_answer", answered: true },
     move: { actor: "farmer", x: 0, y: 1, direction: 2, continue: false },
+    advancedMove: { actor: "ExampleNPC", loop: false, path: "0 3 2 0 0 2 -2 0 0 -2 2 0" },
+    positionOffset: { actor: "ExampleNPC", x: 0, y: 0, continue: false },
     warp: { actor: "farmer", x: 64, y: 15 },
+    warpFarmers: { placements: "64 15 2", defaultOffset: 0, defaultX: 64, defaultY: 15, direction: 2 },
     faceDirection: { actor: "ExampleNPC", direction: 2, continue: false },
     emote: { actor: "ExampleNPC", emote: 16 },
     animate: { actor: "ExampleNPC", flip: false, loop: true, frameDuration: 120, frames: "0 1 2" },
     showFrame: { actor: "ExampleNPC", frame: 0 },
     stopAnimation: { actor: "ExampleNPC" },
+    shake: { actor: "ExampleNPC", duration: 1000 },
+    jump: { actor: "ExampleNPC", intensity: 8 },
     playSound: { sound: "doorClose" },
     stopSound: { sound: "doorClose", immediate: true },
     playMusic: { music: "continue" },
     stopMusic: {},
     globalFade: { speed: "", continue: false },
+    globalFadeToClear: { speed: "", continue: false },
     fade: { unfade: false },
     viewport: { x: -1000, y: -1000 },
     mail: { command: "mailReceived", mailId: "ExampleMail" },
+    eventSeen: { eventId: meta.eventId || "ExampleEvent", seen: true },
     addItem: { itemId: "(O)388", count: 1, quality: 0 },
+    removeItem: { itemId: "(O)388", count: 1 },
+    addObject: { x: 64, y: 15, itemId: "(O)388", layerDepth: "" },
+    removeObject: { x: 64, y: 15 },
+    removeSprite: { x: 64, y: 15 },
+    addTemporaryActor: { spriteAssetName: "Ghost", spriteWidth: 16, spriteHeight: 32, x: 64, y: 15, direction: 2, breather: "", actorType: "", overrideName: "" },
+    changeLocation: { location: "Farm" },
+    changeMapTile: { layer: "Buildings", x: 64, y: 15, tileIndex: 0 },
+    changePortrait: { npc: "ExampleNPC", portrait: "" },
+    changeSprite: { actor: "ExampleNPC", sprite: "" },
+    farmerEat: { objectId: "200" },
+    farmerAnimation: { animation: "drink" },
     friendship: { npc: "ExampleNPC", amount: 250 },
+    money: { amount: 100 },
     end: { mode: "end", actor: "ExampleNPC", i18nKey, text: "今天的事，之后再聊吧。$h" },
     custom: { raw: "-- custom command" }
   };
@@ -4932,18 +5124,30 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
       return `pause ${integerInRange(data.duration, 0, 600000, 500)}`;
     case "speak":
       return `speak ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
+    case "splitSpeak":
+      return `splitSpeak ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
     case "textAboveHead":
       return `textAboveHead ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
     case "message":
       return `message ${quoteEventArg(textRef)}`;
     case "question":
       return `question ${data.forkId || "fork0"} ${quoteEventArg(textRef)}`;
+    case "quickQuestion":
+      return `quickQuestion ${quoteEventArg(textRef)}`;
     case "fork":
       return `fork ${data.requirement || "fork0"} ${data.eventId || `${meta.eventId}_Branch`}`;
+    case "questionAnswered":
+      return `questionAnswered ${data.answerId || "event_answer"}${data.answered === false ? " false" : ""}`;
     case "move":
       return `move ${data.actor || "farmer"} ${integerInRange(data.x, -999, 999, 0)} ${integerInRange(data.y, -999, 999, 1)} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
+    case "advancedMove":
+      return `advancedMove ${data.actor || "ExampleNPC"} ${Boolean(data.loop)} ${stringField(data.path) || "0 3 2 0"}`;
+    case "positionOffset":
+      return `positionOffset ${data.actor || "ExampleNPC"} ${integerInRange(data.x, -999, 999, 0)} ${integerInRange(data.y, -999, 999, 0)}${data.continue ? " true" : ""}`;
     case "warp":
       return `warp ${data.actor || "farmer"} ${integerInRange(data.x, -10000, 10000, 0)} ${integerInRange(data.y, -10000, 10000, 0)}`;
+    case "warpFarmers":
+      return `warpFarmers ${stringField(data.placements) || "64 15 2"} ${integerInRange(data.defaultOffset, -999, 999, 0)} ${integerInRange(data.defaultX, -10000, 10000, 64)} ${integerInRange(data.defaultY, -10000, 10000, 15)} ${integerInRange(data.direction, 0, 3, 2)}`;
     case "faceDirection":
       return `faceDirection ${data.actor || "ExampleNPC"} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
     case "emote":
@@ -4951,9 +5155,13 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
     case "animate":
       return `animate ${data.actor || "ExampleNPC"} ${Boolean(data.flip)} ${data.loop !== false} ${integerInRange(data.frameDuration, 1, 600000, 120)} ${stringField(data.frames) || "0 1 2"}`;
     case "showFrame":
-      return `showFrame ${data.actor || "ExampleNPC"} ${integerInRange(data.frame, 0, 9999, 0)}`;
+      return `showFrame ${data.actor || "ExampleNPC"} ${integerInRange(data.frame, 0, 9999, 0)}${data.flip ? " true" : ""}`;
     case "stopAnimation":
       return `stopAnimation ${data.actor || "ExampleNPC"}`;
+    case "shake":
+      return `shake ${data.actor || "ExampleNPC"} ${integerInRange(data.duration, 0, 600000, 1000)}`;
+    case "jump":
+      return `jump ${data.actor || "ExampleNPC"} ${integerInRange(data.intensity, 0, 9999, 8)}`;
     case "playSound":
       return `playSound ${data.sound || "doorClose"}`;
     case "stopSound":
@@ -4964,16 +5172,57 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
       return "stopMusic";
     case "globalFade":
       return `globalFade${data.speed ? ` ${data.speed}` : ""}${data.continue ? " true" : ""}`;
+    case "globalFadeToClear":
+      return `globalFadeToClear${data.speed ? ` ${data.speed}` : ""}${data.continue ? " true" : ""}`;
     case "fade":
       return data.unfade ? "fade unfade" : "fade";
     case "viewport":
       return `viewport ${integerInRange(data.x, -10000, 10000, -1000)} ${integerInRange(data.y, -10000, 10000, -1000)}`;
     case "mail":
       return `${data.command || "mailReceived"} ${data.mailId || "ExampleMail"}`;
+    case "eventSeen":
+      return `eventSeen ${data.eventId || meta.eventId || "ExampleEvent"}${data.seen === false ? " false" : ""}`;
     case "addItem":
       return `addItem ${data.itemId || "(O)388"} ${integerInRange(data.count, 1, 999, 1)} ${integerInRange(data.quality, 0, 4, 0)}`;
+    case "removeItem":
+      return `removeItem ${data.itemId || "(O)388"} ${integerInRange(data.count, 1, 999, 1)}`;
+    case "addObject":
+      return `addObject ${integerInRange(data.x, -10000, 10000, 64)} ${integerInRange(data.y, -10000, 10000, 15)} ${data.itemId || "(O)388"}${data.layerDepth ? ` ${data.layerDepth}` : ""}`;
+    case "removeObject":
+      return `removeObject ${integerInRange(data.x, -10000, 10000, 64)} ${integerInRange(data.y, -10000, 10000, 15)}`;
+    case "removeSprite":
+      return `removeSprite ${integerInRange(data.x, -10000, 10000, 64)} ${integerInRange(data.y, -10000, 10000, 15)}`;
+    case "addTemporaryActor": {
+      const parts = [
+        "addTemporaryActor",
+        quoteEventArg(String(data.spriteAssetName || "Ghost")),
+        String(integerInRange(data.spriteWidth, 1, 9999, 16)),
+        String(integerInRange(data.spriteHeight, 1, 9999, 32)),
+        String(integerInRange(data.x, -10000, 10000, 64)),
+        String(integerInRange(data.y, -10000, 10000, 15)),
+        String(integerInRange(data.direction, 0, 3, 2))
+      ];
+      if (data.breather !== "" && data.breather !== undefined) parts.push(String(data.breather));
+      if (data.actorType) parts.push(String(data.actorType));
+      if (data.overrideName) parts.push(quoteEventArg(String(data.overrideName)));
+      return parts.join(" ");
+    }
+    case "changeLocation":
+      return `changeLocation ${data.location || "Farm"}`;
+    case "changeMapTile":
+      return `changeMapTile ${data.layer || "Buildings"} ${integerInRange(data.x, -10000, 10000, 64)} ${integerInRange(data.y, -10000, 10000, 15)} ${integerInRange(data.tileIndex, -1, 999999, 0)}`;
+    case "changePortrait":
+      return `changePortrait ${data.npc || "ExampleNPC"}${data.portrait ? ` ${data.portrait}` : ""}`;
+    case "changeSprite":
+      return `changeSprite ${data.actor || "ExampleNPC"}${data.sprite ? ` ${data.sprite}` : ""}`;
+    case "farmerEat":
+      return `farmerEat ${data.objectId || "200"}`;
+    case "farmerAnimation":
+      return `farmerAnimation ${data.animation || "drink"}`;
     case "friendship":
       return `friendship ${data.npc || "ExampleNPC"} ${integerInRange(data.amount, -5000, 5000, 250)}`;
+    case "money":
+      return `money ${integerInRange(data.amount, -9999999, 9999999, 100)}`;
     case "end":
       if (data.mode === "warpOut") return "end warpOut";
       if (data.mode === "newDay") return "end newDay";
