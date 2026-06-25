@@ -2789,10 +2789,22 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.kind === "event");
 
+  function updateProject(nextProject: Project) {
+    setProject(nextProject);
+  }
+
   function addStoryEvent() {
     const meta = defaultStoryEventMeta(project);
     const entry = storyEntryFromMeta(createWorkflowEntry("event", "新剧情事件", `Data/Events/${meta.location}`, "", ""), meta);
-    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...storyI18nDefaults(meta) } });
+    updateProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...storyI18nDefaults(meta) } });
+  }
+
+  function updateStoryEntry(index: number, nextEntry: GameDataEntry, i18nPatch?: Record<string, string>) {
+    updateProject({
+      ...project,
+      game_data: replaceAt(project.game_data, index, nextEntry),
+      i18n: i18nPatch ? { ...project.i18n, ...i18nPatch } : project.i18n
+    });
   }
 
   return (
@@ -2815,8 +2827,7 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
               entry={entry}
               ruleset={ruleset}
               i18n={project.i18n}
-              onI18nChange={(i18n) => setProject({ ...project, i18n })}
-              onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+              onChange={(next, i18nPatch) => updateStoryEntry(index, next, i18nPatch)}
             />
           </article>
         ))}
@@ -2826,39 +2837,49 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
   );
 }
 
-function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onChange: (entry: GameDataEntry, i18nPatch?: Record<string, string>) => void }) {
   const meta = storyMetaFromEntry(project, entry);
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
   const [selectedNodeId, setSelectedNodeId] = useState(meta.nodes[0]?.id || "");
   const scriptPreview = buildStoryEventScript(meta);
   const keyPreview = buildStoryEventKey(meta);
   const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch) }));
-  const selectedNodeIndex = Math.max(0, meta.nodes.findIndex((node) => node.id === selectedNodeId));
-  const selectedNode = meta.nodes[selectedNodeIndex] || meta.nodes[0];
+  const selectedNodeIndex = meta.nodes.findIndex((node) => node.id === selectedNodeId);
+  const selectedNode = selectedNodeIndex >= 0 ? meta.nodes[selectedNodeIndex] : meta.nodes[meta.nodes.length - 1];
+
+  useEffect(() => {
+    if (!meta.nodes.length) {
+      if (selectedNodeId) setSelectedNodeId("");
+      return;
+    }
+    if (!meta.nodes.some((node) => node.id === selectedNodeId)) {
+      setSelectedNodeId(meta.nodes[meta.nodes.length - 1].id);
+    }
+  }, [meta.nodes, selectedNodeId]);
+
+  function commitMeta(nextMeta: StoryEventMeta, i18nPatch?: Record<string, string>) {
+    onChange(storyEntryFromMeta(entry, nextMeta), i18nPatch);
+  }
 
   function updateMeta(nextMeta: StoryEventMeta) {
-    onChange(storyEntryFromMeta(entry, nextMeta));
+    commitMeta(nextMeta);
   }
 
   function updateNode(nodeIndex: number, node: StoryEventNode, textPatch?: { key: string; text: string }) {
     const nodes = replaceAt(meta.nodes, nodeIndex, node);
-    updateMeta({ ...meta, nodes });
-    if (textPatch && onI18nChange) {
-      onI18nChange({ ...i18n, [textPatch.key]: textPatch.text });
-    }
+    commitMeta({ ...meta, nodes }, textPatch ? { [textPatch.key]: textPatch.text } : undefined);
   }
 
   function addNode(kind: EventNodeKind) {
     const node = defaultStoryNode(kind, meta, makeId(), meta.nodes.length);
-    updateMeta({ ...meta, nodes: [...meta.nodes, node] });
+    commitMeta({ ...meta, nodes: [...meta.nodes, node] }, storyI18nDefaults({ ...meta, nodes: [node] }));
     setSelectedNodeId(node.id);
-    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
 
   function addBranch() {
     const branch = defaultStoryBranch(meta);
-    updateMeta({ ...meta, branches: [...meta.branches, branch] });
-    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
+    const nextMeta = { ...meta, branches: [...meta.branches, branch] };
+    commitMeta(nextMeta, storyI18nDefaults({ ...meta, nodes: branch.nodes }));
   }
 
   function addQuestionAnswer(nodeIndex: number, questionNode: StoryEventNode) {
@@ -2885,15 +2906,12 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     let insertIndex = nodeIndex + 1;
     while (nodes[insertIndex]?.kind === "fork") insertIndex += 1;
     nodes.splice(insertIndex, 0, forkNode);
-    updateMeta({ ...meta, nodes, branches: [...meta.branches, branch] });
+    const nextMeta = { ...meta, nodes, branches: [...meta.branches, branch] };
+    commitMeta(nextMeta, {
+      [textKeyForStoryNode(meta, nextQuestion)]: questionText,
+      ...storyI18nDefaults({ ...meta, nodes: [nextQuestion, ...branch.nodes] })
+    });
     setSelectedNodeId(forkNode.id);
-    if (onI18nChange) {
-      onI18nChange({
-        ...i18n,
-        [textKeyForStoryNode(meta, nextQuestion)]: questionText,
-        ...storyI18nDefaults({ ...meta, nodes: [nextQuestion, ...branch.nodes] })
-      });
-    }
   }
 
   function moveNode(index: number, direction: -1 | 1) {
@@ -2901,21 +2919,21 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     if (target < 0 || target >= meta.nodes.length) return;
     const nodes = [...meta.nodes];
     [nodes[index], nodes[target]] = [nodes[target], nodes[index]];
-    updateMeta({ ...meta, nodes });
+    commitMeta({ ...meta, nodes });
     setSelectedNodeId(nodes[target].id);
   }
 
   return (
     <div className="story-event-editor">
       <div className="grid two">
-        <ComboField label="事件地点 Location" value={meta.location} options={mapLocationOptions(project)} onChange={(location) => updateMeta({ ...meta, location: String(location) })} />
-        <Field label="事件 ID" value={meta.eventId} onChange={(eventId) => updateMeta({ ...meta, eventId })} />
-        <Field label="开场音乐" value={meta.music} onChange={(music) => updateMeta({ ...meta, music })} />
+        <ComboField label="事件地点 Location" value={meta.location} options={mapLocationOptions(project)} onChange={(location) => commitMeta({ ...meta, location: String(location) })} />
+        <Field label="事件 ID" value={meta.eventId} onChange={(eventId) => commitMeta({ ...meta, eventId })} />
+        <Field label="开场音乐" value={meta.music} onChange={(music) => commitMeta({ ...meta, music })} />
         <div className="grid two tight-grid">
-          <Field label="开场视角 X" value={stringField(meta.viewportX)} onChange={(value) => updateMeta({ ...meta, viewportX: integerInRange(value, -10000, 10000, 0) })} />
-          <Field label="开场视角 Y" value={stringField(meta.viewportY)} onChange={(value) => updateMeta({ ...meta, viewportY: integerInRange(value, -10000, 10000, 0) })} />
+          <Field label="开场视角 X" value={stringField(meta.viewportX)} onChange={(value) => commitMeta({ ...meta, viewportX: integerInRange(value, -10000, 10000, 0) })} />
+          <Field label="开场视角 Y" value={stringField(meta.viewportY)} onChange={(value) => commitMeta({ ...meta, viewportY: integerInRange(value, -10000, 10000, 0) })} />
         </div>
-        <Field label="i18n 前缀" value={meta.i18nPrefix} onChange={(i18nPrefix) => updateMeta({ ...meta, i18nPrefix })} />
+        <Field label="i18n 前缀" value={meta.i18nPrefix} onChange={(i18nPrefix) => commitMeta({ ...meta, i18nPrefix })} />
       </div>
 
       <details className="story-panel" open>
@@ -2923,14 +2941,14 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
         <div className="story-list">
           {meta.actors.map((actor, index) => (
             <div className="story-row" key={`${actor.actor}-${index}`}>
-              <Field label="角色" value={actor.actor} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, actor: value }) })} />
-              <Field label="X" value={stringField(actor.x)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, x: integerInRange(value, -10000, 10000, actor.x) }) })} />
-              <Field label="Y" value={stringField(actor.y)} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, y: integerInRange(value, -10000, 10000, actor.y) }) })} />
-              <ComboField label="方向" value={actor.direction} options={STORY_DIRECTION_OPTIONS} onChange={(value) => updateMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, direction: Number(value) }) })} />
-              <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+              <Field label="角色" value={actor.actor} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, actor: value }) })} />
+              <Field label="X" value={stringField(actor.x)} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, x: integerInRange(value, -10000, 10000, actor.x) }) })} />
+              <Field label="Y" value={stringField(actor.y)} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, y: integerInRange(value, -10000, 10000, actor.y) }) })} />
+              <ComboField label="方向" value={actor.direction} options={STORY_DIRECTION_OPTIONS} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, direction: Number(value) }) })} />
+              <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
             </div>
           ))}
-          <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
+          <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
         </div>
       </details>
 
@@ -2942,11 +2960,11 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               key={condition.id}
               condition={condition}
               ruleset={ruleset}
-              onChange={(next) => updateMeta({ ...meta, preconditions: replaceAt(meta.preconditions, index, next) })}
-              onRemove={() => updateMeta({ ...meta, preconditions: meta.preconditions.filter((item) => item.id !== condition.id) })}
+              onChange={(next) => commitMeta({ ...meta, preconditions: replaceAt(meta.preconditions, index, next) })}
+              onRemove={() => commitMeta({ ...meta, preconditions: meta.preconditions.filter((item) => item.id !== condition.id) })}
             />
           ))}
-          <button type="button" className="secondary" onClick={() => updateMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
+          <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
         </div>
       </details>
 
@@ -2974,7 +2992,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
           branches={meta.branches}
           selectedNodeId={selectedNode?.id || ""}
           onNodeSelect={setSelectedNodeId}
-          onNodePositionCommit={(nodeId, position) => updateMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
+          onNodePositionCommit={(nodeId, position) => commitMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
         />
         <div className="story-flow">
           {selectedNode ? (
@@ -2989,13 +3007,13 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               onCreateBranch={(currentNode) => {
                 const branch = defaultStoryBranch(meta);
                 const nextNode = { ...currentNode, data: { ...currentNode.data, eventId: branch.key } };
-                updateMeta({ ...meta, nodes: replaceAt(meta.nodes, selectedNodeIndex, nextNode), branches: [...meta.branches, branch] });
-                if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
+                const nextMeta = { ...meta, nodes: replaceAt(meta.nodes, selectedNodeIndex, nextNode), branches: [...meta.branches, branch] };
+                commitMeta(nextMeta, storyI18nDefaults({ ...meta, nodes: branch.nodes }));
               }}
               onAddQuestionAnswer={(currentNode) => addQuestionAnswer(selectedNodeIndex, currentNode)}
               onRemove={() => {
                 const remaining = meta.nodes.filter((item) => item.id !== selectedNode.id);
-                updateMeta({ ...meta, nodes: remaining });
+                commitMeta({ ...meta, nodes: remaining });
                 setSelectedNodeId(remaining[Math.max(0, selectedNodeIndex - 1)]?.id || "");
               }}
               onMove={moveNode}
@@ -3017,9 +3035,8 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               branch={branch}
               meta={meta}
               i18n={i18n}
-              onI18nChange={onI18nChange}
-              onChange={(nextBranch) => updateMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) })}
-              onRemove={() => updateMeta({ ...meta, branches: meta.branches.filter((item) => item.id !== branch.id) })}
+              onChange={(nextBranch, i18nPatch) => commitMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) }, i18nPatch)}
+              onRemove={() => commitMeta({ ...meta, branches: meta.branches.filter((item) => item.id !== branch.id) })}
             />
           ))}
         </div>
@@ -3084,22 +3101,20 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
   );
 }
 
-function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (branch: StoryEventBranch) => void; onRemove: () => void }) {
+function StoryBranchEditor({ branch, meta, i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
   const [selectedNodeId, setSelectedNodeId] = useState(branch.nodes[0]?.id || "");
   const selectedNodeIndex = Math.max(0, branch.nodes.findIndex((node) => node.id === selectedNodeId));
   const selectedNode = branch.nodes[selectedNodeIndex] || branch.nodes[0];
 
   function updateNode(nodeIndex: number, node: StoryEventNode, textPatch?: { key: string; text: string }) {
-    onChange({ ...branch, nodes: replaceAt(branch.nodes, nodeIndex, node) });
-    if (textPatch && onI18nChange) onI18nChange({ ...i18n, [textPatch.key]: textPatch.text });
+    onChange({ ...branch, nodes: replaceAt(branch.nodes, nodeIndex, node) }, textPatch ? { [textPatch.key]: textPatch.text } : undefined);
   }
 
   function addNode(kind: EventNodeKind) {
     const node = defaultStoryNode(kind, { eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }, makeId(), branch.nodes.length);
-    onChange({ ...branch, nodes: [...branch.nodes, node] });
+    onChange({ ...branch, nodes: [...branch.nodes, node] }, storyI18nDefaults({ ...meta, nodes: [node] }));
     setSelectedNodeId(node.id);
-    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
 
   function moveNode(index: number, direction: -1 | 1) {
@@ -3151,16 +3166,16 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
           <StoryNodeEditor
             key={selectedNode.id}
             node={selectedNode}
-            index={selectedNodeIndex}
-            meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
-            branches={meta.branches}
-            i18n={i18n}
-            onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
-            onRemove={() => {
-              const remaining = branch.nodes.filter((item) => item.id !== selectedNode.id);
-              onChange({ ...branch, nodes: remaining });
-              setSelectedNodeId(remaining[Math.max(0, selectedNodeIndex - 1)]?.id || "");
-            }}
+              index={selectedNodeIndex}
+              meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
+              branches={meta.branches}
+              i18n={i18n}
+              onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
+              onRemove={() => {
+                const remaining = branch.nodes.filter((item) => item.id !== selectedNode.id);
+                onChange({ ...branch, nodes: remaining });
+                setSelectedNodeId(remaining[Math.max(0, selectedNodeIndex - 1)]?.id || "");
+              }}
             onMove={moveNode}
           />
         ) : <div className="empty">这个分支还没有节点。</div>}
