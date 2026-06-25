@@ -345,6 +345,51 @@ class CoreTests(unittest.TestCase):
             )
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_story_event_supports_single_argument_fork(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.append(GameDataEntry(
+                kind="event",
+                name="Single Fork Story Event",
+                target="Data/Events/Farm",
+                key="746153081/IsHost",
+                value='continue/-500 -500/farmer 95 49 2/question fork0 "{{i18n:Author.TestPack.Event.Question}}"/fork 746153081_PurchasedAuroraVineyard',
+                advanced={
+                    "StardewCPStudio": {
+                        "storyEvent": {
+                            "nodes": [
+                                {"kind": "question", "data": {"forkId": "fork0", "i18nKey": "Author.TestPack.Event.Question"}},
+                                {"kind": "fork", "data": {"requirement": "", "eventId": "746153081_PurchasedAuroraVineyard"}},
+                            ],
+                            "branches": [
+                                {
+                                    "key": "746153081_PurchasedAuroraVineyard",
+                                    "nodes": [
+                                        {"kind": "message", "data": {"i18nKey": "Author.TestPack.Event.Purchased"}},
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                },
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+
+            self.assertIn('fork 746153081_PurchasedAuroraVineyard', change["Entries"]["746153081/IsHost"])
+            self.assertNotIn('fork fork0 746153081_PurchasedAuroraVineyard', change["Entries"]["746153081/IsHost"])
+            self.assertEqual(
+                change["Entries"]["746153081_PurchasedAuroraVineyard"],
+                'message "{{i18n:Author.TestPack.Event.Purchased}}"',
+            )
+
     def test_import_asset_can_use_character_asset_path(self):
         import asyncio
 

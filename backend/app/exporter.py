@@ -133,7 +133,8 @@ def _story_event_entries(entry: GameDataEntry) -> dict[str, Any] | None:
 
     entries: dict[str, Any] = {}
     if entry.key:
-        entries[entry.key] = entry.value
+        nodes = story.get("nodes")
+        entries[entry.key] = _story_main_script(entry.key, entry.value, nodes if isinstance(nodes, list) else [])
     for branch in story.get("branches", []) or []:
         if not isinstance(branch, dict):
             continue
@@ -142,6 +143,22 @@ def _story_event_entries(entry: GameDataEntry) -> dict[str, Any] | None:
         if isinstance(key, str) and key:
             entries[key] = _story_branch_script(key, nodes if isinstance(nodes, list) else [])
     return entries or None
+
+
+def _story_main_script(entry_key: str, fallback: Any, nodes: list[Any]) -> Any:
+    if not nodes:
+        return fallback
+    parts = str(fallback or "").split("/")
+    start = parts[:3] if len(parts) >= 3 else ["continue", "-500 -500", "farmer -500 -500 2"]
+    event_id = entry_key.split("/", 1)[0] if entry_key else ""
+    commands = [
+        command
+        for node in nodes
+        if isinstance(node, dict)
+        for command in [_story_node_command(node, event_id)]
+        if command
+    ]
+    return "/".join([*start, *commands])
 
 
 def _story_branch_script(branch_key: str, nodes: list[Any]) -> str:
@@ -175,7 +192,9 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
     if kind == "quickQuestion":
         return f"quickQuestion {_quote_event_arg(text_ref)}"
     if kind == "fork":
-        return f"fork {data.get('requirement') or 'fork0'} {data.get('eventId') or f'{event_id}_Branch'}"
+        if data.get("requirement"):
+            return f"fork {data.get('requirement')} {data.get('eventId') or f'{event_id}_Branch'}"
+        return f"fork {data.get('eventId') or f'{event_id}_Branch'}"
     if kind == "questionAnswered":
         suffix = " false" if data.get("answered") is False else ""
         return f"questionAnswered {data.get('answerId') or 'event_answer'}{suffix}"

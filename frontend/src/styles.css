@@ -1078,6 +1078,16 @@ code {
   padding: 12px;
 }
 
+.story-inline-editor {
+  background: #f7f4ec;
+  border: 1px solid #e1d8c8;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  padding: 10px;
+}
+
 .story-branch {
   background: #fffdf8;
   border: 1px solid #d4ddcf;

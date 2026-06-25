@@ -71,6 +71,7 @@ type DialogueFormatField = { name: string; type: string; options?: string; min?:
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
 type EventNodeKind = "pause" | "speak" | "splitSpeak" | "textAboveHead" | "message" | "question" | "quickQuestion" | "fork" | "questionAnswered" | "move" | "advancedMove" | "positionOffset" | "warp" | "warpFarmers" | "faceDirection" | "emote" | "animate" | "showFrame" | "stopAnimation" | "playSound" | "stopSound" | "playMusic" | "stopMusic" | "globalFade" | "globalFadeToClear" | "fade" | "viewport" | "mail" | "eventSeen" | "addItem" | "removeItem" | "addObject" | "removeObject" | "removeSprite" | "addTemporaryActor" | "changeLocation" | "changeMapTile" | "changePortrait" | "changeSprite" | "farmerEat" | "farmerAnimation" | "friendship" | "money" | "shake" | "jump" | "end" | "custom";
+type StoryQuestionAnswer = { id: string; text: string; branchKey: string };
 type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict; position?: { x: number; y: number } };
 type StoryEventMeta = {
   location: string;
@@ -2856,6 +2857,40 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
   }
 
+  function addQuestionAnswer(nodeIndex: number, questionNode: StoryEventNode) {
+    const answers = storyQuestionAnswers(questionNode);
+    const answerIndex = answers.length;
+    const answerId = `fork${answerIndex}`;
+    const branch = defaultStoryBranch(meta, `${meta.eventId || "ExampleEvent"}_Answer${answerIndex + 1}`, `回答 ${answerIndex + 1}`);
+    const answer: StoryQuestionAnswer = { id: answerId, text: `选项 ${answerIndex + 1}`, branchKey: branch.key };
+    const nextAnswers = [...answers, answer];
+    const questionText = buildStoryQuestionText(storyQuestionPrompt(stringField(i18n[stringField(questionNode.data.i18nKey)] ?? questionNode.data.text ?? "")), nextAnswers);
+    const nextQuestion = {
+      ...questionNode,
+      data: {
+        ...questionNode.data,
+        forkId: "fork0",
+        answers: nextAnswers,
+        text: questionText
+      }
+    };
+    const forkNode = defaultStoryNode("fork", meta, makeId(), meta.nodes.length + 1);
+    forkNode.label = `回答 ${answerIndex + 1} 跳转`;
+    forkNode.data = { requirement: answerId, eventId: branch.key };
+    const nodes = replaceAt(meta.nodes, nodeIndex, nextQuestion);
+    let insertIndex = nodeIndex + 1;
+    while (nodes[insertIndex]?.kind === "fork") insertIndex += 1;
+    nodes.splice(insertIndex, 0, forkNode);
+    updateMeta({ ...meta, nodes, branches: [...meta.branches, branch] });
+    if (onI18nChange) {
+      onI18nChange({
+        ...i18n,
+        [textKeyForStoryNode(meta, nextQuestion)]: questionText,
+        ...storyI18nDefaults({ ...meta, nodes: [nextQuestion, ...branch.nodes] })
+      });
+    }
+  }
+
   function moveNode(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= meta.nodes.length) return;
@@ -2949,6 +2984,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
                 updateMeta({ ...meta, nodes: replaceAt(meta.nodes, index, nextNode), branches: [...meta.branches, branch] });
                 if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
               }}
+              onAddQuestionAnswer={(currentNode) => addQuestionAnswer(index, currentNode)}
               onRemove={() => updateMeta({ ...meta, nodes: meta.nodes.filter((item) => item.id !== node.id) })}
               onMove={moveNode}
             />
@@ -3194,12 +3230,17 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositi
   );
 }
 
-function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onCreateBranch, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
   const data = node.data || {};
   const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
   const textValue = stringField(i18n[textKey] ?? data.text ?? "");
   const patchData = (patch: JsonDict) => onChange({ ...node, data: { ...data, ...patch } });
   const patchText = (text: string) => onChange({ ...node, data: { ...data, i18nKey: textKey } }, { key: textKey, text });
+  const questionAnswers = storyQuestionAnswers(node);
+  const patchQuestion = (prompt: string, answers: StoryQuestionAnswer[]) => {
+    const text = buildStoryQuestionText(prompt, answers);
+    onChange({ ...node, data: { ...data, i18nKey: textKey, answers, text } }, { key: textKey, text });
+  };
 
   return (
     <div className="story-node">
@@ -3253,8 +3294,33 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
         {node.kind === "question" && (
           <>
             <Field label="fork 标记" value={stringField(data.forkId)} onChange={(forkId) => patchData({ forkId })} />
-            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="问题文本" value={textValue} textarea onChange={patchText} />
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => onChange({ ...node, data: { ...data, i18nKey } }, { key: i18nKey, text: textValue })} />
+            <Field label="问题正文" value={storyQuestionPrompt(textValue)} textarea onChange={(prompt) => patchQuestion(prompt, questionAnswers)} />
+            <div className="story-inline-editor">
+              <strong>回答选项</strong>
+              {questionAnswers.map((answer, answerIndex) => (
+                <div className="story-row" key={`${answer.id}-${answerIndex}`}>
+                  <Field label="回答 ID" value={answer.id} onChange={(id) => {
+                    const answers = replaceAt(questionAnswers, answerIndex, { ...answer, id });
+                    patchQuestion(storyQuestionPrompt(textValue), answers);
+                  }} />
+                  <Field label="选项文本" value={answer.text} onChange={(text) => {
+                    const answers = replaceAt(questionAnswers, answerIndex, { ...answer, text });
+                    patchQuestion(storyQuestionPrompt(textValue), answers);
+                  }} />
+                  <ComboField label="分支 Entry" value={answer.branchKey} options={storyBranchOptions(branches)} onChange={(branchKey) => {
+                    const answers = replaceAt(questionAnswers, answerIndex, { ...answer, branchKey: String(branchKey) });
+                    patchQuestion(storyQuestionPrompt(textValue), answers);
+                  }} />
+                  <button className="secondary" onClick={() => {
+                    const answers = questionAnswers.filter((_, itemIndex) => itemIndex !== answerIndex);
+                    patchQuestion(storyQuestionPrompt(textValue), answers);
+                  }}>删除选项</button>
+                </div>
+              ))}
+              {onAddQuestionAnswer && <button className="secondary" onClick={() => onAddQuestionAnswer(node)}>添加回答并创建分支</button>}
+              <div className="notice compact-note">最终问题文本会按 Wiki 的 <code>question forkN "问题#回答0#回答1"</code> 形式写入；每个回答建议对应一个后续 fork 节点和分支 Entry。</div>
+            </div>
           </>
         )}
         {node.kind === "quickQuestion" && (
@@ -4941,13 +5007,13 @@ function storyI18nDefaults(meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix" |
   return entries;
 }
 
-function defaultStoryBranch(meta: StoryEventMeta): StoryEventBranch {
-  const key = `${meta.eventId || "ExampleEvent"}_Branch${meta.branches.length + 1}`;
+function defaultStoryBranch(meta: StoryEventMeta, keyOverride?: string, labelOverride?: string): StoryEventBranch {
+  const key = keyOverride || `${meta.eventId || "ExampleEvent"}_Branch${meta.branches.length + 1}`;
   const branchMeta = { eventId: key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(key)}` };
   return {
     id: makeId(),
     key,
-    label: "新分支",
+    label: labelOverride || "新分支",
     nodes: [
       defaultStoryNode("pause", branchMeta, makeId(), 0),
       defaultStoryNode("message", branchMeta, makeId(), 1),
@@ -4964,7 +5030,7 @@ function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "event
     splitSpeak: { actor: "ExampleNPC", i18nKey, text: "第一段台词。#$b#第二段台词。" },
     textAboveHead: { actor: "ExampleNPC", i18nKey, text: "你好，{{PlayerName}}。" },
     message: { i18nKey, text: "剧情消息。" },
-    question: { forkId: "fork0", i18nKey, text: "你要怎么回答？" },
+    question: { forkId: "fork0", i18nKey, text: "你要怎么回答？#选项 1#选项 2", answers: [{ id: "fork0", text: "选项 1", branchKey: "" }, { id: "fork1", text: "选项 2", branchKey: "" }] },
     quickQuestion: { i18nKey, text: "你要怎么回答？#选项一#选项二(break)message \"{{i18n:Example.Answer1}}\"(break)message \"{{i18n:Example.Answer2}}\"" },
     fork: { requirement: "fork0", eventId: `${meta.eventId || "ExampleEvent"}_Branch` },
     questionAnswered: { answerId: "event_answer", answered: true },
@@ -5041,6 +5107,30 @@ function storyNodeLabel(kind: EventNodeKind) {
 function storyBranchOptions(branches: StoryEventBranch[]): RulesetOption[] {
   const options = branches.map((branch) => ({ label: `${branch.label || "分支"} - ${branch.key}`, value: branch.key }));
   return options.length ? options : [{ label: "暂无分支，请先创建", value: "" }];
+}
+
+function storyQuestionAnswers(node: StoryEventNode): StoryQuestionAnswer[] {
+  const answers = Array.isArray(node.data?.answers) ? node.data.answers : [];
+  return answers
+    .filter((answer): answer is JsonDict => isObject(answer))
+    .map((answer, index) => ({
+      id: stringField(answer.id) || `fork${index}`,
+      text: stringField(answer.text) || `选项 ${index + 1}`,
+      branchKey: stringField(answer.branchKey)
+    }));
+}
+
+function storyQuestionPrompt(text: string) {
+  return text.split("#")[0] || "你要怎么回答？";
+}
+
+function buildStoryQuestionText(prompt: string, answers: StoryQuestionAnswer[]) {
+  const labels = answers.map((answer) => answer.text || answer.id).filter(Boolean);
+  return [prompt || "你要怎么回答？", ...labels].join("#");
+}
+
+function textKeyForStoryNode(meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, node: StoryEventNode) {
+  return stringField(node.data.i18nKey) || storyNodeI18nKey(meta, node);
 }
 
 function buildStoryEventKey(meta: StoryEventMeta) {
@@ -5135,7 +5225,9 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
     case "quickQuestion":
       return `quickQuestion ${quoteEventArg(textRef)}`;
     case "fork":
-      return `fork ${data.requirement || "fork0"} ${data.eventId || `${meta.eventId}_Branch`}`;
+      return data.requirement
+        ? `fork ${data.requirement} ${data.eventId || `${meta.eventId}_Branch`}`
+        : `fork ${data.eventId || `${meta.eventId}_Branch`}`;
     case "questionAnswered":
       return `questionAnswered ${data.answerId || "event_answer"}${data.answered === false ? " false" : ""}`;
     case "move":
