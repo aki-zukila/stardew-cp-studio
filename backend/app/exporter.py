@@ -96,6 +96,18 @@ def _patch_json(patch: PatchEntry) -> dict[str, Any]:
 
 
 def _game_data_patch_json(entry: GameDataEntry) -> dict[str, Any]:
+    story_entries = _story_event_entries(entry)
+    if story_entries:
+        patch: dict[str, Any] = {
+            "Action": "EditData",
+            "Target": entry.target,
+            "Entries": story_entries,
+        }
+        if entry.when:
+            patch["When"] = entry.when
+        patch.update(_export_advanced(entry.advanced))
+        return patch
+
     patch: dict[str, Any] = {
         "Action": "EditData",
         "Target": entry.target,
@@ -107,6 +119,102 @@ def _game_data_patch_json(entry: GameDataEntry) -> dict[str, Any]:
         patch["When"] = entry.when
     patch.update(_export_advanced(entry.advanced))
     return patch
+
+
+def _story_event_entries(entry: GameDataEntry) -> dict[str, Any] | None:
+    if entry.kind != "event":
+        return None
+    studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+    if not isinstance(studio, dict):
+        return None
+    story = studio.get("storyEvent")
+    if not isinstance(story, dict):
+        return None
+
+    entries: dict[str, Any] = {}
+    if entry.key:
+        entries[entry.key] = entry.value
+    for branch in story.get("branches", []) or []:
+        if not isinstance(branch, dict):
+            continue
+        key = branch.get("key")
+        nodes = branch.get("nodes")
+        if isinstance(key, str) and key:
+            entries[key] = _story_branch_script(key, nodes if isinstance(nodes, list) else [])
+    return entries or None
+
+
+def _story_branch_script(branch_key: str, nodes: list[Any]) -> str:
+    commands = [
+        command
+        for node in nodes
+        if isinstance(node, dict)
+        for command in [_story_node_command(node, branch_key)]
+        if command
+    ]
+    return "/".join(commands)
+
+
+def _story_node_command(node: dict[str, Any], event_id: str) -> str:
+    kind = node.get("kind")
+    data = node.get("data") if isinstance(node.get("data"), dict) else {}
+    i18n_key = data.get("i18nKey") if isinstance(data.get("i18nKey"), str) else ""
+    text_ref = f"{{{{i18n:{i18n_key}}}}}" if i18n_key else ""
+    if kind == "pause":
+        return f"pause {_int_value(data.get('duration'), 500)}"
+    if kind == "speak":
+        return f"speak {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
+    if kind == "message":
+        return f"message {_quote_event_arg(text_ref)}"
+    if kind == "question":
+        return f"question {data.get('forkId') or 'fork0'} {_quote_event_arg(text_ref)}"
+    if kind == "fork":
+        return f"fork {data.get('requirement') or 'fork0'} {data.get('eventId') or f'{event_id}_Branch'}"
+    if kind == "move":
+        suffix = " true" if data.get("continue") else ""
+        return f"move {data.get('actor') or 'farmer'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 1)} {_int_value(data.get('direction'), 2)}{suffix}"
+    if kind == "emote":
+        return f"emote {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('emote'), 16)}"
+    if kind == "globalFade":
+        parts = ["globalFade"]
+        if data.get("speed"):
+            parts.append(str(data.get("speed")))
+        if data.get("continue"):
+            parts.append("true")
+        return " ".join(parts)
+    if kind == "fade":
+        return "fade unfade" if data.get("unfade") else "fade"
+    if kind == "viewport":
+        return f"viewport {_int_value(data.get('x'), -1000)} {_int_value(data.get('y'), -1000)}"
+    if kind == "mail":
+        return f"{data.get('command') or 'mailReceived'} {data.get('mailId') or 'ExampleMail'}"
+    if kind == "end":
+        mode = data.get("mode") or "end"
+        if mode == "warpOut":
+            return "end warpOut"
+        if mode == "newDay":
+            return "end newDay"
+        if mode == "invisible":
+            return f"end invisible {data.get('actor') or 'ExampleNPC'}"
+        if mode == "dialogue":
+            return f"end dialogue {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
+        if mode == "dialogueWarpOut":
+            return f"end dialogueWarpOut {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
+        return "end"
+    if kind == "custom":
+        return str(data.get("raw") or "").strip()
+    return ""
+
+
+def _quote_event_arg(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _int_value(value: Any, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 class DialogueFile(dict):

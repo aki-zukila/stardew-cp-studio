@@ -977,6 +977,16 @@ code {
   padding: 12px;
 }
 
+.story-branch {
+  background: #fffdf8;
+  border: 1px solid #d4ddcf;
+  border-left: 4px solid #315f47;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
 .story-node-head {
   align-items: start;
   display: grid;

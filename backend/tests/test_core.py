@@ -279,6 +279,49 @@ class CoreTests(unittest.TestCase):
             self.assertIn("{{i18n:Author.TestPack.Event1.speak.node1}}", change["Entries"]["Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost"])
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_story_event_branches_share_edit_data_patch(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.append(GameDataEntry(
+                kind="event",
+                name="Branching Story Event",
+                target="Data/Events/Farm",
+                key="Author.TestPack.Event1/IsHost",
+                value='continue/-500 -500/farmer 95 49 2 MorrisTod 95 51 0/question fork0 "{{i18n:Author.TestPack.Event1.question.node1}}"/fork fork0 Author.TestPack.Event1_Branch1/end',
+                advanced={
+                    "StardewCPStudio": {
+                        "storyEvent": {
+                            "branches": [
+                                {
+                                    "key": "Author.TestPack.Event1_Branch1",
+                                    "nodes": [
+                                        {"kind": "pause", "data": {"duration": 400}},
+                                        {"kind": "message", "data": {"i18nKey": "Author.TestPack.Event1.branch.message"}},
+                                        {"kind": "end", "data": {"mode": "dialogue", "actor": "MorrisTod", "i18nKey": "Author.TestPack.Event1.branch.end"}},
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+                },
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+
+            self.assertEqual(set(change["Entries"]), {"Author.TestPack.Event1/IsHost", "Author.TestPack.Event1_Branch1"})
+            self.assertEqual(
+                change["Entries"]["Author.TestPack.Event1_Branch1"],
+                'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
+            )
+            self.assertNotIn("StardewCPStudio", json.dumps(content))
+
     def test_import_asset_can_use_character_asset_path(self):
         import asyncio
 

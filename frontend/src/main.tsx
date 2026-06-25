@@ -81,8 +81,10 @@ type StoryEventMeta = {
   actors: { actor: string; x: number; y: number; direction: number }[];
   preconditions: EventPrecondition[];
   nodes: StoryEventNode[];
+  branches: StoryEventBranch[];
   i18nPrefix: string;
 };
+type StoryEventBranch = { id: string; key: string; label: string; nodes: StoryEventNode[] };
 type EventPrecondition = { id: string; type: string; data: JsonDict; negated?: boolean };
 type FieldSchemas = Record<string, unknown>;
 type Ruleset = {
@@ -2828,6 +2830,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
   const scriptPreview = buildStoryEventScript(meta);
   const keyPreview = buildStoryEventKey(meta);
+  const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch) }));
 
   function updateMeta(nextMeta: StoryEventMeta) {
     onChange(storyEntryFromMeta(entry, nextMeta));
@@ -2845,6 +2848,12 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
     const node = defaultStoryNode(kind, meta);
     updateMeta({ ...meta, nodes: [...meta.nodes, node] });
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
+  }
+
+  function addBranch() {
+    const branch = defaultStoryBranch(meta);
+    updateMeta({ ...meta, branches: [...meta.branches, branch] });
+    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
   }
 
   function moveNode(index: number, direction: -1 | 1) {
@@ -2933,6 +2942,27 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
         </div>
       </details>
 
+      <details className="story-panel" open>
+        <summary>分支 Entries <span>{meta.branches.length} 个分支</span></summary>
+        <div className="notice compact-note">用于 question/fork 后跳转的脚本，例如 SVE 示例里的 <code>746153081_PurchasedAuroraVineyard</code>。分支脚本不会重复音乐、视角、初始角色三段。</div>
+        <div className="toolbar">
+          <button onClick={addBranch}><Icon name="plus" />添加分支 Entry</button>
+        </div>
+        <div className="story-list">
+          {meta.branches.map((branch, branchIndex) => (
+            <StoryBranchEditor
+              key={branch.id}
+              branch={branch}
+              meta={meta}
+              i18n={i18n}
+              onI18nChange={onI18nChange}
+              onChange={(nextBranch) => updateMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) })}
+              onRemove={() => updateMeta({ ...meta, branches: meta.branches.filter((item) => item.id !== branch.id) })}
+            />
+          ))}
+        </div>
+      </details>
+
       <div className="story-preview">
         <div>
           <strong>最终事件 Key</strong>
@@ -2942,6 +2972,12 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
           <strong>最终事件脚本</strong>
           <textarea value={scriptPreview} readOnly />
         </div>
+        {branchPreviews.map((branch) => (
+          <div key={branch.key}>
+            <strong>分支 Entry：{branch.key}</strong>
+            <textarea value={branch.script} readOnly />
+          </div>
+        ))}
       </div>
 
       <div className="grid two">
@@ -2982,6 +3018,72 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
       {condition.type === "GameStateQuery" && <Field label="Game State Query" value={stringField(data.query)} onChange={(query) => onChange({ ...condition, data: { ...data, query } })} />}
       {condition.type === "Raw" && <Field label="原始条件片段" value={stringField(data.raw)} onChange={(raw) => onChange({ ...condition, data: { ...data, raw } })} />}
       <button className="secondary" onClick={onRemove}>删除</button>
+    </div>
+  );
+}
+
+function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (branch: StoryEventBranch) => void; onRemove: () => void }) {
+  const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
+
+  function updateNode(nodeIndex: number, node: StoryEventNode, textPatch?: { key: string; text: string }) {
+    onChange({ ...branch, nodes: replaceAt(branch.nodes, nodeIndex, node) });
+    if (textPatch && onI18nChange) onI18nChange({ ...i18n, [textPatch.key]: textPatch.text });
+  }
+
+  function addNode(kind: EventNodeKind) {
+    const node = defaultStoryNode(kind, { eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` });
+    onChange({ ...branch, nodes: [...branch.nodes, node] });
+    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
+  }
+
+  function moveNode(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= branch.nodes.length) return;
+    const nodes = [...branch.nodes];
+    [nodes[index], nodes[target]] = [nodes[target], nodes[index]];
+    onChange({ ...branch, nodes });
+  }
+
+  return (
+    <div className="story-branch">
+      <div className="story-node-head">
+        <strong>{branch.label || "分支 Entry"}</strong>
+        <code>{branch.key}</code>
+        <button className="secondary" onClick={onRemove}>删除分支</button>
+      </div>
+      <div className="grid two">
+        <Field label="分支标题" value={branch.label} onChange={(label) => onChange({ ...branch, label })} />
+        <Field label="Entry Key" value={branch.key} onChange={(key) => onChange({ ...branch, key })} />
+      </div>
+      <div className="toolbar">
+        <select value={nodeKind} onChange={(event) => setNodeKind(event.target.value as EventNodeKind)}>
+          {STORY_NODE_OPTIONS.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+        </select>
+        <button onClick={() => addNode(nodeKind)}><Icon name="plus" />添加分支节点</button>
+      </div>
+      <div className="story-flow-map" aria-label="分支流程图预览">
+        <div className="story-flow-chip fixed">{branch.key}</div>
+        {branch.nodes.map((node, index) => (
+          <React.Fragment key={`branch-map-${node.id}`}>
+            <span className="story-flow-arrow">→</span>
+            <div className="story-flow-chip">{index + 1}. {node.label || storyNodeLabel(node.kind)}</div>
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="story-flow">
+        {branch.nodes.map((node, index) => (
+          <StoryNodeEditor
+            key={node.id}
+            node={node}
+            index={index}
+            meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
+            i18n={i18n}
+            onChange={(next, textPatch) => updateNode(index, next, textPatch)}
+            onRemove={() => onChange({ ...branch, nodes: branch.nodes.filter((item) => item.id !== node.id) })}
+            onMove={moveNode}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -4358,15 +4460,30 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
 }
 
 function gameDataPatchPreview(entry: GameDataEntry) {
+  const storyEntries = storyEntriesForPreview(entry);
   const patch: JsonDict = {
     Action: "EditData",
     Target: entry.target,
-    Entries: {
+    Entries: storyEntries || {
       [entry.key || "ExampleKey"]: entry.value
     }
   };
   if (Object.keys(entry.when).length) patch.When = entry.when;
   return { ...patch, ...publicAdvanced(entry.advanced) };
+}
+
+function storyEntriesForPreview(entry: GameDataEntry) {
+  if (entry.kind !== "event") return null;
+  const namespace = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const story = isObject(namespace.storyEvent) ? namespace.storyEvent as JsonDict : null;
+  if (!story) return null;
+  const entries: Record<string, unknown> = {};
+  if (entry.key) entries[entry.key] = entry.value;
+  const branches = Array.isArray(story.branches) ? story.branches as StoryEventBranch[] : [];
+  for (const branch of branches) {
+    if (branch.key) entries[branch.key] = buildStoryBranchScript(branch);
+  }
+  return Object.keys(entries).length ? entries : null;
 }
 
 function gameDataFromPatchPreview(entry: GameDataEntry, value: unknown): GameDataEntry {
@@ -4422,6 +4539,7 @@ function defaultStoryEventMeta(project: Project): StoryEventMeta {
       defaultStoryNode("speak", { eventId: baseId, i18nPrefix: baseId }),
       defaultStoryNode("end", { eventId: baseId, i18nPrefix: baseId })
     ],
+    branches: [],
     i18nPrefix: baseId
   };
 }
@@ -4441,6 +4559,7 @@ function storyMetaFromEntry(project: Project, entry: GameDataEntry): StoryEventM
     actors: Array.isArray(stored.actors) ? stored.actors as StoryEventMeta["actors"] : inferStoryStart(entry).actors,
     preconditions: Array.isArray(stored.preconditions) ? stored.preconditions as EventPrecondition[] : rawPreconditions.filter(Boolean).map((raw) => ({ id: makeId(), type: "Raw", data: { raw } })),
     nodes: Array.isArray(stored.nodes) ? stored.nodes as StoryEventNode[] : [{ id: makeId(), kind: "custom", label: "旧脚本", data: { raw: stripStoryStart(typeof entry.value === "string" ? entry.value : "") } }],
+    branches: Array.isArray(stored.branches) ? stored.branches as StoryEventBranch[] : [],
     i18nPrefix: typeof stored.i18nPrefix === "string" ? stored.i18nPrefix : `${project.manifest.UniqueID || "ExampleMod"}.${sanitizeI18nPart(eventId || fallback.eventId)}`
   };
 }
@@ -4470,6 +4589,21 @@ function storyI18nDefaults(meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix" |
     if (key && text) entries[key] = text;
   }
   return entries;
+}
+
+function defaultStoryBranch(meta: StoryEventMeta): StoryEventBranch {
+  const key = `${meta.eventId || "ExampleEvent"}_Branch${meta.branches.length + 1}`;
+  const branchMeta = { eventId: key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(key)}` };
+  return {
+    id: makeId(),
+    key,
+    label: "新分支",
+    nodes: [
+      defaultStoryNode("pause", branchMeta),
+      defaultStoryNode("message", branchMeta),
+      defaultStoryNode("end", branchMeta)
+    ]
+  };
 }
 
 function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, id = makeId()): StoryEventNode {
@@ -4580,12 +4714,16 @@ function buildStoryEventScript(meta: StoryEventMeta) {
   return [...start, ...commands].join("/");
 }
 
+function buildStoryBranchScript(branch: StoryEventBranch) {
+  return branch.nodes.map((node) => buildStoryCommand(node, { eventId: branch.key, i18nPrefix: branch.key })).filter(Boolean).join("/");
+}
+
 function buildStoryActors(actors: StoryEventMeta["actors"]) {
   const safeActors = actors.length ? actors : [{ actor: "farmer", x: -500, y: -500, direction: 2 }];
   return safeActors.map((actor) => `${actor.actor || "farmer"} ${integerInRange(actor.x, -10000, 10000, 0)} ${integerInRange(actor.y, -10000, 10000, 0)} ${integerInRange(actor.direction, 0, 3, 2)}`).join(" ");
 }
 
-function buildStoryCommand(node: StoryEventNode, meta: StoryEventMeta) {
+function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">) {
   const data = node.data || {};
   const textRef = `{{i18n:${stringField(data.i18nKey) || storyNodeI18nKey(meta, node)}}}`;
   switch (node.kind) {
