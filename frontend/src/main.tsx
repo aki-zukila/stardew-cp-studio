@@ -70,7 +70,7 @@ type WhenConditionSchema = { key: string; label: string; valueType: string; opti
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
-type EventNodeKind = "pause" | "speak" | "message" | "question" | "fork" | "move" | "emote" | "globalFade" | "fade" | "viewport" | "mail" | "end" | "custom";
+type EventNodeKind = "pause" | "speak" | "textAboveHead" | "message" | "question" | "fork" | "move" | "warp" | "faceDirection" | "emote" | "animate" | "showFrame" | "stopAnimation" | "playSound" | "stopSound" | "playMusic" | "stopMusic" | "globalFade" | "fade" | "viewport" | "mail" | "addItem" | "friendship" | "end" | "custom";
 type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict };
 type StoryEventMeta = {
   location: string;
@@ -3122,6 +3122,14 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
             <Field label="台词文本" value={textValue} textarea onChange={patchText} />
           </>
         )}
+        {node.kind === "textAboveHead" && (
+          <>
+            <Field label="气泡角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
+            <Field label="气泡文本" value={textValue} textarea onChange={patchText} />
+            <div className="notice compact-note">Wiki: textAboveHead 不会把 @ 替换为玩家名；需要玩家名时用 Content Patcher token：{"{{PlayerName}}"}</div>
+          </>
+        )}
         {node.kind === "message" && (
           <>
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
@@ -3150,12 +3158,51 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
             <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
           </>
         )}
+        {node.kind === "warp" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="目标 X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 0) })} />
+            <Field label="目标 Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 0) })} />
+          </>
+        )}
+        {node.kind === "faceDirection" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <ComboField label="朝向" value={data.direction ?? 2} options={STORY_DIRECTION_OPTIONS} onChange={(direction) => patchData({ direction: Number(direction) })} />
+            <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
+          </>
+        )}
         {node.kind === "emote" && (
           <>
             <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <ComboField label="表情 ID" value={data.emote ?? 16} options={STORY_EMOTE_OPTIONS} onChange={(emote) => patchData({ emote: Number(emote) })} />
           </>
         )}
+        {node.kind === "animate" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <BoolField label="水平翻转 flip" value={Boolean(data.flip)} onChange={(flip) => patchData({ flip })} />
+            <BoolField label="循环 loop" value={data.loop !== false} onChange={(loop) => patchData({ loop })} />
+            <Field label="每帧毫秒" value={stringField(data.frameDuration)} onChange={(frameDuration) => patchData({ frameDuration: integerInRange(frameDuration, 1, 600000, 120) })} />
+            <Field label="帧列表" value={stringField(data.frames)} onChange={(frames) => patchData({ frames })} />
+          </>
+        )}
+        {node.kind === "showFrame" && (
+          <>
+            <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
+            <Field label="帧编号" value={stringField(data.frame)} onChange={(frame) => patchData({ frame: integerInRange(frame, 0, 9999, 0) })} />
+          </>
+        )}
+        {node.kind === "stopAnimation" && <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />}
+        {node.kind === "playSound" && <Field label="音效 ID" value={stringField(data.sound)} onChange={(sound) => patchData({ sound })} />}
+        {node.kind === "stopSound" && (
+          <>
+            <Field label="音效 ID" value={stringField(data.sound)} onChange={(sound) => patchData({ sound })} />
+            <BoolField label="立即停止 immediate" value={data.immediate !== false} onChange={(immediate) => patchData({ immediate })} />
+          </>
+        )}
+        {node.kind === "playMusic" && <Field label="音乐 ID" value={stringField(data.music)} onChange={(music) => patchData({ music })} />}
+        {node.kind === "stopMusic" && <div className="notice compact-note">无参数。停止当前音乐。</div>}
         {node.kind === "fade" && <BoolField label="unfade" value={Boolean(data.unfade)} onChange={(unfade) => patchData({ unfade })} />}
         {node.kind === "globalFade" && (
           <>
@@ -3173,6 +3220,19 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
           <>
             <ComboField label="邮件命令" value={data.command || "mailReceived"} options={STORY_MAIL_COMMAND_OPTIONS} onChange={(command) => patchData({ command })} />
             <Field label="邮件 ID" value={stringField(data.mailId)} onChange={(mailId) => patchData({ mailId })} />
+          </>
+        )}
+        {node.kind === "addItem" && (
+          <>
+            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <Field label="数量 count" value={stringField(data.count)} onChange={(count) => patchData({ count: integerInRange(count, 1, 999, 1) })} />
+            <Field label="品质 quality" value={stringField(data.quality)} onChange={(quality) => patchData({ quality: integerInRange(quality, 0, 4, 0) })} />
+          </>
+        )}
+        {node.kind === "friendship" && (
+          <>
+            <Field label="NPC" value={stringField(data.npc)} onChange={(npc) => patchData({ npc })} />
+            <Field label="增减值" value={stringField(data.amount)} onChange={(amount) => patchData({ amount: integerInRange(amount, -5000, 5000, 250) })} />
           </>
         )}
         {node.kind === "end" && (
@@ -3831,16 +3891,28 @@ const MOVIE_RESPONSE_POINTS = [
 
 const STORY_NODE_OPTIONS: RulesetOption[] = [
   { label: "角色说话 speak", value: "speak" },
+  { label: "角色气泡 textAboveHead", value: "textAboveHead" },
   { label: "等待 pause", value: "pause" },
   { label: "消息 message", value: "message" },
   { label: "提问 question", value: "question" },
   { label: "分支 fork", value: "fork" },
   { label: "移动 move", value: "move" },
+  { label: "传送 warp", value: "warp" },
+  { label: "转向 faceDirection", value: "faceDirection" },
   { label: "表情 emote", value: "emote" },
+  { label: "动画 animate", value: "animate" },
+  { label: "显示帧 showFrame", value: "showFrame" },
+  { label: "停止动画 stopAnimation", value: "stopAnimation" },
+  { label: "播放音效 playSound", value: "playSound" },
+  { label: "停止音效 stopSound", value: "stopSound" },
+  { label: "播放音乐 playMusic", value: "playMusic" },
+  { label: "停止音乐 stopMusic", value: "stopMusic" },
   { label: "全局淡出 globalFade", value: "globalFade" },
   { label: "淡入淡出 fade", value: "fade" },
   { label: "视角 viewport", value: "viewport" },
   { label: "邮件 mailReceived", value: "mail" },
+  { label: "获得物品 addItem", value: "addItem" },
+  { label: "友情增减 friendship", value: "friendship" },
   { label: "结束 end", value: "end" },
   { label: "自定义命令", value: "custom" }
 ];
@@ -4611,15 +4683,27 @@ function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "event
   const defaults: Record<EventNodeKind, JsonDict> = {
     pause: { duration: 500 },
     speak: { actor: "ExampleNPC", i18nKey, text: "你好，@。#$b#这是一个剧情节点。$h" },
+    textAboveHead: { actor: "ExampleNPC", i18nKey, text: "你好，{{PlayerName}}。" },
     message: { i18nKey, text: "剧情消息。" },
     question: { forkId: "fork0", i18nKey, text: "你要怎么回答？" },
     fork: { requirement: "fork0", eventId: `${meta.eventId || "ExampleEvent"}_Branch` },
     move: { actor: "farmer", x: 0, y: 1, direction: 2, continue: false },
+    warp: { actor: "farmer", x: 64, y: 15 },
+    faceDirection: { actor: "ExampleNPC", direction: 2, continue: false },
     emote: { actor: "ExampleNPC", emote: 16 },
+    animate: { actor: "ExampleNPC", flip: false, loop: true, frameDuration: 120, frames: "0 1 2" },
+    showFrame: { actor: "ExampleNPC", frame: 0 },
+    stopAnimation: { actor: "ExampleNPC" },
+    playSound: { sound: "doorClose" },
+    stopSound: { sound: "doorClose", immediate: true },
+    playMusic: { music: "continue" },
+    stopMusic: {},
     globalFade: { speed: "", continue: false },
     fade: { unfade: false },
     viewport: { x: -1000, y: -1000 },
     mail: { command: "mailReceived", mailId: "ExampleMail" },
+    addItem: { itemId: "(O)388", count: 1, quality: 0 },
+    friendship: { npc: "ExampleNPC", amount: 250 },
     end: { mode: "end", actor: "ExampleNPC", i18nKey, text: "今天的事，之后再聊吧。$h" },
     custom: { raw: "-- custom command" }
   };
@@ -4731,6 +4815,8 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
       return `pause ${integerInRange(data.duration, 0, 600000, 500)}`;
     case "speak":
       return `speak ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
+    case "textAboveHead":
+      return `textAboveHead ${data.actor || "ExampleNPC"} ${quoteEventArg(textRef)}`;
     case "message":
       return `message ${quoteEventArg(textRef)}`;
     case "question":
@@ -4739,8 +4825,26 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
       return `fork ${data.requirement || "fork0"} ${data.eventId || `${meta.eventId}_Branch`}`;
     case "move":
       return `move ${data.actor || "farmer"} ${integerInRange(data.x, -999, 999, 0)} ${integerInRange(data.y, -999, 999, 1)} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
+    case "warp":
+      return `warp ${data.actor || "farmer"} ${integerInRange(data.x, -10000, 10000, 0)} ${integerInRange(data.y, -10000, 10000, 0)}`;
+    case "faceDirection":
+      return `faceDirection ${data.actor || "ExampleNPC"} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
     case "emote":
       return `emote ${data.actor || "ExampleNPC"} ${integerInRange(data.emote, 0, 99, 16)}`;
+    case "animate":
+      return `animate ${data.actor || "ExampleNPC"} ${Boolean(data.flip)} ${data.loop !== false} ${integerInRange(data.frameDuration, 1, 600000, 120)} ${stringField(data.frames) || "0 1 2"}`;
+    case "showFrame":
+      return `showFrame ${data.actor || "ExampleNPC"} ${integerInRange(data.frame, 0, 9999, 0)}`;
+    case "stopAnimation":
+      return `stopAnimation ${data.actor || "ExampleNPC"}`;
+    case "playSound":
+      return `playSound ${data.sound || "doorClose"}`;
+    case "stopSound":
+      return `stopSound ${data.sound || "doorClose"}${data.immediate === false ? " false" : ""}`;
+    case "playMusic":
+      return `playMusic ${data.music || "continue"}`;
+    case "stopMusic":
+      return "stopMusic";
     case "globalFade":
       return `globalFade${data.speed ? ` ${data.speed}` : ""}${data.continue ? " true" : ""}`;
     case "fade":
@@ -4749,6 +4853,10 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
       return `viewport ${integerInRange(data.x, -10000, 10000, -1000)} ${integerInRange(data.y, -10000, 10000, -1000)}`;
     case "mail":
       return `${data.command || "mailReceived"} ${data.mailId || "ExampleMail"}`;
+    case "addItem":
+      return `addItem ${data.itemId || "(O)388"} ${integerInRange(data.count, 1, 999, 1)} ${integerInRange(data.quality, 0, 4, 0)}`;
+    case "friendship":
+      return `friendship ${data.npc || "ExampleNPC"} ${integerInRange(data.amount, -5000, 5000, 250)}`;
     case "end":
       if (data.mode === "warpOut") return "end warpOut";
       if (data.mode === "newDay") return "end newDay";

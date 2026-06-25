@@ -164,6 +164,8 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
         return f"pause {_int_value(data.get('duration'), 500)}"
     if kind == "speak":
         return f"speak {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
+    if kind == "textAboveHead":
+        return f"textAboveHead {data.get('actor') or 'ExampleNPC'} {_quote_event_arg(text_ref)}"
     if kind == "message":
         return f"message {_quote_event_arg(text_ref)}"
     if kind == "question":
@@ -173,8 +175,28 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
     if kind == "move":
         suffix = " true" if data.get("continue") else ""
         return f"move {data.get('actor') or 'farmer'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 1)} {_int_value(data.get('direction'), 2)}{suffix}"
+    if kind == "warp":
+        return f"warp {data.get('actor') or 'farmer'} {_int_value(data.get('x'), 0)} {_int_value(data.get('y'), 0)}"
+    if kind == "faceDirection":
+        suffix = " true" if data.get("continue") else ""
+        return f"faceDirection {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('direction'), 2)}{suffix}"
     if kind == "emote":
         return f"emote {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('emote'), 16)}"
+    if kind == "animate":
+        return f"animate {data.get('actor') or 'ExampleNPC'} {_bool_text(data.get('flip'), False)} {_bool_text(data.get('loop'), True)} {_int_value(data.get('frameDuration'), 120)} {data.get('frames') or '0 1 2'}"
+    if kind == "showFrame":
+        return f"showFrame {data.get('actor') or 'ExampleNPC'} {_int_value(data.get('frame'), 0)}"
+    if kind == "stopAnimation":
+        return f"stopAnimation {data.get('actor') or 'ExampleNPC'}"
+    if kind == "playSound":
+        return f"playSound {data.get('sound') or 'doorClose'}"
+    if kind == "stopSound":
+        suffix = " false" if data.get("immediate") is False else ""
+        return f"stopSound {data.get('sound') or 'doorClose'}{suffix}"
+    if kind == "playMusic":
+        return f"playMusic {data.get('music') or 'continue'}"
+    if kind == "stopMusic":
+        return "stopMusic"
     if kind == "globalFade":
         parts = ["globalFade"]
         if data.get("speed"):
@@ -188,6 +210,10 @@ def _story_node_command(node: dict[str, Any], event_id: str) -> str:
         return f"viewport {_int_value(data.get('x'), -1000)} {_int_value(data.get('y'), -1000)}"
     if kind == "mail":
         return f"{data.get('command') or 'mailReceived'} {data.get('mailId') or 'ExampleMail'}"
+    if kind == "addItem":
+        return f"addItem {data.get('itemId') or '(O)388'} {_int_value(data.get('count'), 1)} {_int_value(data.get('quality'), 0)}"
+    if kind == "friendship":
+        return f"friendship {data.get('npc') or 'ExampleNPC'} {_int_value(data.get('amount'), 250)}"
     if kind == "end":
         mode = data.get("mode") or "end"
         if mode == "warpOut":
@@ -215,6 +241,12 @@ def _int_value(value: Any, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return fallback
+
+
+def _bool_text(value: Any, fallback: bool) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(fallback).lower()
 
 
 class DialogueFile(dict):

@@ -1636,6 +1636,42 @@
           "command": "end",
           "args": [],
           "example": "end"
+        },
+        {
+          "command": "textAboveHead",
+          "example": "textAboveHead MorrisTod \"{{i18n:Event.Bubble}}\""
+        },
+        {
+          "command": "animate",
+          "example": "animate MorrisTod false true 120 0 1 2"
+        },
+        {
+          "command": "showFrame",
+          "example": "showFrame MorrisTod 4"
+        },
+        {
+          "command": "stopAnimation",
+          "example": "stopAnimation MorrisTod"
+        },
+        {
+          "command": "stopSound",
+          "example": "stopSound doorClose false"
+        },
+        {
+          "command": "playMusic",
+          "example": "playMusic event1"
+        },
+        {
+          "command": "stopMusic",
+          "example": "stopMusic"
+        },
+        {
+          "command": "addItem",
+          "example": "addItem (O)388 2 0"
+        },
+        {
+          "command": "friendship",
+          "example": "friendship MorrisTod 250"
         }
       ],
       "key_patterns": [
@@ -1697,7 +1733,36 @@
         "Event scripts are slash-separated command strings; quote spoken text when needed.",
         "Use a large unique event ID for custom events and avoid colliding with vanilla event IDs.",
         "For simple date/weather gating in CP, prefer When conditions outside the event if possible."
-      ]
+      ],
+      "flow_builder": {
+        "node_kinds": [
+          "pause",
+          "speak",
+          "textAboveHead",
+          "message",
+          "question",
+          "fork",
+          "move",
+          "warp",
+          "faceDirection",
+          "emote",
+          "animate",
+          "showFrame",
+          "stopAnimation",
+          "playSound",
+          "stopSound",
+          "playMusic",
+          "stopMusic",
+          "globalFade",
+          "fade",
+          "viewport",
+          "mail",
+          "addItem",
+          "friendship",
+          "end",
+          "custom"
+        ]
+      }
     },
     {
       "id": "movie_reactions",

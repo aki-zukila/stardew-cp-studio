@@ -302,6 +302,15 @@ class CoreTests(unittest.TestCase):
                                     "nodes": [
                                         {"kind": "pause", "data": {"duration": 400}},
                                         {"kind": "message", "data": {"i18nKey": "Author.TestPack.Event1.branch.message"}},
+                                        {"kind": "textAboveHead", "data": {"actor": "MorrisTod", "i18nKey": "Author.TestPack.Event1.branch.bubble"}},
+                                        {"kind": "faceDirection", "data": {"actor": "farmer", "direction": 1, "continue": True}},
+                                        {"kind": "warp", "data": {"actor": "farmer", "x": 95, "y": 49}},
+                                        {"kind": "playSound", "data": {"sound": "doorClose"}},
+                                        {"kind": "animate", "data": {"actor": "MorrisTod", "flip": False, "loop": True, "frameDuration": 120, "frames": "0 1 2"}},
+                                        {"kind": "showFrame", "data": {"actor": "MorrisTod", "frame": 4}},
+                                        {"kind": "stopAnimation", "data": {"actor": "MorrisTod"}},
+                                        {"kind": "addItem", "data": {"itemId": "(O)388", "count": 2, "quality": 0}},
+                                        {"kind": "friendship", "data": {"npc": "MorrisTod", "amount": 250}},
                                         {"kind": "end", "data": {"mode": "dialogue", "actor": "MorrisTod", "i18nKey": "Author.TestPack.Event1.branch.end"}},
                                     ],
                                 }
@@ -318,7 +327,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(set(change["Entries"]), {"Author.TestPack.Event1/IsHost", "Author.TestPack.Event1_Branch1"})
             self.assertEqual(
                 change["Entries"]["Author.TestPack.Event1_Branch1"],
-                'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
+                'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/textAboveHead MorrisTod "{{i18n:Author.TestPack.Event1.branch.bubble}}"/faceDirection farmer 1 true/warp farmer 95 49/playSound doorClose/animate MorrisTod false true 120 0 1 2/showFrame MorrisTod 4/stopAnimation MorrisTod/addItem (O)388 2 0/friendship MorrisTod 250/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
             )
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
