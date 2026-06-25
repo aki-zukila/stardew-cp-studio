@@ -2789,7 +2789,7 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
   function addStoryEvent() {
     const meta = defaultStoryEventMeta(project);
     const entry = storyEntryFromMeta(createWorkflowEntry("event", "新剧情事件", `Data/Events/${meta.location}`, "", ""), meta);
-    setProject({ ...project, game_data: [...project.game_data, entry] });
+    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...storyI18nDefaults(meta) } });
   }
 
   return (
@@ -2842,7 +2842,9 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
   }
 
   function addNode(kind: EventNodeKind) {
-    updateMeta({ ...meta, nodes: [...meta.nodes, defaultStoryNode(kind, meta)] });
+    const node = defaultStoryNode(kind, meta);
+    updateMeta({ ...meta, nodes: [...meta.nodes, node] });
+    if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
 
   function moveNode(index: number, direction: -1 | 1) {
@@ -3003,7 +3005,12 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
         </div>
       </div>
       <div className="grid two">
-        <ComboField label="节点类型" value={node.kind} options={STORY_NODE_OPTIONS} onChange={(kind) => onChange(defaultStoryNode(String(kind) as EventNodeKind, meta, node.id))} />
+        <ComboField label="节点类型" value={node.kind} options={STORY_NODE_OPTIONS} onChange={(kind) => {
+          const next = defaultStoryNode(String(kind) as EventNodeKind, meta, node.id);
+          const key = typeof next.data.i18nKey === "string" ? next.data.i18nKey : "";
+          const text = typeof next.data.text === "string" ? next.data.text : "";
+          onChange(next, key && text ? { key, text } : undefined);
+        }} />
         <Field label="节点标题" value={node.label} onChange={(label) => onChange({ ...node, label })} />
         {node.kind === "pause" && <Field label="等待毫秒" value={stringField(data.duration)} onChange={(duration) => patchData({ duration: integerInRange(duration, 0, 600000, 500) })} />}
         {node.kind === "speak" && (
@@ -4453,6 +4460,16 @@ function storyEntryFromMeta(entry: GameDataEntry, meta: StoryEventMeta): GameDat
       }
     }
   };
+}
+
+function storyI18nDefaults(meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix" | "nodes">) {
+  const entries: Record<string, string> = {};
+  for (const node of meta.nodes) {
+    const key = typeof node.data.i18nKey === "string" ? node.data.i18nKey : "";
+    const text = typeof node.data.text === "string" ? node.data.text : "";
+    if (key && text) entries[key] = text;
+  }
+  return entries;
 }
 
 function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, id = makeId()): StoryEventNode {
