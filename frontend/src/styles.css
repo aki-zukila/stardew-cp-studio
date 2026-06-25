@@ -1003,6 +1003,12 @@ code {
   stroke-width: 2;
 }
 
+.story-canvas-lines line.fork-line {
+  stroke: #9b5f2f;
+  stroke-dasharray: none;
+  stroke-width: 2.5;
+}
+
 .story-canvas-node {
   background: #ffffff;
   border: 1px solid #cfc8ba;
@@ -1028,6 +1034,13 @@ code {
   background: #315f47;
   border-color: #315f47;
   color: #ffffff;
+  cursor: default;
+}
+
+.story-canvas-node.branch-target {
+  background: #fff7e8;
+  border-color: #c89a5b;
+  color: #5b4026;
   cursor: default;
 }
 

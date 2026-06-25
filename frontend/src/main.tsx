@@ -2930,6 +2930,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
           title="主线流程图"
           startLabel="音乐 / 视角 / 初始角色"
           nodes={meta.nodes}
+          branches={meta.branches}
           onNodePositionChange={(nodeId, position) => updateMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
         />
         <div className="story-flow">
@@ -2939,8 +2940,15 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
               node={node}
               index={index}
               meta={meta}
+              branches={meta.branches}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(index, next, textPatch)}
+              onCreateBranch={(currentNode) => {
+                const branch = defaultStoryBranch(meta);
+                const nextNode = { ...currentNode, data: { ...currentNode.data, eventId: branch.key } };
+                updateMeta({ ...meta, nodes: replaceAt(meta.nodes, index, nextNode), branches: [...meta.branches, branch] });
+                if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: branch.nodes }) });
+              }}
               onRemove={() => updateMeta({ ...meta, nodes: meta.nodes.filter((item) => item.id !== node.id) })}
               onMove={moveNode}
             />
@@ -3080,6 +3088,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
         title="分支流程图"
         startLabel={branch.key}
         nodes={branch.nodes}
+        branches={meta.branches}
         onNodePositionChange={(nodeId, position) => onChange({ ...branch, nodes: updateStoryNodePosition(branch.nodes, nodeId, position) })}
       />
       <div className="story-flow">
@@ -3089,6 +3098,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
             node={node}
             index={index}
             meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
+            branches={meta.branches}
             i18n={i18n}
             onChange={(next, textPatch) => updateNode(index, next, textPatch)}
             onRemove={() => onChange({ ...branch, nodes: branch.nodes.filter((item) => item.id !== node.id) })}
@@ -3100,7 +3110,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
   );
 }
 
-function StoryFlowCanvas({ title, startLabel, nodes, onNodePositionChange }: { title: string; startLabel: string; nodes: StoryEventNode[]; onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void }) {
+function StoryFlowCanvas({ title, startLabel, nodes, branches = [], onNodePositionChange }: { title: string; startLabel: string; nodes: StoryEventNode[]; branches?: StoryEventBranch[]; onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void }) {
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
   const canvasWidth = Math.max(760, 210 + nodes.length * 170);
   const canvasHeight = Math.max(260, 160 + Math.ceil(nodes.length / 5) * 70);
@@ -3108,6 +3118,11 @@ function StoryFlowCanvas({ title, startLabel, nodes, onNodePositionChange }: { t
 
   function nodePosition(node: StoryEventNode, index: number) {
     return node.position || { x: 210 + index * 150, y: 92 + (index % 2) * 70 };
+  }
+
+  function branchPosition(branchKey: string) {
+    const branchIndex = Math.max(0, branches.findIndex((branch) => branch.key === branchKey));
+    return { x: Math.max(240, canvasWidth - 180), y: 24 + branchIndex * 58 };
   }
 
   function pointerPosition(event: React.PointerEvent<HTMLDivElement>) {
@@ -3145,8 +3160,17 @@ function StoryFlowCanvas({ title, startLabel, nodes, onNodePositionChange }: { t
             const toY = to.y + 24;
             return <line key={`line-${node.id}`} x1={fromX} y1={fromY} x2={toX} y2={toY} />;
           })}
+          {nodes.filter((node) => node.kind === "fork" && typeof node.data.eventId === "string").map((node, index) => {
+            const from = nodePosition(node, nodes.findIndex((item) => item.id === node.id));
+            const to = branchPosition(String(node.data.eventId));
+            return <line className="fork-line" key={`fork-line-${node.id}-${index}`} x1={from.x + 130} y1={from.y + 24} x2={to.x} y2={to.y + 22} />;
+          })}
         </svg>
         <div className="story-canvas-node start" style={{ left: start.x, top: start.y }}>{startLabel}</div>
+        {branches.map((branch) => {
+          const position = branchPosition(branch.key);
+          return <div className="story-canvas-node branch-target" key={`branch-target-${branch.id}`} style={{ left: position.x, top: position.y }} title={branch.key}>{branch.label || "分支"}<code>{branch.key}</code></div>;
+        })}
         {nodes.map((node, index) => {
           const position = nodePosition(node, index);
           return (
@@ -3170,7 +3194,7 @@ function StoryFlowCanvas({ title, startLabel, nodes, onNodePositionChange }: { t
   );
 }
 
-function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onCreateBranch, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
   const data = node.data || {};
   const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
   const textValue = stringField(i18n[textKey] ?? data.text ?? "");
@@ -3229,7 +3253,8 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
         {node.kind === "fork" && (
           <>
             <Field label="条件/回答 ID" value={stringField(data.requirement)} onChange={(requirement) => patchData({ requirement })} />
-            <Field label="跳转事件 ID" value={stringField(data.eventId)} onChange={(eventId) => patchData({ eventId })} />
+            <ComboField label="跳转分支 Entry" value={data.eventId || ""} options={storyBranchOptions(branches)} onChange={(eventId) => patchData({ eventId })} />
+            {onCreateBranch && <button className="secondary" onClick={() => onCreateBranch(node)}>创建并关联分支</button>}
           </>
         )}
         {node.kind === "move" && (
@@ -4819,6 +4844,11 @@ function defaultStoryPrecondition(type: string): EventPrecondition {
 function storyNodeLabel(kind: EventNodeKind) {
   const option = STORY_NODE_OPTIONS.find((item) => item.value === kind);
   return option ? String(option.label).split(" ")[0] : kind;
+}
+
+function storyBranchOptions(branches: StoryEventBranch[]): RulesetOption[] {
+  const options = branches.map((branch) => ({ label: `${branch.label || "分支"} - ${branch.key}`, value: branch.key }));
+  return options.length ? options : [{ label: "暂无分支，请先创建", value: "" }];
 }
 
 function buildStoryEventKey(meta: StoryEventMeta) {
