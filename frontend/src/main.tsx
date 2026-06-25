@@ -71,7 +71,7 @@ type DialogueFormatField = { name: string; type: string; options?: string; min?:
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
 type EventNodeKind = "pause" | "speak" | "textAboveHead" | "message" | "question" | "fork" | "move" | "warp" | "faceDirection" | "emote" | "animate" | "showFrame" | "stopAnimation" | "playSound" | "stopSound" | "playMusic" | "stopMusic" | "globalFade" | "fade" | "viewport" | "mail" | "addItem" | "friendship" | "end" | "custom";
-type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict };
+type StoryEventNode = { id: string; kind: EventNodeKind; label: string; data: JsonDict; position?: { x: number; y: number } };
 type StoryEventMeta = {
   location: string;
   eventId: string;
@@ -2845,7 +2845,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
   }
 
   function addNode(kind: EventNodeKind) {
-    const node = defaultStoryNode(kind, meta);
+    const node = defaultStoryNode(kind, meta, makeId(), meta.nodes.length);
     updateMeta({ ...meta, nodes: [...meta.nodes, node] });
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
@@ -2926,6 +2926,12 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onI18nChange, onCh
             </React.Fragment>
           ))}
         </div>
+        <StoryFlowCanvas
+          title="主线流程图"
+          startLabel="音乐 / 视角 / 初始角色"
+          nodes={meta.nodes}
+          onNodePositionChange={(nodeId, position) => updateMeta({ ...meta, nodes: updateStoryNodePosition(meta.nodes, nodeId, position) })}
+        />
         <div className="story-flow">
           {meta.nodes.map((node, index) => (
             <StoryNodeEditor
@@ -3031,7 +3037,7 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
   }
 
   function addNode(kind: EventNodeKind) {
-    const node = defaultStoryNode(kind, { eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` });
+    const node = defaultStoryNode(kind, { eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }, makeId(), branch.nodes.length);
     onChange({ ...branch, nodes: [...branch.nodes, node] });
     if (onI18nChange) onI18nChange({ ...i18n, ...storyI18nDefaults({ ...meta, nodes: [node] }) });
   }
@@ -3070,6 +3076,12 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
           </React.Fragment>
         ))}
       </div>
+      <StoryFlowCanvas
+        title="分支流程图"
+        startLabel={branch.key}
+        nodes={branch.nodes}
+        onNodePositionChange={(nodeId, position) => onChange({ ...branch, nodes: updateStoryNodePosition(branch.nodes, nodeId, position) })}
+      />
       <div className="story-flow">
         {branch.nodes.map((node, index) => (
           <StoryNodeEditor
@@ -3083,6 +3095,76 @@ function StoryBranchEditor({ branch, meta, i18n, onI18nChange, onChange, onRemov
             onMove={moveNode}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function StoryFlowCanvas({ title, startLabel, nodes, onNodePositionChange }: { title: string; startLabel: string; nodes: StoryEventNode[]; onNodePositionChange: (nodeId: string, position: { x: number; y: number }) => void }) {
+  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const canvasWidth = Math.max(760, 210 + nodes.length * 170);
+  const canvasHeight = Math.max(260, 160 + Math.ceil(nodes.length / 5) * 70);
+  const start = { x: 24, y: 92 };
+
+  function nodePosition(node: StoryEventNode, index: number) {
+    return node.position || { x: 210 + index * 150, y: 92 + (index % 2) * 70 };
+  }
+
+  function pointerPosition(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  return (
+    <div className="story-canvas-wrap">
+      <div className="story-canvas-head">
+        <strong>{title}</strong>
+        <span>拖动节点可保存画布位置；执行顺序仍按下方节点列表。</span>
+      </div>
+      <div
+        className="story-canvas"
+        style={{ width: canvasWidth, height: canvasHeight }}
+        onPointerMove={(event) => {
+          if (!dragging) return;
+          const point = pointerPosition(event);
+          onNodePositionChange(dragging.id, {
+            x: Math.max(140, Math.min(canvasWidth - 150, Math.round(point.x - dragging.offsetX))),
+            y: Math.max(18, Math.min(canvasHeight - 70, Math.round(point.y - dragging.offsetY)))
+          });
+        }}
+        onPointerUp={() => setDragging(null)}
+        onPointerCancel={() => setDragging(null)}
+      >
+        <svg className="story-canvas-lines" width={canvasWidth} height={canvasHeight} aria-hidden="true">
+          {nodes.map((node, index) => {
+            const from = index === 0 ? start : nodePosition(nodes[index - 1], index - 1);
+            const to = nodePosition(node, index);
+            const fromX = from.x + 130;
+            const fromY = from.y + 24;
+            const toX = to.x;
+            const toY = to.y + 24;
+            return <line key={`line-${node.id}`} x1={fromX} y1={fromY} x2={toX} y2={toY} />;
+          })}
+        </svg>
+        <div className="story-canvas-node start" style={{ left: start.x, top: start.y }}>{startLabel}</div>
+        {nodes.map((node, index) => {
+          const position = nodePosition(node, index);
+          return (
+            <div
+              className={`story-canvas-node ${dragging?.id === node.id ? "dragging" : ""}`}
+              key={node.id}
+              style={{ left: position.x, top: position.y }}
+              onPointerDown={(event) => {
+                const point = pointerPosition(event);
+                setDragging({ id: node.id, offsetX: point.x - position.x, offsetY: point.y - position.y });
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+            >
+              <span>{index + 1}. {node.label || storyNodeLabel(node.kind)}</span>
+              <code>{node.kind}</code>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -3109,6 +3191,7 @@ function StoryNodeEditor({ node, index, meta, i18n, onChange, onRemove, onMove }
       <div className="grid two">
         <ComboField label="节点类型" value={node.kind} options={STORY_NODE_OPTIONS} onChange={(kind) => {
           const next = defaultStoryNode(String(kind) as EventNodeKind, meta, node.id);
+          next.position = node.position;
           const key = typeof next.data.i18nKey === "string" ? next.data.i18nKey : "";
           const text = typeof next.data.text === "string" ? next.data.text : "";
           onChange(next, key && text ? { key, text } : undefined);
@@ -4607,9 +4690,9 @@ function defaultStoryEventMeta(project: Project): StoryEventMeta {
     ],
     preconditions: [],
     nodes: [
-      defaultStoryNode("pause", { eventId: baseId, i18nPrefix: baseId }),
-      defaultStoryNode("speak", { eventId: baseId, i18nPrefix: baseId }),
-      defaultStoryNode("end", { eventId: baseId, i18nPrefix: baseId })
+      defaultStoryNode("pause", { eventId: baseId, i18nPrefix: baseId }, makeId(), 0),
+      defaultStoryNode("speak", { eventId: baseId, i18nPrefix: baseId }, makeId(), 1),
+      defaultStoryNode("end", { eventId: baseId, i18nPrefix: baseId }, makeId(), 2)
     ],
     branches: [],
     i18nPrefix: baseId
@@ -4671,14 +4754,14 @@ function defaultStoryBranch(meta: StoryEventMeta): StoryEventBranch {
     key,
     label: "新分支",
     nodes: [
-      defaultStoryNode("pause", branchMeta),
-      defaultStoryNode("message", branchMeta),
-      defaultStoryNode("end", branchMeta)
+      defaultStoryNode("pause", branchMeta, makeId(), 0),
+      defaultStoryNode("message", branchMeta, makeId(), 1),
+      defaultStoryNode("end", branchMeta, makeId(), 2)
     ]
   };
 }
 
-function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, id = makeId()): StoryEventNode {
+function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix">, id = makeId(), index = 0): StoryEventNode {
   const i18nKey = storyNodeI18nKey(meta, { id, kind, label: "", data: {} });
   const defaults: Record<EventNodeKind, JsonDict> = {
     pause: { duration: 500 },
@@ -4707,7 +4790,11 @@ function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "event
     end: { mode: "end", actor: "ExampleNPC", i18nKey, text: "今天的事，之后再聊吧。$h" },
     custom: { raw: "-- custom command" }
   };
-  return { id, kind, label: storyNodeLabel(kind), data: defaults[kind] };
+  return { id, kind, label: storyNodeLabel(kind), data: defaults[kind], position: { x: 210 + index * 150, y: 92 + (index % 2) * 70 } };
+}
+
+function updateStoryNodePosition(nodes: StoryEventNode[], nodeId: string, position: { x: number; y: number }) {
+  return nodes.map((node) => node.id === nodeId ? { ...node, position } : node);
 }
 
 function defaultStoryPrecondition(type: string): EventPrecondition {

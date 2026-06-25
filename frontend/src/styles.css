@@ -957,6 +957,94 @@ code {
   font-weight: 800;
 }
 
+.story-canvas-wrap {
+  background: #eef2ea;
+  border: 1px solid #d4ddcf;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding: 10px;
+}
+
+.story-canvas-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.story-canvas-head span {
+  color: #667067;
+  font-size: 12px;
+}
+
+.story-canvas {
+  background:
+    linear-gradient(#dce5d8 1px, transparent 1px),
+    linear-gradient(90deg, #dce5d8 1px, transparent 1px),
+    #fbfaf5;
+  background-size: 24px 24px;
+  border: 1px solid #cfd8ca;
+  border-radius: 8px;
+  position: relative;
+}
+
+.story-canvas-lines {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.story-canvas-lines line {
+  stroke: #6f7c70;
+  stroke-dasharray: 4 5;
+  stroke-width: 2;
+}
+
+.story-canvas-node {
+  background: #ffffff;
+  border: 1px solid #cfc8ba;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(32, 36, 33, 0.08);
+  color: #264b39;
+  cursor: grab;
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 8px 10px;
+  position: absolute;
+  user-select: none;
+  width: 130px;
+}
+
+.story-canvas-node.dragging {
+  cursor: grabbing;
+  outline: 2px solid #315f47;
+}
+
+.story-canvas-node.start {
+  background: #315f47;
+  border-color: #315f47;
+  color: #ffffff;
+  cursor: default;
+}
+
+.story-canvas-node span {
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-canvas-node code {
+  color: inherit;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 .story-row {
   align-items: end;
   background: #fffdf8;
