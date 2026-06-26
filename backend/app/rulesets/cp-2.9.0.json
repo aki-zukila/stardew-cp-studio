@@ -94,12 +94,6 @@
       "description": "NPC animationDescriptions entries such as lowercase sleep animations."
     },
     {
-      "kind": "shop",
-      "label": "Shop",
-      "defaultTarget": "Data/Shops",
-      "description": "Shop inventory and shop definitions."
-    },
-    {
       "kind": "event",
       "label": "Event",
       "defaultTarget": "Data/Events",

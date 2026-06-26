@@ -174,6 +174,39 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(trigger_patch["Entries"]["give_LCF_LetterFromGodOfDeath"]["Actions"], ["AddMail Current LetterFromGodOfDeath"])
             self.assertEqual(trigger_patch["When"], {"Day": 1})
 
+    def test_export_quest_to_quest_code_file(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.i18n = {
+                "Author.TestPack.Quest.Author.TestPack.ExampleQuest.Title": "Bring Abigail a shell",
+                "Author.TestPack.Quest.Author.TestPack.ExampleQuest.Description": "Abigail asked for a shell.",
+                "Author.TestPack.Quest.Author.TestPack.ExampleQuest.Hint": "Give Abigail a rainbow shell.",
+                "Author.TestPack.Quest.Author.TestPack.ExampleQuest.Reaction": "Thanks!",
+            }
+            project.game_data.append(GameDataEntry(
+                kind="quest",
+                target="Data/Quests",
+                key="Author.TestPack.ExampleQuest",
+                value="ItemDelivery/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Title}}/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Description}}/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Hint}}/Abigail (O)66/-1/350/-1/true/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Reaction}}",
+                advanced={"StardewCPStudio": {"quest": {"mode": "builder"}}},
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            quests = json.loads((output / "code" / "quests.json").read_text(encoding="utf-8"))
+
+            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "code/quests.json" for change in content["Changes"]))
+            self.assertEqual(
+                quests["Changes"][0]["Entries"]["Author.TestPack.ExampleQuest"],
+                "ItemDelivery/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Title}}/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Description}}/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Hint}}/Abigail (O)66/-1/350/-1/true/{{i18n:Author.TestPack.Quest.Author.TestPack.ExampleQuest.Reaction}}",
+            )
+            self.assertNotIn("StardewCPStudio", json.dumps(quests))
+
     def test_export_filters_internal_studio_metadata(self):
         import json
 

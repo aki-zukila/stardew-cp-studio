@@ -29,7 +29,7 @@ type Patch = {
 
 type GameDataEntry = {
   id: string;
-  kind: "npc" | "item" | "dialogue" | "schedule" | "animation" | "shop" | "event" | "mail" | "trigger_action" | "custom";
+  kind: "npc" | "item" | "dialogue" | "schedule" | "animation" | "shop" | "event" | "mail" | "trigger_action" | "quest" | "custom";
   name: string;
   target: string;
   key: string;
@@ -86,7 +86,24 @@ type ValidationResult = { errors: ValidationIssue[]; warnings: ValidationIssue[]
 type PendingProjectOpen = { project: Project; label: string };
 type RulesetOption = { label: string; value: string | number | boolean };
 type WhenConditionSchema = { key: string; label: string; valueType: string; options?: string; allowCustom?: boolean; parameterLabel?: string; parameterOptions?: string };
-type TriggerActionCommandKind = "AddMail" | "RemoveMail" | "AddMoney" | "RunTriggerAction" | "custom";
+type TriggerActionCommandKind = "AddMail" | "RemoveMail" | "AddMoney" | "AddQuest" | "RunTriggerAction" | "custom";
+type QuestType = "Basic" | "Crafting" | "Location" | "Building" | "ItemDelivery" | "Monster" | "ItemHarvest" | "LostItem" | "SecretLostItem" | "Social";
+type QuestNextQuest = { id: string; questId: string; hostOnly: boolean };
+type QuestMeta = {
+  mode: "builder" | "raw";
+  questId: string;
+  type: QuestType;
+  titleKey: string;
+  descriptionKey: string;
+  hintKey: string;
+  reactionKey: string;
+  requirement: JsonDict;
+  nextQuests: QuestNextQuest[];
+  moneyReward: number;
+  rewardDescription: string;
+  cancellable: boolean;
+  rawValue: string;
+};
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
@@ -126,12 +143,13 @@ type ItemCatalogResponse = { items: ItemCatalogEntry[]; source_path: string; war
 type ItemOption = RulesetOption & { source?: string };
 type ItemModuleKind = "object" | "crop" | "fruitTree" | "cooking" | "crafting";
 type RecipeIngredientRow = { id: string; itemId: string; count: number };
-type TriggerActionRow = { kind: TriggerActionCommandKind; player: string; mailId: string; mailType: string; amount: number; targetAction: string; raw: string };
+type TriggerActionRow = { kind: TriggerActionCommandKind; player: string; mailId: string; mailType: string; amount: number; questId: string; targetAction: string; raw: string };
 type MapResourceEntry = { key: string; filename: string; width: number; height: number; tile_width: number; tile_height: number; url: string };
 type MapResourceResponse = { maps: MapResourceEntry[]; source_path: string; warning: string };
 type MapArea = { X: number; Y: number; Width: number; Height: number };
 type MapPoint = { X: number; Y: number };
 type MapPreviewImage = Asset | { url: string; label: string };
+type FestivalPositionMeta = { npcName: string; festivalId: string; phaseKey: string; x: number; y: number; direction: string };
 type MapDraftKind = "custom" | "edit" | "warp";
 type MapGeneratedRef = { target: string; key?: string; action?: Patch["action"]; from_file?: string | null };
 type MapDraft = { id: string; kind: MapDraftKind; generated: MapGeneratedRef[] };
@@ -141,7 +159,7 @@ type SchedulePoint = { id: string; time: string; location: string; x: number; y:
 type ScheduleMeta = { npcName: string; keyType: string; fields: Record<string, string | number>; initialCommand: string; gotoKey: string; friendshipNpc: string; friendshipHearts: number; mailId: string; mailMissingKey: string; mailReceivedKey: string; points: SchedulePoint[]; dialogueEntries: { key: string; i18nKey: string }[] };
 type AnimationMeta = { npcName: string; isSleep: boolean; customKey: string; framesText: string };
 type FlowTodo = { id: string; label: string; description: string; action: FlowAction; done: boolean };
-type FlowAction = "dialogue" | "giftTaste" | "schedule" | "mail" | "event" | "roommateItem" | "customMap" | "giftTasteForItem" | "shopForItem" | "mailForItem" | "mapLocation" | "mapWarpTodo" | "mapEventTodo";
+type FlowAction = "dialogue" | "giftTaste" | "schedule" | "mail" | "event" | "roommateItem" | "customMap" | "giftTasteForItem" | "mailForItem" | "mapLocation" | "mapWarpTodo" | "mapEventTodo";
 type FlowKind = "character" | "item" | "map";
 type DialogueKeyType = string;
 type WorkflowResult = { entries: GameDataEntry[]; patches: Patch[]; i18n: Record<string, string> };
@@ -450,12 +468,13 @@ function App() {
         </button>
         <nav>
           <TabButton icon={<Icon name="settings" />} id="manifest" label="模组信息" tab={tab} setTab={setTab} />
-          <details className="sidebar-subnav" open={tab === "data" || tab === "items" || tab === "maps" || tab === "quests" || tab === "special-orders"}>
+          <details className="sidebar-subnav" open={tab === "data" || tab === "items" || tab === "maps" || tab === "shops" || tab === "quests" || tab === "special-orders"}>
             <summary><Icon name="data" /><span>游戏数据</span></summary>
             <div>
               <TabButton icon={<Icon name="data" />} id="data" label="角色 / 通用数据" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="item" />} id="items" label="物品添加" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="map" />} id="maps" label="地图添加" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="shop" />} id="shops" label="商店功能" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="quest" />} id="quests" label="任务功能" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="order" />} id="special-orders" label="特殊订单" tab={tab} setTab={setTab} />
             </div>
@@ -489,7 +508,8 @@ function App() {
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "items" && <ItemStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "maps" && <MapStudio project={project} ruleset={ruleset} setProject={updateProject} />}
-        {tab === "quests" && <PlaceholderModule title="任务功能" description="这里将制作任务数据、触发条件、邮件/事件联动与完成条件编辑器。" />}
+        {tab === "shops" && <ShopStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
+        {tab === "quests" && <QuestStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "special-orders" && <PlaceholderModule title="特殊订单" description="这里将制作 Special Orders 的目标、奖励、期限、文本与触发逻辑。" />}
         {tab === "assets" && <AssetManager project={project} setProject={updateProject} />}
         {tab === "rules" && <RuleLibraryView />}
@@ -1079,6 +1099,7 @@ function Icon({ name }: { name: string }) {
     rules: "R",
     save: "S",
     settings: "*",
+    shop: "$",
     story: "EV",
     upload: "U",
     warn: "!"
@@ -1312,12 +1333,13 @@ function FlowMode({ project, ruleset, setProject }: { project: Project; ruleset:
       createCharacterEntry();
       return;
     }
-    const entry = flow.kind === "item" ? createPrimaryItemEntry(flow) : createPrimaryMapEntry(flow);
+    const entry = flow.kind === "item" ? createPrimaryItemEntry(project, flow) : createPrimaryMapEntry(project, flow);
+    const i18nPatch = createPrimaryFlowI18n(project, flow);
     const existingIndex = project.game_data.findIndex((item) => flow.createdEntryIds.includes(item.id) && item.target === entry.target && item.key === entry.key);
     const nextGameData = existingIndex >= 0 ? replaceAt(project.game_data, existingIndex, { ...entry, id: project.game_data[existingIndex].id }) : [...project.game_data, entry];
     const nextCreatedIds = existingIndex >= 0 ? flow.createdEntryIds : uniqueIds([...flow.createdEntryIds, entry.id]);
     const nextFlow = { ...flow, active: true, createdEntryIds: nextCreatedIds };
-    setProject({ ...project, game_data: nextGameData });
+    setProject({ ...project, game_data: nextGameData, i18n: { ...project.i18n, ...i18nPatch } });
     setFlow({ ...nextFlow, todos: mergeTodoState(buildTodos(nextFlow), flow.todos) });
   }
 
@@ -1326,7 +1348,7 @@ function FlowMode({ project, ruleset, setProject }: { project: Project; ruleset:
   }
 
   function confirmTodo(action: FlowAction) {
-    const result = createWorkflowResultForAction(action, flow);
+    const result = createWorkflowResultForAction(project, action, flow);
     if (!result.entries.length && !result.patches.length && !Object.keys(result.i18n).length) return;
     const mergedGameData = mergeWorkflowEntries(project.game_data, result.entries);
     const mergedPatches = mergeWorkflowPatches(project.patches, result.patches);
@@ -1575,12 +1597,6 @@ function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: 
           <ComboField label="喜好分组" value={flow.giftTasteGroup} options={options("gift_taste_groups")} onChange={(giftTasteGroup) => onChange({ giftTasteGroup: String(giftTasteGroup) })} />
         </div>
       )}
-      {action === "shopForItem" && (
-        <div className="grid two">
-          <ComboField label="目标商店 Shop ID" value={flow.shopId} options={options("vanilla_shops")} onChange={(shopId) => onChange({ shopId: String(shopId) })} />
-          <Field label="出售价格 Price" value={String(flow.shopPrice)} onChange={(shopPrice) => onChange({ shopPrice: Number(numberOrText(shopPrice)) || 0 })} />
-        </div>
-      )}
       {action === "mailForItem" && (
         <div className="grid two">
           <Field label="附件数量 Quantity" value={String(flow.mailQuantity)} onChange={(mailQuantity) => onChange({ mailQuantity: Number(numberOrText(mailQuantity)) || 1 })} />
@@ -1599,7 +1615,7 @@ function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: 
           将在 <code>Data/Events/{normalizeInternalName(flow.locationId || flow.locationName)}</code> 下创建一个地点介绍事件占位。
         </div>
       )}
-      {!["giftTasteForItem", "shopForItem", "mailForItem", "mapWarpTodo", "mapEventTodo"].includes(String(action)) && (
+      {!["giftTasteForItem", "mailForItem", "mapWarpTodo", "mapEventTodo"].includes(String(action)) && (
         <div className="notice compact-note">这个待办会按当前流程信息生成基础模板，之后可在游戏数据页面继续编辑。</div>
       )}
       <div className="button-row">
@@ -1786,14 +1802,15 @@ function PatchCard({ patch, ruleset, onChange, onRemove }: { patch: Patch; rules
 
 function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
   const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const creatableKinds = ruleset.game_data_kinds.filter((kind) => kind.kind !== "shop");
   const visibleEntries = project.game_data
     .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) => !isNpcManagedEntry(entry));
+    .filter(({ entry }) => !isNpcManagedEntry(entry) && entry.kind !== "shop" && entry.target !== "Data/Shops");
 
   function addEntry(kind: GameDataEntry["kind"]) {
     const rule = ruleset.game_data_kinds.find((item) => item.kind === kind);
     const template = gameDataTemplate(kind);
-    const entry: GameDataEntry = {
+    let entry: GameDataEntry = {
       id: makeId(),
       kind,
       name: `${gameDataLabel(kind, rule?.label)}条目`,
@@ -1804,7 +1821,19 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
       advanced: {},
       editMode: "form"
     };
-    setProject({ ...project, game_data: [...project.game_data, entry] });
+    let i18nPatch: Record<string, string> = {};
+    if (kind === "npc") {
+      const nameKey = `Name.${entry.key || "ExampleNPC"}`;
+      entry = { ...entry, value: { ...(isObject(entry.value) ? entry.value : {}), DisplayName: i18nRef(nameKey) } };
+      i18nPatch = { [nameKey]: "示例角色" };
+    }
+    if (kind === "item") {
+      const nameKey = itemI18nKey(project, "Object", entry.key || "ExampleObject", "Name");
+      const descriptionKey = itemI18nKey(project, "Object", entry.key || "ExampleObject", "Description");
+      entry = { ...entry, value: { ...(isObject(entry.value) ? entry.value : {}), DisplayName: i18nRef(nameKey), Description: i18nRef(descriptionKey) } };
+      i18nPatch = { [nameKey]: "示例物品", [descriptionKey]: "这是一个由 Stardew CP Studio 生成的示例物品。" };
+    }
+    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...i18nPatch } });
   }
 
   return (
@@ -1816,7 +1845,7 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
           </button>
           {addPanelOpen && (
             <div className="game-data-add-list">
-              {ruleset.game_data_kinds.map((kind) => <button className="compact-add-button" key={kind.kind} onClick={() => addEntry(kind.kind)}><Icon name="plus" /><span>{gameDataLabel(kind.kind, kind.label)}</span></button>)}
+              {creatableKinds.map((kind) => <button className="compact-add-button" key={kind.kind} onClick={() => addEntry(kind.kind)}><Icon name="plus" /><span>{gameDataLabel(kind.kind, kind.label)}</span></button>)}
             </div>
           )}
         </aside>
@@ -1840,6 +1869,7 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
                   i18n={project.i18n}
                   onI18nChange={(i18n) => setProject({ ...project, i18n })}
                   onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+                  onEntryAndI18nChange={(next, i18n) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next), i18n })}
                   setProject={setProject}
                 />
               ) : (
@@ -1866,14 +1896,24 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
   );
 }
 
-function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nChange, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nChange, onEntryAndI18nChange, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
   const value = isObject(entry.value) ? entry.value : {};
   const setValueField = (key: string, nextValue: unknown) => onChange({ ...entry, value: { ...value, [key]: nextValue } });
+  const setEntryAndI18n = (nextEntry: GameDataEntry, patch: Record<string, string>) => {
+    const nextI18n = { ...i18n, ...patch };
+    if (onEntryAndI18nChange) onEntryAndI18nChange(nextEntry, nextI18n);
+    else {
+      onChange(nextEntry);
+      onI18nChange?.(nextI18n);
+    }
+  };
+  const genericItemNameKey = i18nKeyFromRef(value.DisplayName) || itemI18nKey(project, "Object", entry.key || "ExampleObject", "Name");
+  const genericItemDescriptionKey = i18nKeyFromRef(value.Description) || itemI18nKey(project, "Object", entry.key || "ExampleObject", "Description");
   const options = (key: string) => rulesetOptions(ruleset, key);
 
   return (
     <div className="grid two">
-      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "mail" && entry.kind !== "trigger_action" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "mail" && entry.kind !== "trigger_action" && entry.kind !== "quest" && (
         <>
           <Field label="数据目标 Target" value={entry.target} onChange={(target) => onChange({ ...entry, target })} />
           <Field label="条目键 Key" value={entry.key} onChange={(key) => onChange({ ...entry, key })} />
@@ -1886,8 +1926,8 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
       {entry.kind === "item" && (
         <>
-          <Field label="显示名称 DisplayName" value={stringField(value.DisplayName)} onChange={(next) => setValueField("DisplayName", next)} />
-          <Field label="描述 Description" value={stringField(value.Description)} onChange={(next) => setValueField("Description", next)} />
+          <Field label="显示名称 DisplayName（写入 i18n）" value={localizedText(project, value.DisplayName, entry.key || "示例物品")} onChange={(next) => setEntryAndI18n({ ...entry, target: entry.target || "Data/Objects", value: { ...value, DisplayName: i18nRef(genericItemNameKey) } }, { [genericItemNameKey]: next })} />
+          <Field label="描述 Description（写入 i18n）" value={localizedText(project, value.Description, "这是一个新物品。")} onChange={(next) => setEntryAndI18n({ ...entry, target: entry.target || "Data/Objects", value: { ...value, Description: i18nRef(genericItemDescriptionKey) } }, { [genericItemDescriptionKey]: next })} />
           <Field label="价格 Price" value={stringField(value.Price)} onChange={(next) => setValueField("Price", numberOrText(next))} />
           <ComboField label="分类 Category" value={value.Category} options={options("object_categories")} onChange={(next) => setValueField("Category", numberOrText(String(next)))} />
           <ComboField label="可食用值 Edibility" value={value.Edibility} options={options("edibility")} onChange={(next) => setValueField("Edibility", numberOrText(String(next)))} />
@@ -1911,17 +1951,11 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       {entry.kind === "trigger_action" && (
-        <TriggerActionForm entry={entry} ruleset={ruleset} onChange={onChange} />
+        <TriggerActionForm project={project} entry={entry} ruleset={ruleset} onChange={onChange} />
       )}
 
-      {entry.kind === "shop" && (
-        <>
-          <Field label="商店名称 DisplayName" value={stringField(value.DisplayName)} onChange={(next) => setValueField("DisplayName", next)} />
-          <ComboField label="货币 Currency" value={value.Currency || "money"} options={options("shop_currencies")} onChange={(next) => setValueField("Currency", next)} />
-          <Field label="打开音效 OpenSound" value={stringField(value.OpenSound)} onChange={(next) => setValueField("OpenSound", next)} />
-          <Field label="购买音效 PurchaseSound" value={stringField(value.PurchaseSound)} onChange={(next) => setValueField("PurchaseSound", next)} />
-          <JsonField label="出售物品 Items" value={value.Items || []} onChange={(next) => setValueField("Items", next)} />
-        </>
+      {entry.kind === "quest" && (
+        <QuestEntryForm project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
       )}
 
       {entry.kind === "event" && (
@@ -1933,10 +1967,618 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
-      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "quest" && (
         <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
       )}
     </div>
+  );
+}
+
+function QuestStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const entries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isQuestEntry(entry));
+
+  function addQuest() {
+    const entry = defaultQuestEntry(project);
+    setProject({
+      ...project,
+      game_data: [...project.game_data, entry],
+      i18n: { ...project.i18n, ...defaultQuestI18n(project, questMetaFromEntry(project, entry)) }
+    });
+  }
+
+  return (
+    <Section title="任务功能">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "任务操作"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button className="compact-add-button" type="button" onClick={addQuest}><Icon name="plus" /><span>添加任务</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {entries.length ? entries.map(({ entry, index }) => (
+            <article className="card" key={entry.id}>
+              <div className="card-head">
+                <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
+                <div className="segmented">
+                  <button className={(entry.editMode || "form") === "form" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "form" }) })}>表单</button>
+                  <button className={entry.editMode === "code" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "code" }) })}>代码</button>
+                </div>
+                <button onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+              </div>
+              {(entry.editMode || "form") === "form" ? (
+                <QuestEntryForm
+                  project={project}
+                  entry={entry}
+                  ruleset={ruleset}
+                  itemCatalog={itemCatalog}
+                  i18n={project.i18n}
+                  onI18nChange={(i18n) => setProject({ ...project, i18n })}
+                  onEntryAndI18nChange={(next, i18n) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next), i18n })}
+                  onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+                />
+              ) : (
+                <div className="code-layout">
+                  <JsonField label="当前导出的 EditData 补丁" value={gameDataPatchPreview(entry)} onChange={(value) => setProject({ ...project, game_data: replaceAt(project.game_data, index, gameDataFromPatchPreview(entry, value)) })} />
+                </div>
+              )}
+            </article>
+          )) : <div className="empty">暂无任务。点击左侧“添加任务”开始。</div>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function QuestEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nChange, onEntryAndI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+  const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
+  const [coordLocked, setCoordLocked] = useState(true);
+  const meta = questMetaFromEntry(project, entry);
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
+  const quests = questOptions(project);
+  const npcs = npcOptions(project);
+  const questMapOptions = mapLocationOptionsWithResources(project, mapResources.maps);
+  const warningFields = questSlashWarnings(meta, i18n);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources")
+      .then((next) => { if (!cancelled) setMapResources(next); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  function commit(nextMeta: QuestMeta, nextI18n: Record<string, string> = {}) {
+    const normalized = normalizeQuestMeta(project, nextMeta);
+    const nextEntry = questEntryFromMeta(project, entry, normalized);
+    if (Object.keys(nextI18n).length && onEntryAndI18nChange) {
+      onEntryAndI18nChange(nextEntry, { ...i18n, ...nextI18n });
+      return;
+    }
+    onChange(nextEntry);
+    if (onI18nChange && Object.keys(nextI18n).length) onI18nChange({ ...i18n, ...nextI18n });
+  }
+
+  function updateMeta(patch: Partial<QuestMeta>) {
+    commit({ ...meta, ...patch });
+  }
+
+  function updateQuestId(questId: string) {
+    const next = normalizeQuestMeta(project, { ...meta, questId: normalizeItemId(questId || "ExampleQuest") });
+    const currentTexts = questTextValues(meta, i18n);
+    const nextI18n = {
+      [next.titleKey]: currentTexts.Title || "示例任务",
+      [next.descriptionKey]: currentTexts.Description || "完成这个任务。",
+      [next.hintKey]: currentTexts.Hint || "",
+      [next.reactionKey]: currentTexts.Reaction || ""
+    };
+    commit(next, nextI18n);
+  }
+
+  function updateText(field: "Title" | "Description" | "Hint" | "Reaction", text: string) {
+    const key = questTextKey(meta, field);
+    if (onI18nChange) onI18nChange({ ...i18n, [key]: text });
+  }
+
+  function updateRequirement(patch: JsonDict) {
+    commit({ ...meta, requirement: { ...meta.requirement, ...patch } });
+  }
+
+  function addNextQuest() {
+    commit({ ...meta, nextQuests: [...meta.nextQuests, { id: makeId(), questId: quests[0] ? String(quests[0].value) : modScopedId(project, "NextQuest"), hostOnly: false }] });
+  }
+
+  function updateNextQuest(index: number, patch: Partial<QuestNextQuest>) {
+    commit({ ...meta, nextQuests: replaceAt(meta.nextQuests, index, { ...meta.nextQuests[index], ...patch }) });
+  }
+
+  function removeNextQuest(index: number) {
+    commit({ ...meta, nextQuests: meta.nextQuests.filter((_, itemIndex) => itemIndex !== index) });
+  }
+
+  const texts = questTextValues(meta, i18n);
+  const lostLocation = stringField(meta.requirement.location || "Forest");
+  const lostPreview = previewForMapTarget(project, lostLocation.startsWith("Maps/") ? lostLocation : `Maps/${lostLocation}`, mapResources.maps);
+
+  return (
+    <div className="subsection highlight quest-module">
+      <h3>任务模块</h3>
+      {meta.mode === "raw" ? (
+        <div className="grid two">
+          <Field label="任务 ID" value={entry.key || meta.questId} onChange={updateQuestId} />
+          <Field label="原始 Quest 字符串" value={meta.rawValue || stringField(entry.value)} textarea onChange={(rawValue) => updateMeta({ rawValue })} />
+          <button type="button" className="secondary" onClick={() => commit({ ...defaultQuestMeta(project, entry.key || meta.questId), rawValue: meta.rawValue, mode: "builder" })}>尝试切换为表单模式</button>
+          <div className="notice compact-note">旧任务文本不是 i18n 引用时会进入原始模式，避免保存时把旧文本改写为空 i18n。</div>
+        </div>
+      ) : (
+        <>
+          <CollapsibleSubsection title="基础字段" highlight defaultOpen>
+            <div className="grid two">
+              <Field label="任务 ID" value={meta.questId} onChange={updateQuestId} />
+              <ComboField label="任务类型 Type" value={meta.type} options={QUEST_TYPE_OPTIONS} onChange={(type) => updateMeta({ type: String(type) as QuestType, requirement: defaultQuestRequirement(String(type) as QuestType) })} />
+              <Field label="标题 Title" value={texts.Title} onChange={(text) => updateText("Title", text)} />
+              <Field label="目标提示 Hint" value={texts.Hint} onChange={(text) => updateText("Hint", text)} />
+              <Field label="描述 Description" value={texts.Description} textarea onChange={(text) => updateText("Description", text)} />
+              <Field label="完成反应 Reaction Text" value={texts.Reaction} textarea onChange={(text) => updateText("Reaction", text)} />
+            </div>
+            {warningFields.length > 0 && <div className="notice warn compact-note">这些文本包含 <code>/</code>，Quest 数据是斜杠分隔格式，建议改写：{warningFields.join("、")}</div>}
+          </CollapsibleSubsection>
+
+          <CollapsibleSubsection title="完成条件" highlight defaultOpen>
+            <QuestRequirementEditor
+              type={meta.type}
+              requirement={meta.requirement}
+              itemOptions={itemOptions}
+              mapOptions={questMapOptions}
+              npcOptions={npcs}
+              questOptions={quests}
+              buildingOptions={buildingTypeOptions(ruleset)}
+              monsterOptions={monsterNameOptions(ruleset)}
+              preview={lostPreview}
+              coordLocked={coordLocked}
+              setCoordLocked={setCoordLocked}
+              onChange={updateRequirement}
+            />
+            <div className="field">
+              <span>Requirement 预览</span>
+              <code>{questRequirementString(meta)}</code>
+            </div>
+          </CollapsibleSubsection>
+
+          <CollapsibleSubsection title="奖励与后续任务" highlight defaultOpen={false}>
+            <div className="grid two">
+              <Field label="金钱奖励 Money Reward" value={String(meta.moneyReward)} onChange={(moneyReward) => updateMeta({ moneyReward: integerInRange(moneyReward, 0, 9999999, 0) })} />
+              <Field label="Reward Description（通常 -1）" value={meta.rewardDescription} onChange={(rewardDescription) => updateMeta({ rewardDescription })} />
+              <BoolField label="可取消 Cancellable" value={meta.cancellable} onChange={(cancellable) => updateMeta({ cancellable })} />
+            </div>
+            <div className="structured-editor">
+              <div className="structured-editor-head">
+                <div>
+                  <strong>后续任务 Next Quests</strong>
+                  <span>多个任务以空格连接；Host-only 会导出为 h&lt;QuestId&gt;。</span>
+                </div>
+                <button type="button" className="secondary" onClick={addNextQuest}><Icon name="plus" />添加后续任务</button>
+              </div>
+              {meta.nextQuests.map((row, index) => (
+                <div className="mail-attachment-row" key={row.id || index}>
+                  <div className="grid two">
+                    <ComboField label="任务 ID" value={row.questId} options={quests} onChange={(questId) => updateNextQuest(index, { questId: String(questId) })} />
+                    <BoolField label="仅主机 h" value={row.hostOnly} onChange={(hostOnly) => updateNextQuest(index, { hostOnly })} />
+                  </div>
+                  <div className="button-row"><button type="button" className="secondary" onClick={() => removeNextQuest(index)}>删除后续任务</button></div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSubsection>
+
+          <div className="notice compact-note">
+            导出：<code>Data/Quests</code> / <code>{meta.questId}</code> = <code>{buildQuestString(meta)}</code>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function QuestRequirementEditor({ type, requirement, itemOptions, mapOptions, npcOptions, questOptions, buildingOptions, monsterOptions, preview, coordLocked, setCoordLocked, onChange }: {
+  type: QuestType;
+  requirement: JsonDict;
+  itemOptions: ItemOption[];
+  mapOptions: RulesetOption[];
+  npcOptions: RulesetOption[];
+  questOptions: RulesetOption[];
+  buildingOptions: RulesetOption[];
+  monsterOptions: RulesetOption[];
+  preview: MapPreviewImage | null;
+  coordLocked: boolean;
+  setCoordLocked: (value: boolean) => void;
+  onChange: (patch: JsonDict) => void;
+}) {
+  if (type === "Basic") {
+    return <Field label="自定义 Requirement（空则 null）" value={stringField(requirement.raw || "")} onChange={(raw) => onChange({ raw })} />;
+  }
+  if (type === "Crafting") {
+    return <div className="grid two">
+      <ItemSingleSelect label="制作目标物品" options={itemOptions} value={stringField(requirement.itemId || "(O)388")} onChange={(itemId) => onChange({ itemId })} />
+      <BoolField label="大件物品 isBigCraftable" value={Boolean(requirement.isBigCraftable)} onChange={(isBigCraftable) => onChange({ isBigCraftable })} />
+    </div>;
+  }
+  if (type === "Location") {
+    return <ComboField label="目标地点" value={stringField(requirement.location || "Town")} options={mapOptions} onChange={(location) => onChange({ location })} />;
+  }
+  if (type === "Building") {
+    return <ComboField label="建筑类型" value={stringField(requirement.buildingType || "Coop")} options={buildingOptions} onChange={(buildingType) => onChange({ buildingType })} />;
+  }
+  if (type === "ItemDelivery") {
+    return <div className="grid two">
+      <ComboField label="交付 NPC" value={stringField(requirement.npc || "Abigail")} options={npcOptions} onChange={(npc) => onChange({ npc })} />
+      <ItemSingleSelect label="交付物品" options={itemOptions} value={stringField(requirement.itemId || "(O)66")} onChange={(itemId) => onChange({ itemId })} />
+      <ComboField label="数量 Count" value={String(requirement.count ?? 1)} options={QUEST_COUNT_OPTIONS} onChange={(count) => onChange({ count: integerInRange(count, 1, 9999, 1) })} />
+    </div>;
+  }
+  if (type === "Monster") {
+    return <div className="grid two">
+      <ComboField label="怪物名" value={stringField(requirement.monster || "Green_Slime")} options={monsterOptions} onChange={(monster) => onChange({ monster })} />
+      <Field label="数量 Count" value={String(requirement.count ?? 10)} onChange={(count) => onChange({ count: integerInRange(count, 1, 9999, 10) })} />
+      <ComboField label="汇报 NPC（可自定义 null）" value={stringField(requirement.npc || "Marlon")} options={npcOptions} onChange={(npc) => onChange({ npc })} />
+      <BoolField label="忽略农场怪物 ignoreFarmMonsters" value={requirement.ignoreFarmMonsters !== false} onChange={(ignoreFarmMonsters) => onChange({ ignoreFarmMonsters })} />
+    </div>;
+  }
+  if (type === "ItemHarvest") {
+    return <div className="grid two">
+      <ItemSingleSelect label="收获物品" options={itemOptions} value={stringField(requirement.itemId || "(O)24")} onChange={(itemId) => onChange({ itemId })} />
+      <Field label="数量 Count" value={String(requirement.count ?? 1)} onChange={(count) => onChange({ count: integerInRange(count, 1, 9999, 1) })} />
+    </div>;
+  }
+  if (type === "LostItem") {
+    const point = { X: integerInRange(requirement.x, 0, 999, 0), Y: integerInRange(requirement.y, 0, 999, 0) };
+    return <div className="stack">
+      <div className="grid two">
+        <ComboField label="失主 NPC" value={stringField(requirement.npc || "Robin")} options={npcOptions} onChange={(npc) => onChange({ npc })} />
+        <ItemSingleSelect label="遗失物品 Object" options={itemOptions} value={stringField(requirement.itemId || "(O)788")} onChange={(itemId) => onChange({ itemId })} />
+        <ComboField label="地点 Location" value={stringField(requirement.location || "Forest")} options={mapOptions} onChange={(location) => onChange({ location })} />
+        <BoolField label="锁定地图点击" value={coordLocked} onChange={setCoordLocked} />
+        <Field label="X" value={String(point.X)} onChange={(x) => onChange({ x: integerInRange(x, 0, 999, 0) })} />
+        <Field label="Y" value={String(point.Y)} onChange={(y) => onChange({ y: integerInRange(y, 0, 999, 0) })} />
+      </div>
+      <div className="notice compact-note">坐标建议通过下方地图点击选择；X/Y 输入框只用于没有预览图或需要精确微调时。</div>
+      {preview && <MapPreviewPicker title={coordLocked ? "坐标预览（已锁定）" : "点击选择遗失物坐标"} image={preview} selected={point} onPick={(next) => !coordLocked && onChange({ x: next.X, y: next.Y })} />}
+    </div>;
+  }
+  if (type === "SecretLostItem") {
+    return <div className="grid two">
+      <ComboField label="NPC" value={stringField(requirement.npc || "Abigail")} options={npcOptions} onChange={(npc) => onChange({ npc })} />
+      <ItemSingleSelect label="物品 Object" options={itemOptions} value={stringField(requirement.itemId || "(O)191")} onChange={(itemId) => onChange({ itemId })} />
+      <ComboField label="友情点数 Friendship" value={String(requirement.friendship ?? 100)} options={QUEST_FRIENDSHIP_OPTIONS} onChange={(friendship) => onChange({ friendship: integerInRange(friendship, -9999, 9999, 100) })} />
+      <ComboField label="完成后移除任务 ID" value={stringField(requirement.removeQuestId || "")} options={optionalQuestOptions(questOptions)} onChange={(removeQuestId) => onChange({ removeQuestId })} />
+    </div>;
+  }
+  return <div className="notice compact-note">Social 任务固定为与所有人说话，Wiki 标明 completion requirement 字段不会改变完成逻辑，因此导出为 <code>null</code>。</div>;
+}
+
+type ShopModuleMode = "new" | "editItems";
+type ShopOpenMeta = {
+  shopId: string;
+  mapTarget: string;
+  position: MapPoint;
+  direction: string;
+  openTime: string;
+  closeTime: string;
+  ownerArea: MapArea | null;
+};
+
+const VANILLA_SHOP_OPTIONS: RulesetOption[] = [
+  { label: "皮埃尔杂货店 SeedShop", value: "SeedShop" },
+  { label: "木匠商店 Carpenter", value: "Carpenter" },
+  { label: "铁匠铺 Blacksmith", value: "Blacksmith" },
+  { label: "鱼店 FishShop", value: "FishShop" },
+  { label: "探险家公会 AdventureShop", value: "AdventureShop" },
+  { label: "玛妮牧场 AnimalShop", value: "AnimalShop" },
+  { label: "诊所 Hospital", value: "Hospital" },
+  { label: "星之果实餐吧 Saloon", value: "Saloon" },
+  { label: "下水道 Krobus", value: "Krobus" },
+  { label: "矮人商店 Dwarf", value: "Dwarf" },
+  { label: "绿洲 Sandy", value: "Sandy" },
+  { label: "赌场 Casino", value: "Casino" },
+  { label: "帽子店 HatMouse", value: "HatMouse" },
+  { label: "旅行货车 TravelingCart", value: "TravelingCart" },
+  { label: "冰淇淋摊 IceCreamStand", value: "IceCreamStand" },
+  { label: "火山矮人 VolcanoShop", value: "VolcanoShop" },
+  { label: "姜岛度假村 IslandResort", value: "IslandResort" },
+  { label: "齐先生核桃房 QiGemShop", value: "QiGemShop" },
+  { label: "书商 Bookseller", value: "Bookseller" },
+  { label: "沙漠节 DesertFestival", value: "DesertFestival" },
+  { label: "蛋蛋节 EggFestival", value: "EggFestival" },
+  { label: "花舞节 FlowerDance", value: "FlowerDance" },
+  { label: "星露谷展览会 StardewValleyFair", value: "StardewValleyFair" },
+  { label: "冬日星盛宴 FeastOfTheWinterStar", value: "FeastOfTheWinterStar" },
+  { label: "夜市 NightMarket", value: "NightMarket" }
+];
+
+const SHOP_CURRENCY_OPTIONS: RulesetOption[] = [
+  { label: "金币 Money (0)", value: 0 },
+  { label: "星之币 Festival Prize Tickets (1)", value: 1 },
+  { label: "齐钻 Qi Gems (2)", value: 2 },
+  { label: "金核桃 Golden Walnuts (4)", value: 4 }
+];
+
+const SHOP_STOCK_LIMIT_OPTIONS: RulesetOption[] = [
+  { label: "不限制", value: "" },
+  { label: "每名玩家 Player", value: "Player" },
+  { label: "所有玩家 Global", value: "Global" }
+];
+
+const SHOP_DIRECTION_OPTIONS: RulesetOption[] = [
+  { label: "默认向下 down", value: "down" },
+  { label: "无方向限制 none", value: "none" },
+  { label: "上方 up", value: "up" },
+  { label: "左侧 left", value: "left" },
+  { label: "右侧 right", value: "right" }
+];
+
+const SHOP_TIME_OPTIONS: RulesetOption[] = [
+  { label: "不写入时间", value: "" },
+  ...Array.from({ length: 52 }, (_, index) => {
+    const hour = Math.floor(index / 2);
+    const minute = index % 2 === 0 ? "00" : "30";
+    const value = `${String(hour).padStart(2, "0")}${minute}`;
+    return { label: shopTimeLabel(value), value };
+  }),
+  { label: "次日 02:00 / 2600", value: "2600" }
+];
+
+function ShopStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
+  const shopEntries = project.game_data.map((entry, index) => ({ entry, index })).filter(({ entry }) => isShopModuleEntry(entry));
+  const shopPatches = project.patches.map((patch, index) => ({ patch, index })).filter(({ patch }) => isShopOpenPatch(patch));
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources").then((next) => { if (!cancelled) setMapResources(next); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  function addNewShop() {
+    const shopId = modScopedId(project, "CustomShop");
+    const entry = withShopModuleMetadata(createWorkflowEntry("shop", "自定义新商店", "Data/Shops", shopId, {
+      Owners: [defaultShopOwner(shopId)],
+      Items: [defaultShopItem(`${shopId}.IceCream`, "(O)233")],
+      Currency: 0,
+      OpenSound: "doorCreak",
+      PurchaseSound: "purchase"
+    }), "new");
+    setProject({ ...project, game_data: [...project.game_data, entry] });
+  }
+
+  function addEditItems() {
+    const shopId = "FishShop";
+    const item = defaultShopItem(`${project.manifest.UniqueID || "Custom"}.Pufferfish`, "(O)128");
+    const entry = withShopModuleMetadata({
+      ...createWorkflowEntry("shop", "修改已有商店商品", "Data/Shops", stringField(item.Id), item),
+      advanced: mergePublicAdvanced({}, { TargetField: [shopId, "Items"] })
+    }, "editItems");
+    setProject({ ...project, game_data: [...project.game_data, entry] });
+  }
+
+  function addOpenShopPatch() {
+    const patch = withShopOpenMetadata({
+      id: makeId(),
+      name: "地图 OpenShop 点",
+      action: "EditMap",
+      enabled: true,
+      target: "Maps/Town",
+      from_file: null,
+      when: {},
+      fields: shopOpenMapFields(modScopedId(project, "CustomShop"), { X: 0, Y: 0 }, "down", "", "", null),
+      advanced: {}
+    });
+    setProject({ ...project, patches: [...project.patches, patch] });
+  }
+
+  return (
+    <Section title="商店功能">
+      <div className={`map-module-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加商店操作"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button type="button" className="compact-add-button" onClick={addNewShop}><Icon name="plus" /><span>自定义新商店</span></button>
+              <button type="button" className="compact-add-button" onClick={addEditItems}><Icon name="plus" /><span>修改已有商店商品</span></button>
+              <button type="button" className="compact-add-button" onClick={addOpenShopPatch}><Icon name="plus" /><span>地图 OpenShop 点</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {shopEntries.map(({ entry, index }) => (
+            <article className="card" key={entry.id}>
+              <div className="card-head">
+                <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
+                <strong>{shopModuleMode(entry) === "new" ? "自定义新商店" : "修改已有商店商品"}</strong>
+                <button type="button" className="secondary" onClick={() => setProject({ ...project, game_data: project.game_data.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+              </div>
+              {shopModuleMode(entry) === "new"
+                ? <NewShopForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })} />
+                : <EditShopItemsForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })} />}
+            </article>
+          ))}
+          {shopPatches.map(({ patch, index }) => (
+            <article className="card" key={patch.id}>
+              <div className="card-head">
+                <input value={patch.name} onChange={(event) => setProject({ ...project, patches: replaceAt(project.patches, index, { ...patch, name: event.target.value }) })} />
+                <strong>地图 OpenShop 点</strong>
+                <button type="button" className="secondary" onClick={() => setProject({ ...project, patches: project.patches.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+              </div>
+              <OpenShopMapPatchForm project={project} ruleset={ruleset} mapResources={mapResources.maps} patch={patch} onChange={(next) => setProject({ ...project, patches: replaceAt(project.patches, index, next) })} />
+            </article>
+          ))}
+          {!shopEntries.length && !shopPatches.length && <div className="empty compact-empty">暂无商店操作。请从左侧添加。</div>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function NewShopForm({ project, ruleset, itemCatalog, entry, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const owners = Array.isArray(value.Owners) ? value.Owners.filter(isObject) : [];
+  const items = Array.isArray(value.Items) ? value.Items.filter(isObject) : [];
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
+  const updateValue = (patch: JsonDict) => onChange({ ...entry, target: "Data/Shops", value: compactObject({ ...value, ...patch }) });
+  return (
+    <div className="stack">
+      <div className="grid two">
+        <Field label="新商店 ID" value={entry.key} onChange={(key) => onChange({ ...entry, target: "Data/Shops", key: normalizeInternalName(key || modScopedId(project, "CustomShop")) })} />
+        <ComboField label="货币 Currency" value={value.Currency ?? 0} options={SHOP_CURRENCY_OPTIONS} onChange={(next) => updateValue({ Currency: numberOrText(String(next)) })} />
+        <Field label="打开音效 OpenSound" value={stringField(value.OpenSound)} onChange={(next) => updateValue({ OpenSound: setNullableText(next) })} />
+        <Field label="购买音效 PurchaseSound" value={stringField(value.PurchaseSound)} onChange={(next) => updateValue({ PurchaseSound: setNullableText(next) })} />
+        <Field label="关闭消息 ClosedMessage" value={stringField(value.ClosedMessage)} onChange={(next) => updateValue({ ClosedMessage: setNullableText(next) })} />
+        <Field label="商店主题 Theme" value={stringField(value.Theme)} onChange={(next) => updateValue({ Theme: setNullableText(next) })} />
+      </div>
+      <CollapsibleSubsection title="店主 Owners">
+        <div className="stack">
+          {owners.map((owner, index) => <ShopOwnerEditor key={index} owner={owner} index={index} onChange={(next) => updateValue({ Owners: replaceAt(owners, index, next) })} onRemove={() => updateValue({ Owners: owners.filter((_, itemIndex) => itemIndex !== index) })} />)}
+          <button type="button" className="secondary" onClick={() => updateValue({ Owners: [...owners, defaultShopOwner(entry.key)] })}><Icon name="plus" />添加店主</button>
+        </div>
+      </CollapsibleSubsection>
+      <CollapsibleSubsection title="出售商品 Items">
+        <div className="stack">
+          {items.map((item, index) => <ShopItemEditor key={index} item={item} itemOptions={itemOptions} onChange={(next) => updateValue({ Items: replaceAt(items, index, next) })} onRemove={() => updateValue({ Items: items.filter((_, itemIndex) => itemIndex !== index) })} />)}
+          <button type="button" className="secondary" onClick={() => updateValue({ Items: [...items, defaultShopItem(`${entry.key}.Item${items.length + 1}`, "(O)233")] })}><Icon name="plus" />添加商品</button>
+        </div>
+      </CollapsibleSubsection>
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+      <JsonField label="商店高级字段" value={publicAdvancedValue(value, ["Owners", "Items", "Currency", "OpenSound", "PurchaseSound", "ClosedMessage", "Theme"])} onChange={(next) => onChange({ ...entry, value: { ...pickObjectFields(value, ["Owners", "Items", "Currency", "OpenSound", "PurchaseSound", "ClosedMessage", "Theme"]), ...(next as JsonDict) } })} />
+    </div>
+  );
+}
+
+function EditShopItemsForm({ project, ruleset, itemCatalog, entry, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+  const targetField = shopTargetField(entry);
+  const shopId = targetField[0] || "SeedShop";
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
+  const item = isObject(entry.value) ? entry.value : defaultShopItem(entry.key || "ExampleItem", "(O)128");
+  const removeMode = entry.value === null;
+  const publicAdvancedFields = publicAdvanced(entry.advanced);
+  const moveEntries = Array.isArray(publicAdvancedFields.MoveEntries) ? publicAdvancedFields.MoveEntries.filter(isObject) : [];
+  const firstMove = moveEntries[0] || {};
+  const updateAdvanced = (patch: JsonDict) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, patch) });
+  return (
+    <div className="stack">
+      <div className="grid two">
+        <ComboField label="要修改的 Vanilla / 自定义商店 ID" value={shopId} options={shopIdOptions(project)} onChange={(next) => updateAdvanced({ TargetField: [String(next), "Items"] })} />
+        <BoolField label="删除该商品" value={removeMode} onChange={(next) => onChange({ ...entry, value: next ? null : item })} />
+        <Field label={removeMode ? "要删除的商品 ID" : "商品条目 ID"} value={entry.key} onChange={(next) => onChange({ ...entry, key: next, value: removeMode ? null : { ...item, Id: next } })} />
+        <div className="field"><span>导出 TargetField</span><code>{JSON.stringify([shopId, "Items"])}</code></div>
+      </div>
+      {!removeMode && <ShopItemEditor item={item} itemOptions={itemOptions} onChange={(next) => onChange({ ...entry, target: "Data/Shops", key: stringField(next.Id || entry.key), value: next })} />}
+      <CollapsibleSubsection title="排序 MoveEntries" defaultOpen={false}>
+        <div className="grid two">
+          <Field label="BeforeId：移动到此 ID 前" value={stringField(firstMove.BeforeId)} onChange={(next) => updateAdvanced({ MoveEntries: next ? [{ Id: entry.key, BeforeId: next }] : [] })} />
+          <Field label="AfterId：移动到此 ID 后" value={stringField(firstMove.AfterId)} onChange={(next) => updateAdvanced({ MoveEntries: next ? [{ Id: entry.key, AfterId: next }] : [] })} />
+        </div>
+      </CollapsibleSubsection>
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+    </div>
+  );
+}
+
+function OpenShopMapPatchForm({ project, ruleset, mapResources, patch, onChange }: { project: Project; ruleset: Ruleset; mapResources: MapResourceEntry[]; patch: Patch; onChange: (patch: Patch) => void }) {
+  const [coordLocked, setCoordLocked] = useState(true);
+  const meta = shopOpenMetaFromPatch(patch);
+  const preview = previewForMapTarget(project, meta.mapTarget, mapResources);
+  const updateMeta = (next: Partial<ShopOpenMeta>) => {
+    const merged = { ...meta, ...next };
+    onChange(withShopOpenMetadata({ ...patch, action: "EditMap", target: merged.mapTarget, fields: shopOpenMapFields(merged.shopId, merged.position, merged.direction, merged.openTime, merged.closeTime, merged.ownerArea) }));
+  };
+  return (
+    <div className="stack">
+      <div className="grid two">
+        <ComboField label="Shop ID" value={meta.shopId} options={shopIdOptions(project)} onChange={(next) => updateMeta({ shopId: String(next) })} />
+        <ComboField label="目标地图 Target" value={meta.mapTarget} options={mapTargetOptions(project, ruleset)} onChange={(next) => updateMeta({ mapTarget: String(next) })} />
+        <ComboField label="玩家相对方向" value={meta.direction} options={SHOP_DIRECTION_OPTIONS} onChange={(next) => updateMeta({ direction: String(next) })} />
+        <ComboField label="开门时间" value={meta.openTime} options={SHOP_TIME_OPTIONS} onChange={(next) => updateMeta({ openTime: String(next) })} />
+        <ComboField label="关门时间" value={meta.closeTime} options={SHOP_TIME_OPTIONS} onChange={(next) => updateMeta({ closeTime: String(next) })} />
+        <BoolField label="锁定地图点击" value={coordLocked} onChange={setCoordLocked} />
+        <Field label="X" value={String(meta.position.X)} onChange={(next) => updateMeta({ position: { ...meta.position, X: integerInRange(next, 0, 999, 0) } })} />
+        <Field label="Y" value={String(meta.position.Y)} onChange={(next) => updateMeta({ position: { ...meta.position, Y: integerInRange(next, 0, 999, 0) } })} />
+      </div>
+      {preview && <MapPreviewPicker title={coordLocked ? "开店点坐标（已锁定）" : "点击选择开店点坐标"} image={preview} selected={meta.position} onPick={(point) => !coordLocked && updateMeta({ position: point })} />}
+      <CollapsibleSubsection title="店主所在区域 owner tile area" defaultOpen={false}>
+        <div className="grid two">
+          <BoolField label="写入 owner tile area" value={Boolean(meta.ownerArea)} onChange={(next) => updateMeta({ ownerArea: next ? { X: meta.position.X, Y: meta.position.Y, Width: 1, Height: 1 } : null })} />
+          {meta.ownerArea && <>
+            <Field label="区域 X" value={String(meta.ownerArea.X)} onChange={(next) => updateMeta({ ownerArea: { ...meta.ownerArea!, X: integerInRange(next, 0, 999, 0) } })} />
+            <Field label="区域 Y" value={String(meta.ownerArea.Y)} onChange={(next) => updateMeta({ ownerArea: { ...meta.ownerArea!, Y: integerInRange(next, 0, 999, 0) } })} />
+            <Field label="区域宽 Width" value={String(meta.ownerArea.Width)} onChange={(next) => updateMeta({ ownerArea: { ...meta.ownerArea!, Width: integerInRange(next, 1, 999, 1) } })} />
+            <Field label="区域高 Height" value={String(meta.ownerArea.Height)} onChange={(next) => updateMeta({ ownerArea: { ...meta.ownerArea!, Height: integerInRange(next, 1, 999, 1) } })} />
+          </>}
+        </div>
+      </CollapsibleSubsection>
+      <div className="notice compact-note">当前 Action：<code>{buildOpenShopAction(meta.shopId, meta.direction, meta.openTime, meta.closeTime, meta.ownerArea)}</code></div>
+      <WhenBuilder ruleset={ruleset} value={patch.when} onChange={(when) => onChange({ ...patch, when })} />
+    </div>
+  );
+}
+
+function ShopItemEditor({ item, itemOptions, onChange, onRemove }: { item: JsonDict; itemOptions: ItemOption[]; onChange: (item: JsonDict) => void; onRemove?: () => void }) {
+  const patch = (next: JsonDict) => onChange(compactObject({ ...item, ...next }));
+  return (
+    <details className="subsection" open>
+      <summary><h3>{stringField(item.Id || "ShopItem")}</h3></summary>
+      <div className="grid two">
+        <Field label="商品条目 ID" value={stringField(item.Id)} onChange={(next) => patch({ Id: next })} />
+        <ItemSingleSelect label="出售物品 ItemId" options={itemOptions} value={stringField(item.ItemId)} onChange={(next) => patch({ ItemId: next })} />
+        <Field label="价格 Price（留空用默认价）" value={stringField(item.Price)} onChange={(next) => patch({ Price: next.trim() ? numberOrText(next) : undefined })} />
+        <ConditionField label="上架条件 Condition" value={item.Condition} onChange={(next) => patch({ Condition: next })} placeholder="SEASON Summer" />
+        <Field label="库存 AvailableStock" value={stringField(item.AvailableStock)} onChange={(next) => patch({ AvailableStock: next.trim() ? numberOrText(next) : undefined })} />
+        <ComboField label="库存限制 AvailableStockLimit" value={item.AvailableStockLimit || ""} options={SHOP_STOCK_LIMIT_OPTIONS} onChange={(next) => patch({ AvailableStockLimit: next || undefined })} />
+        <Field label="每次购买数量 Stack" value={stringField(item.Stack)} onChange={(next) => patch({ Stack: next.trim() ? numberOrText(next) : undefined })} />
+        <Field label="交易物品 TradeItemId" value={stringField(item.TradeItemId)} onChange={(next) => patch({ TradeItemId: setNullableText(next) })} />
+        <Field label="交易数量 TradeItemAmount" value={stringField(item.TradeItemAmount)} onChange={(next) => patch({ TradeItemAmount: next.trim() ? numberOrText(next) : undefined })} />
+        <BoolField label="这是配方 IsRecipe" value={Boolean(item.IsRecipe)} onChange={(next) => patch({ IsRecipe: next })} />
+      </div>
+      <JsonField label="商品高级字段" value={publicAdvancedValue(item, ["Id", "ItemId", "Price", "Condition", "AvailableStock", "AvailableStockLimit", "Stack", "TradeItemId", "TradeItemAmount", "IsRecipe"])} onChange={(next) => onChange({ ...pickObjectFields(item, ["Id", "ItemId", "Price", "Condition", "AvailableStock", "AvailableStockLimit", "Stack", "TradeItemId", "TradeItemAmount", "IsRecipe"]), ...(next as JsonDict) })} />
+      {onRemove && <div className="button-row"><button type="button" className="secondary" onClick={onRemove}>删除商品</button></div>}
+    </details>
+  );
+}
+
+function ShopOwnerEditor({ owner, index, onChange, onRemove }: { owner: JsonDict; index: number; onChange: (owner: JsonDict) => void; onRemove: () => void }) {
+  const dialogues = Array.isArray(owner.Dialogues) ? owner.Dialogues.filter(isObject) : [];
+  const patch = (next: JsonDict) => onChange(compactObject({ ...owner, ...next }));
+  return (
+    <details className="subsection" open>
+      <summary><h3>店主 {index + 1}: {stringField(owner.Name || "Any")}</h3></summary>
+      <div className="grid two">
+        <Field label="Name（NPC 名或 Any）" value={stringField(owner.Name || "Any")} onChange={(next) => patch({ Name: next || "Any" })} />
+        <ConditionField label="店主条件 Condition" value={owner.Condition} onChange={(next) => patch({ Condition: next })} placeholder="SEASON Summer" />
+        <Field label="关闭消息 ClosedMessage" value={stringField(owner.ClosedMessage)} onChange={(next) => patch({ ClosedMessage: setNullableText(next) })} />
+      </div>
+      <div className="stack">
+        {dialogues.map((dialogue, dialogueIndex) => (
+          <div className="card compact-card" key={dialogueIndex}>
+            <div className="grid two">
+              <Field label="Dialogue ID" value={stringField(dialogue.Id)} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Id: next }) })} />
+              <ConditionField label="Dialogue Condition" value={dialogue.Condition} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Condition: next }) })} placeholder="SEASON Summer, WEATHER Here Sun" />
+              <Field label="Dialogue" value={stringField(dialogue.Dialogue)} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Dialogue: next }) })} textarea />
+            </div>
+            <button type="button" className="secondary" onClick={() => patch({ Dialogues: dialogues.filter((_, itemIndex) => itemIndex !== dialogueIndex) })}>删除对话</button>
+          </div>
+        ))}
+        <button type="button" className="secondary" onClick={() => patch({ Dialogues: [...dialogues, { Id: `Dialogue${dialogues.length + 1}`, Dialogue: "Welcome!" }] })}><Icon name="plus" />添加店主对话</button>
+      </div>
+      <div className="button-row"><button type="button" className="secondary" onClick={onRemove}>删除店主</button></div>
+    </details>
   );
 }
 
@@ -2064,8 +2706,9 @@ function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { dra
       setStatus("请先导入 tmx/tbin 地图文件。");
       return;
     }
+    const displayNameKey = locationI18nKey(nextProject, mapKey, "Name");
     const locationEntry = createWorkflowEntry("custom", `${mapKey} 地点数据`, "Data/Locations", mapKey, compactObject({
-      DisplayName: displayName || mapKey,
+      DisplayName: i18nRef(displayNameKey),
       CreateOnLoad: { MapPath: `Maps/${mapKey}` },
       DefaultArrivalTile: arrival,
       Type: locationType || undefined,
@@ -2099,7 +2742,8 @@ function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { dra
     setProject({
       ...nextProject,
       game_data: mergeWorkflowEntries(nextProject.game_data, [locationEntryWithMeta]),
-      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch])
+      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch]),
+      i18n: { ...nextProject.i18n, [displayNameKey]: displayName || mapKey }
     });
     onGenerated([
       { target: "Data/Locations", key: mapKey },
@@ -2275,8 +2919,9 @@ function LegacyMapStudio({ project, ruleset, setProject }: { project: Project; r
       setStatus("请先导入 tmx/tbin 地图文件。");
       return;
     }
+    const displayNameKey = locationI18nKey(nextProject, mapKey, "Name");
     const locationEntry = createWorkflowEntry("custom", `${mapKey} 地点数据`, "Data/Locations", mapKey, compactObject({
-      DisplayName: displayName || mapKey,
+      DisplayName: i18nRef(displayNameKey),
       CreateOnLoad: { MapPath: `Maps/${mapKey}` },
       DefaultArrivalTile: arrival,
       Type: locationType || undefined,
@@ -2312,7 +2957,8 @@ function LegacyMapStudio({ project, ruleset, setProject }: { project: Project; r
     setProject({
       ...nextProject,
       game_data: mergeWorkflowEntries(nextProject.game_data, [locationEntryWithMeta]),
-      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch])
+      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch]),
+      i18n: { ...nextProject.i18n, [displayNameKey]: displayName || mapKey }
     });
     setStatus(`已生成 ${mapKey} 的 Data/Locations 与 Load Maps/${mapKey}。`);
   }
@@ -2469,7 +3115,7 @@ function MailEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProj
       </div>
       <div className="mail-subsection">
         <h4>附件</h4>
-        <MailAttachmentEditor value={attachments} itemOptions={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} onChange={(next) => updateMail({ Attachments: next })} />
+        <MailAttachmentEditor value={attachments} itemOptions={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} questOptions={questOptions(project)} onChange={(next) => updateMail({ Attachments: next })} />
         <div className="notice compact-note">信件只导出 <code>Data/Mail</code> 正文。发送信件请另建 <code>Data/TriggerActions</code>，例如 <code>AddMail Current {mailKey}</code>，再用 When 限制触发条件。</div>
       </div>
     </div>
@@ -3161,7 +3807,7 @@ function scheduleAnimationOptions(ruleset: Ruleset, npcName: string): RulesetOpt
   return rulesetOptions(ruleset, "schedule_animations").map((option) => ({ ...option, value: String(option.value).replace("<npc>", npcName), label: String(option.label).replace("<npc>", npcName) }));
 }
 
-function TriggerActionForm({ entry, ruleset, onChange }: { entry: GameDataEntry; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void }) {
+function TriggerActionForm({ project, entry, ruleset, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void }) {
   const value = isObject(entry.value) ? entry.value : {};
   const actions = Array.isArray(value.Actions) ? value.Actions.map(normalizeTriggerActionRow) : [];
   const key = entry.key || stringField(value.Id || "ExampleTriggerAction");
@@ -3184,7 +3830,7 @@ function TriggerActionForm({ entry, ruleset, onChange }: { entry: GameDataEntry;
         <ComboField label="Trigger" value={stringField(value.Trigger || "DayStarted")} options={triggerEventOptions(ruleset)} onChange={(Trigger) => updateValue({ Trigger })} />
         <BoolField label="仅主机 HostOnly" value={Boolean(value.HostOnly)} onChange={(HostOnly) => updateValue({ HostOnly })} />
       </div>
-      <TriggerActionCommandEditor value={actions} onChange={(next) => updateValue({ Actions: next })} />
+      <TriggerActionCommandEditor value={actions} questOptions={questOptions(project)} onChange={(next) => updateValue({ Actions: next })} />
       <div className="notice compact-note">Trigger Action 是独立的 <code>Data/TriggerActions</code> 条目，不会写进信件正文。常用发送信件：<code>AddMail Current LetterId now/tomorrow/received</code>。</div>
     </div>
   );
@@ -3297,7 +3943,7 @@ function mailAttachmentLabel(attachment: MailAttachmentRow) {
   }
 }
 
-function MailAttachmentEditor({ value, itemOptions, onChange }: { value: MailAttachmentRow[]; itemOptions: ItemOption[]; onChange: (value: MailAttachmentRow[]) => void }) {
+function MailAttachmentEditor({ value, itemOptions, questOptions, onChange }: { value: MailAttachmentRow[]; itemOptions: ItemOption[]; questOptions: RulesetOption[]; onChange: (value: MailAttachmentRow[]) => void }) {
   const rows = value;
 
   function updateRow(index: number, patch: Partial<MailAttachmentRow>) {
@@ -3347,7 +3993,8 @@ function MailAttachmentEditor({ value, itemOptions, onChange }: { value: MailAtt
             {row.kind === "craftingRecipe" && <Field label="配方 ID" value={row.recipeId} onChange={(recipeId) => updateRow(index, { recipeId })} />}
             {row.kind === "itemRecovery" && <Field label="失物 ID" value={row.recipeId} onChange={(recipeId) => updateRow(index, { recipeId })} />}
             {row.kind === "quest" && <>
-              <Field label="任务 ID" value={row.questId} onChange={(questId) => updateRow(index, { questId })} />
+              <ComboField label="任务 ID" value={row.questId} options={questOptions} onChange={(questId) => updateRow(index, { questId: String(questId) })} />
+              <Field label="自定义任务 ID" value={row.questId} onChange={(questId) => updateRow(index, { questId })} />
               <BoolField label="自动接取" value={row.autoGrant} onChange={(autoGrant) => updateRow(index, { autoGrant })} />
             </>}
             {row.kind === "specialOrder" && <>
@@ -3377,6 +4024,7 @@ function normalizeTriggerActionRow(value: unknown): TriggerActionRow {
     mailId: stringField(source.mailId || source.MailId || "ExampleMail"),
     mailType: stringField(source.mailType || source.Type || "tomorrow"),
     amount: integerInRange(source.amount || source.Amount, -9999999, 9999999, 500),
+    questId: stringField(source.questId || source.QuestId || "ExampleQuest"),
     targetAction: stringField(source.targetAction || source.TargetAction || "ExampleTriggerAction"),
     raw: stringField(source.raw || source.Raw || "")
   };
@@ -3389,12 +4037,13 @@ function parseTriggerActionString(value: string): TriggerActionRow {
     return normalizeTriggerActionRow({ kind, player: parts[1] || "Current", mailId: parts[2] || "ExampleMail", mailType: parts[3] || (kind === "AddMail" ? "tomorrow" : "all") });
   }
   if (kind === "AddMoney") return normalizeTriggerActionRow({ kind, amount: Number(parts[1] || 500) });
+  if (kind === "AddQuest") return normalizeTriggerActionRow({ kind, questId: parts[1] || "ExampleQuest" });
   if (kind === "RunTriggerAction") return normalizeTriggerActionRow({ kind, targetAction: parts[1] || "ExampleTriggerAction" });
   return normalizeTriggerActionRow({ kind: "custom", raw: value });
 }
 
 function triggerActionKind(value: unknown): TriggerActionCommandKind {
-  return value === "AddMail" || value === "RemoveMail" || value === "AddMoney" || value === "RunTriggerAction" ? value : "custom";
+  return value === "AddMail" || value === "RemoveMail" || value === "AddMoney" || value === "AddQuest" || value === "RunTriggerAction" ? value : "custom";
 }
 
 function triggerActionString(row: TriggerActionRow) {
@@ -3404,11 +4053,12 @@ function triggerActionString(row: TriggerActionRow) {
     return `${row.kind} ${row.player || "Current"} ${row.mailId || "ExampleMail"}${type}`;
   }
   if (row.kind === "AddMoney") return `AddMoney ${integerInRange(row.amount, -9999999, 9999999, 500)}`;
+  if (row.kind === "AddQuest") return `AddQuest ${row.questId || "ExampleQuest"}`;
   if (row.kind === "RunTriggerAction") return `RunTriggerAction ${row.targetAction || "ExampleTriggerAction"}`;
   return row.raw.trim();
 }
 
-function TriggerActionCommandEditor({ value, onChange }: { value: TriggerActionRow[]; onChange: (value: string[]) => void }) {
+function TriggerActionCommandEditor({ value, questOptions, onChange }: { value: TriggerActionRow[]; questOptions: RulesetOption[]; onChange: (value: string[]) => void }) {
   const rows = value;
 
   function updateRows(nextRows: TriggerActionRow[]) {
@@ -3448,6 +4098,10 @@ function TriggerActionCommandEditor({ value, onChange }: { value: TriggerActionR
               <ComboField label="类型 type" value={row.mailType || (row.kind === "AddMail" ? "tomorrow" : "all")} options={TRIGGER_MAIL_TYPE_OPTIONS} onChange={(mailType) => updateRow(index, { mailType: String(mailType) })} />
             </>}
             {row.kind === "AddMoney" && <Field label="金额" value={stringField(row.amount)} onChange={(amount) => updateRow(index, { amount: integerInRange(amount, -9999999, 9999999, 500) })} />}
+            {row.kind === "AddQuest" && <>
+              <ComboField label="任务 ID" value={row.questId} options={questOptions} onChange={(questId) => updateRow(index, { questId: String(questId) })} />
+              <Field label="自定义任务 ID" value={row.questId} onChange={(questId) => updateRow(index, { questId })} />
+            </>}
             {row.kind === "RunTriggerAction" && <Field label="目标 TriggerAction ID" value={row.targetAction} onChange={(targetAction) => updateRow(index, { targetAction })} />}
             {row.kind === "custom" && <Field label="原始动作" value={row.raw} onChange={(raw) => updateRow(index, { raw })} />}
             <div className="field">
@@ -3518,6 +4172,7 @@ const TRIGGER_ACTION_KIND_OPTIONS: RulesetOption[] = [
   { label: "AddMail 添加邮件", value: "AddMail" },
   { label: "RemoveMail 移除邮件", value: "RemoveMail" },
   { label: "AddMoney 添加金钱", value: "AddMoney" },
+  { label: "AddQuest 添加任务", value: "AddQuest" },
   { label: "RunTriggerAction 调用触发动作", value: "RunTriggerAction" },
   { label: "自定义", value: "custom" }
 ];
@@ -4179,6 +4834,7 @@ function MovieReactionEditor({ project, entry, npcName, displayName, onChange }:
 
 function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
   const [expandedNpcEntryId, setExpandedNpcEntryId] = useState("");
+  const [festivalMapResources, setFestivalMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
   const value = isObject(entry.value) ? entry.value : {};
   const npcName = normalizeInternalName(entry.key || "ExampleNPC");
   const advanced = entry.advanced || {};
@@ -4189,9 +4845,30 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   const portraitAssetPath = stringField(npcMeta.portraitAssetPath);
   const spriteAssetPath = stringField(npcMeta.spriteAssetPath);
   const options = (key: string) => rulesetOptions(ruleset, key);
+  const npcDisplayNameKey = i18nKeyFromRef(value.DisplayName) || `Name.${npcName}`;
+  const npcDisplayNameText = localizedText(project, value.DisplayName, npcName);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources")
+      .then((next) => { if (!cancelled) setFestivalMapResources(next); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   function updateValue(patch: JsonDict) {
     onChange({ ...entry, value: compactObject({ ...value, ...patch }) });
+  }
+
+  function updateNpcDisplayName(text: string) {
+    setProject({
+      ...project,
+      game_data: project.game_data.map((item) => item.id === entry.id ? {
+        ...entry,
+        value: compactObject({ ...value, DisplayName: i18nRef(npcDisplayNameKey) })
+      } : item),
+      i18n: { ...project.i18n, [npcDisplayNameKey]: text }
+    });
   }
 
   function updateMeta(patch: JsonDict) {
@@ -4284,12 +4961,14 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     const textureTarget = stringField(roommate.textureTarget || roommateItemTextureTarget(project, npcName));
     const fromFile = stringField(roommate.fromFile || `assets/CharacterFiles/RoommateItems/${npcName}/invitationletter.png`);
     const displayName = stringField(roommate.displayName || "邀请信");
-    const description = stringField(roommate.description || `把这封信交给 ${stringField(value.DisplayName) || npcName}，邀请他/她成为室友。`);
+    const description = stringField(roommate.description || `把这封信交给 ${npcDisplayNameText || npcName}，邀请他/她成为室友。`);
+    const displayNameKey = itemI18nKey(project, "Object", itemId, "Name");
+    const descriptionKey = itemI18nKey(project, "Object", itemId, "Description");
     const price = Number(roommate.price || 5000);
     const itemEntry = createWorkflowEntry("item", `${npcName} 室友提案物品`, "Data/Objects", itemId, {
       Name: stringField(roommate.name || "A special invitation letter"),
-      DisplayName: displayName,
-      Description: description,
+      DisplayName: i18nRef(displayNameKey),
+      Description: i18nRef(descriptionKey),
       Type: "Basic",
       Category: 0,
       Price: Number.isFinite(price) ? price : 5000,
@@ -4316,7 +4995,8 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     setProject({
       ...project,
       game_data: mergeWorkflowEntries(project.game_data, [itemEntry]),
-      patches: mergeWorkflowPatches(project.patches, [texturePatch])
+      patches: mergeWorkflowPatches(project.patches, [texturePatch]),
+      i18n: { ...project.i18n, [displayNameKey]: displayName, [descriptionKey]: description }
     });
   }
 
@@ -4380,7 +5060,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   }
 
   function createNpcDialoguePlaceholder(isMarriage: boolean) {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     const formatId = isMarriage ? "marriage_key" : "weekday";
     const format = dialogueFormatById(formatId, ruleset);
     const target = isMarriage ? `Characters/Dialogue/MarriageDialogue${npcName}` : `Characters/Dialogue/${npcName}`;
@@ -4425,7 +5105,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   }
 
   function createSpecialDialogue(kind: SpecialDialogueKind) {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     const entry = createSpecialDialogueEntry(npcName, displayName, kind, project.game_data);
     setExpandedNpcEntryId(mergedEntryId(project, entry));
     upsertNpcEntries([entry], {
@@ -4434,21 +5114,21 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   }
 
   function createNpcGiftTastePlaceholder() {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     upsertNpcEntries([
       npcModuleMetadata(createWorkflowEntry("custom", `${displayName} 礼物喜好`, "Data/NPCGiftTastes", npcName, giftTasteToString(defaultGiftTasteState(displayName))), "giftTaste")
     ]);
   }
 
   function createMovieReactionPlaceholder() {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     upsertNpcEntries([
       npcModuleMetadata(withMovieReactionMetadata(createWorkflowEntry("custom", `${displayName} 电影观感`, "Data/MoviesReactions", npcName, defaultMovieReactionValue(npcName)), npcName), "movieReaction")
     ]);
   }
 
   function createNpcSchedulePlaceholder() {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     const map = stringField(value.DefaultMap || (dictArray(value.Home)[0]?.Location) || "Town");
     const home = dictArray(value.Home)[0] || {};
     const tile = isObject(home.Tile) ? home.Tile : {};
@@ -4479,7 +5159,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   }
 
   function createNpcAnimationPlaceholder(isSleep: boolean) {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     const key = isSleep ? sleepAnimationKey(npcName) : `${npcName}_CustomAnimation`;
     const meta: AnimationMeta = {
       npcName,
@@ -4493,17 +5173,25 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   }
 
   function createNpcMailPlaceholder() {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     upsertNpcEntries([
       npcModuleMetadata(createWorkflowEntry("custom", `${displayName} 欢迎邮件`, "Data/Mail", `${npcName}.Welcome`, `你好，@！^^${displayName} 已经来到星露谷了。[#]来自 ${displayName} 的信`), "mail")
     ]);
   }
 
   function createNpcEventPlaceholder() {
-    const displayName = stringField(value.DisplayName || npcName);
+    const displayName = npcDisplayNameText || npcName;
     upsertNpcEntries([
       npcModuleMetadata(createWorkflowEntry("event", `${displayName} 好感事件`, "Data/Events/Town", `${workflowEventId(npcName)}/f ${npcName} 2500`, `pause 500/speak ${npcName} "谢谢你来看我，@。"/end`), "event")
     ]);
+  }
+
+  function createNpcFestivalPosition() {
+    const displayName = npcDisplayNameText || npcName;
+    setProject({
+      ...project,
+      patches: [...project.patches, createFestivalPositionPatch(npcName, displayName, project.patches)]
+    });
   }
 
   function hasEntry(target: string, key: string) {
@@ -4522,8 +5210,18 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry) });
   }
 
+  function updateFestivalPositionPatch(nextPatch: Patch) {
+    const index = project.patches.findIndex((item) => item.id === nextPatch.id);
+    if (index < 0) return;
+    setProject({ ...project, patches: replaceAt(project.patches, index, nextPatch) });
+  }
+
   function removeDialogueEntry(entryId: string) {
     setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entryId) });
+  }
+
+  function removeFestivalPositionPatch(patchId: string) {
+    setProject({ ...project, patches: project.patches.filter((item) => item.id !== patchId) });
   }
 
   const hasNormalDialogue = hasEntry(`Characters/Dialogue/${npcName}`, "Mon");
@@ -4535,6 +5233,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   const animationEntries = project.game_data.filter((item) => isNpcAnimationEntry(item, npcName));
   const giftTasteEntry = project.game_data.find((item) => item.target === "Data/NPCGiftTastes" && item.key === npcName);
   const movieReactionEntry = project.game_data.find((item) => item.target === "Data/MoviesReactions" && item.key === npcName);
+  const festivalPositionPatches = project.patches.filter((patch) => isFestivalPositionPatch(patch, npcName));
   const hasGiftTaste = hasEntry("Data/NPCGiftTastes", npcName);
   const hasMovieReaction = hasEntry("Data/MoviesReactions", npcName);
   const hasSchedule = hasEntry(`Characters/schedules/${npcName}`, "spring");
@@ -4558,7 +5257,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
 
       <CollapsibleSubsection title="基础信息">
         <div className="grid two">
-          <Field label="显示名称 DisplayName" value={stringField(value.DisplayName)} onChange={(next) => updateValue({ DisplayName: next })} />
+          <Field label="显示名称 DisplayName（写入 i18n）" value={npcDisplayNameText} onChange={updateNpcDisplayName} />
           <ComboField label="语言 Language" value={value.Language || "Default"} options={[{ label: "默认 Default", value: "Default" }, { label: "矮人语 Dwarvish", value: "Dwarvish" }]} onChange={(next) => updateValue({ Language: next })} />
           <SeasonDayField season={stringField(value.BirthSeason || "spring")} day={Number(value.BirthDay || 1)} seasons={options("seasons")} onChange={(season, day) => updateValue({ BirthSeason: season, BirthDay: day })} />
           <ComboField label="居住地区 HomeRegion" value={value.HomeRegion || "Town"} options={options("home_regions")} onChange={(next) => updateValue({ HomeRegion: next })} />
@@ -4604,7 +5303,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
             <Field label="物品 ID" value={stringField(roommate.itemId || `${project.manifest.UniqueID || "Author.Mod"}.InvitationLetter`)} onChange={(next) => setRoommateField("itemId", next)} />
             <Field label="物品内部名 Name" value={stringField(roommate.name || "A special invitation letter")} onChange={(next) => setRoommateField("name", next)} />
             <Field label="显示名称 DisplayName" value={stringField(roommate.displayName || "邀请信")} onChange={(next) => setRoommateField("displayName", next)} />
-            <Field label="描述 Description" value={stringField(roommate.description || `把这封信交给 ${stringField(value.DisplayName) || npcName}，邀请他/她成为室友。`)} onChange={(next) => setRoommateField("description", next)} />
+            <Field label="描述 Description" value={stringField(roommate.description || `把这封信交给 ${npcDisplayNameText || npcName}，邀请他/她成为室友。`)} onChange={(next) => setRoommateField("description", next)} />
             <Field label="价格 Price" value={String(roommate.price || 5000)} onChange={(next) => setRoommateField("price", numberOrText(next))} />
             <Field label="贴图目标 Texture" value={stringField(roommate.textureTarget || roommateItemTextureTarget(project, npcName))} onChange={(next) => setRoommateField("textureTarget", next)} />
             <Field label="贴图文件 FromFile" value={stringField(roommate.fromFile || `assets/CharacterFiles/RoommateItems/${npcName}/invitationletter.png`)} onChange={(next) => setRoommateField("fromFile", next)} />
@@ -4675,6 +5374,19 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <NpcSpousePatioEditor value={value.SpousePatio || {}} onChange={(next) => updateValue({ SpousePatio: next })} />
           <JsonField label="自定义字段 CustomFields" value={value.CustomFields || {}} onChange={(next) => updateValue({ CustomFields: next as JsonDict })} />
         </div>
+        <div className="structured-editor-head">
+          <div>
+            <strong>节日站位</strong>
+            <span>参考 Festival data：追加到 <code>Set-Up_additionalCharacters</code> 或主事件 additionalCharacters，格式为 <code>{npcName} x y direction</code>。</span>
+          </div>
+          <button type="button" className="secondary" onClick={createNpcFestivalPosition}><Icon name="plus" />添加节日站位</button>
+        </div>
+        <NpcFestivalPositionList
+          patches={festivalPositionPatches}
+          mapResources={festivalMapResources.maps}
+          onChange={updateFestivalPositionPatch}
+          onRemove={removeFestivalPositionPatch}
+        />
       </CollapsibleSubsection>
 
       <CollapsibleSubsection title="对话条目">
@@ -4714,7 +5426,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <button type="button" className="secondary" onClick={createNpcGiftTastePlaceholder}><Icon name="plus" />{hasGiftTaste ? "重置/更新草稿" : "创建礼物喜好"}</button>
         </div>
         {giftTasteEntry ? (
-          <GiftTasteEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={giftTasteEntry} npcName={npcName} displayName={stringField(value.DisplayName || npcName)} onChange={updateNpcModuleEntry} />
+          <GiftTasteEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={giftTasteEntry} npcName={npcName} displayName={npcDisplayNameText || npcName} onChange={updateNpcModuleEntry} />
         ) : (
           <div className="empty compact-empty">尚未创建礼物喜好条目。</div>
         )}
@@ -4725,7 +5437,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <button type="button" className="secondary" onClick={createMovieReactionPlaceholder}><Icon name="plus" />{hasMovieReaction ? "重置/更新草稿" : "创建电影观感"}</button>
         </div>
         {movieReactionEntry ? (
-          <MovieReactionEditor project={project} entry={movieReactionEntry} npcName={npcName} displayName={stringField(value.DisplayName || npcName)} onChange={updateNpcModuleEntry} />
+          <MovieReactionEditor project={project} entry={movieReactionEntry} npcName={npcName} displayName={npcDisplayNameText || npcName} onChange={updateNpcModuleEntry} />
         ) : (
           <div className="empty compact-empty">尚未创建电影观感条目。</div>
         )}
@@ -4821,6 +5533,52 @@ function NpcAnimationList({ entries, expandedEntryId, project, onChange, onRemov
           <AnimationEntryForm project={project} entry={entry} onChange={onChange} />
         </details>
       ))}
+    </div>
+  );
+}
+
+function NpcFestivalPositionList({ patches, mapResources, onChange, onRemove }: { patches: Patch[]; mapResources: MapResourceEntry[]; onChange: (patch: Patch) => void; onRemove: (patchId: string) => void }) {
+  return (
+    <div className="npc-dialogue-list">
+      {!patches.length && <div className="empty compact-empty">暂无节日站位。</div>}
+      {patches.map((patch) => {
+        const meta = festivalPositionMetaFromPatch(patch) || normalizeFestivalPositionMeta({});
+        return (
+          <details className="npc-dialogue-item" key={patch.id} open>
+            <summary className="npc-dialogue-head">
+              <strong>{meta.festivalId} / {meta.phaseKey}</strong>
+              <button type="button" className="secondary" onClick={() => onRemove(patch.id)}>删除</button>
+            </summary>
+            <FestivalPositionEditor patch={patch} mapResources={mapResources} onChange={onChange} />
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+function FestivalPositionEditor({ patch, mapResources, onChange }: { patch: Patch; mapResources: MapResourceEntry[]; onChange: (patch: Patch) => void }) {
+  const meta = festivalPositionMetaFromPatch(patch) || normalizeFestivalPositionMeta({});
+  const preview = festivalPreviewForId(mapResources, meta.festivalId);
+
+  function updateMeta(nextPatch: Partial<FestivalPositionMeta>) {
+    onChange(festivalPositionPatchFromMeta(patch, { ...meta, ...nextPatch }));
+  }
+
+  return (
+    <div className="dialogue-builder">
+      <div className="grid two">
+        <Field label="NPC 内部名" value={meta.npcName} onChange={(npcName) => updateMeta({ npcName: normalizeInternalName(npcName) })} />
+        <ComboField label="节日" value={meta.festivalId} options={FESTIVAL_POSITION_OPTIONS} onChange={(festivalId) => updateMeta({ festivalId: String(festivalId) })} />
+        <ComboField label="站位字段" value={meta.phaseKey} options={FESTIVAL_POSITION_PHASE_OPTIONS} onChange={(phaseKey) => updateMeta({ phaseKey: String(phaseKey) })} />
+        <ComboField label="朝向" value={meta.direction} options={FESTIVAL_DIRECTION_OPTIONS} onChange={(direction) => updateMeta({ direction: String(direction) })} />
+        <Field label="X 坐标" value={String(meta.x)} onChange={(x) => updateMeta({ x: integerInRange(x, 0, 999, 0) })} />
+        <Field label="Y 坐标" value={String(meta.y)} onChange={(y) => updateMeta({ y: integerInRange(y, 0, 999, 0) })} />
+      </div>
+      <MapPreviewPicker title="节日地图站位" image={preview} selected={{ X: meta.x, Y: meta.y }} onPick={(point) => updateMeta({ x: point.X, y: point.Y })} />
+      <div className="notice compact-note">
+        当前导出：<code>{patch.target}</code> / <code>{meta.phaseKey}</code> append <code>{festivalPositionValue(meta)}</code>，分隔符 <code>/</code>。
+      </div>
     </div>
   );
 }
@@ -6722,6 +7480,41 @@ const FESTIVAL_DIALOGUE_TARGETS: RulesetOption[] = [
   { label: "冬 25 冬星盛宴 winter25", value: "Data/Festivals/winter25" }
 ];
 
+const FESTIVAL_POSITION_OPTIONS: RulesetOption[] = [
+  { label: "春 13 复活节 spring13", value: "spring13" },
+  { label: "春 24 花舞节 spring24", value: "spring24" },
+  { label: "夏 11 夏威夷宴会 summer11", value: "summer11" },
+  { label: "夏 28 月光水母 summer28", value: "summer28" },
+  { label: "秋 16 星露谷展览会 fall16", value: "fall16" },
+  { label: "秋 27 万灵节 fall27", value: "fall27" },
+  { label: "冬 8 冰雪节 winter8", value: "winter8" },
+  { label: "冬 25 冬星盛宴 winter25", value: "winter25" }
+];
+
+const FESTIVAL_POSITION_PHASE_OPTIONS: RulesetOption[] = [
+  { label: "入场/普通站位 Set-Up_additionalCharacters", value: "Set-Up_additionalCharacters" },
+  { label: "主事件站位 MainEvent_additionalCharacters", value: "MainEvent_additionalCharacters" },
+  { label: "主事件站位 Main-Event_additionalCharacters（冰雪节常见）", value: "Main-Event_additionalCharacters" }
+];
+
+const FESTIVAL_DIRECTION_OPTIONS: RulesetOption[] = [
+  { label: "向下 down", value: "down" },
+  { label: "向上 up", value: "up" },
+  { label: "向左 left", value: "left" },
+  { label: "向右 right", value: "right" }
+];
+
+const FESTIVAL_PREVIEW_CANDIDATES: Record<string, string[]> = {
+  spring13: ["spring13", "Town-EggFestival", "EggFestival", "Town"],
+  spring24: ["spring24", "Forest-FlowerDance", "FlowerDance", "Forest"],
+  summer11: ["summer11", "Beach-Luau", "Luau", "Beach"],
+  summer28: ["summer28", "Beach-Jellies", "MoonlightJellies", "Beach"],
+  fall16: ["fall16", "Town-Fair", "StardewValleyFair", "Town"],
+  fall27: ["fall27", "Town-Halloween", "SpiritEve", "Town"],
+  winter8: ["winter8", "Forest-IceFestival", "FestivalOfIce", "Forest"],
+  winter25: ["winter25", "Town-Christmas", "FeastOfTheWinterStar", "Town"]
+};
+
 const MOVIE_RESPONSE_OPTIONS: RulesetOption[] = [
   { label: "最爱 love", value: "love" },
   { label: "喜欢 like", value: "like" },
@@ -6991,6 +7784,7 @@ function gameDataLabel(kind: GameDataEntry["kind"], fallback = "") {
     event: "事件",
     mail: "信件",
     trigger_action: "触发动作",
+    quest: "任务",
     custom: "自定义"
   };
   return labels[kind] || fallback || kind;
@@ -7062,13 +7856,6 @@ function buildTodos(flow: WorkflowState): FlowTodo[] {
         label: "下一步：加入礼物喜好",
         description: "为这个物品创建 Data/NPCGiftTastes 追加待办，方便选择哪些 NPC 喜欢它。",
         action: "giftTasteForItem",
-        done: false
-      },
-      {
-        id: "shopForItem",
-        label: "下一步：加入商店",
-        description: "生成 Data/Shops 占位，把该物品作为出售项。",
-        action: "shopForItem",
         done: false
       },
       {
@@ -7163,12 +7950,14 @@ function buildTodos(flow: WorkflowState): FlowTodo[] {
   return todos;
 }
 
-function createPrimaryItemEntry(flow: WorkflowState): GameDataEntry {
+function createPrimaryItemEntry(project: Project, flow: WorkflowState): GameDataEntry {
   const itemId = normalizeInternalName(flow.itemId || flow.itemName || "ExampleObject");
   const itemName = flow.itemName || itemId;
+  const displayNameKey = itemI18nKey(project, "Object", itemId, "Name");
+  const descriptionKey = itemI18nKey(project, "Object", itemId, "Description");
   return createWorkflowEntry("item", `${itemName} 物品`, "Data/Objects", itemId, {
-    DisplayName: itemName,
-    Description: `${itemName} 是通过流程模式创建的物品。`,
+    DisplayName: i18nRef(displayNameKey),
+    Description: i18nRef(descriptionKey),
     Price: flow.itemPrice,
     Category: flow.itemCategory,
     Edibility: -300,
@@ -7176,11 +7965,12 @@ function createPrimaryItemEntry(flow: WorkflowState): GameDataEntry {
   });
 }
 
-function createPrimaryMapEntry(flow: WorkflowState): GameDataEntry {
+function createPrimaryMapEntry(project: Project, flow: WorkflowState): GameDataEntry {
   const locationId = normalizeInternalName(flow.locationId || flow.locationName || "ExampleLocation");
   const locationName = flow.locationName || locationId;
+  const displayNameKey = locationI18nKey(project, locationId, "Name");
   return createWorkflowEntry("custom", `${locationName} 地点`, "Data/Locations", locationId, {
-    DisplayName: locationName,
+    DisplayName: i18nRef(displayNameKey),
     CreateOnLoad: {
       MapPath: flow.mapPath || `Maps/${locationId}`
     },
@@ -7190,9 +7980,25 @@ function createPrimaryMapEntry(flow: WorkflowState): GameDataEntry {
   });
 }
 
-function createWorkflowResultForAction(action: FlowAction, flow: WorkflowState): WorkflowResult {
+function createPrimaryFlowI18n(project: Project, flow: WorkflowState): Record<string, string> {
+  if (flow.kind === "item") {
+    const itemId = normalizeInternalName(flow.itemId || flow.itemName || "ExampleObject");
+    const itemName = flow.itemName || itemId;
+    return {
+      [itemI18nKey(project, "Object", itemId, "Name")]: itemName,
+      [itemI18nKey(project, "Object", itemId, "Description")]: `${itemName} 是通过流程模式创建的物品。`
+    };
+  }
+  if (flow.kind === "map") {
+    const locationId = normalizeInternalName(flow.locationId || flow.locationName || "ExampleLocation");
+    return { [locationI18nKey(project, locationId, "Name")]: flow.locationName || locationId };
+  }
+  return {};
+}
+
+function createWorkflowResultForAction(project: Project, action: FlowAction, flow: WorkflowState): WorkflowResult {
   if (action === "dialogue") return createDialogueWorkflowResult(flow);
-  return { entries: createEntriesForFlowAction(action, flow), patches: [], i18n: {} };
+  return { entries: createEntriesForFlowAction(project, action, flow), patches: [], i18n: createWorkflowI18nForAction(project, action, flow) };
 }
 
 function createDialogueWorkflowResult(flow: WorkflowState): WorkflowResult {
@@ -7235,7 +8041,25 @@ function createDialogueWorkflowResult(flow: WorkflowState): WorkflowResult {
   };
 }
 
-function createEntriesForFlowAction(action: FlowAction, flow: WorkflowState): GameDataEntry[] {
+function createWorkflowI18nForAction(project: Project, action: FlowAction, flow: WorkflowState): Record<string, string> {
+  const npcName = normalizeInternalName(flow.npcName || flow.displayName || "ExampleNPC");
+  const displayName = flow.displayName || npcName;
+  if (action === "roommateItem") {
+    const itemId = `${npcName}RoommateProposal`;
+    return {
+      [itemI18nKey(project, "Object", itemId, "Name")]: `${displayName} 的室友信物`,
+      [itemI18nKey(project, "Object", itemId, "Description")]: `送给 ${displayName}，提出成为室友。`
+    };
+  }
+  if (action === "customMap") {
+    const locationId = `${npcName}Home`;
+    return { [locationI18nKey(project, locationId, "Name")]: `${displayName}的住处` };
+  }
+  if (action === "mapLocation") return createPrimaryFlowI18n(project, flow);
+  return {};
+}
+
+function createEntriesForFlowAction(project: Project, action: FlowAction, flow: WorkflowState): GameDataEntry[] {
   const npcName = normalizeInternalName(flow.npcName || flow.displayName || "ExampleNPC");
   const displayName = flow.displayName || npcName;
   const itemId = normalizeInternalName(flow.itemId || flow.itemName || "ExampleObject");
@@ -7267,10 +8091,11 @@ function createEntriesForFlowAction(action: FlowAction, flow: WorkflowState): Ga
         createWorkflowEntry("event", `${displayName} 好感事件`, `Data/Events/${flow.eventLocation || "Town"}`, `${workflowEventId(npcName)}/f ${npcName} ${flow.eventFriendship || 2500}`, `pause 500/speak ${npcName} "谢谢你一直以来的照顾，@。"/end`)
       ];
     case "roommateItem":
+      const roommateItemId = `${npcName}RoommateProposal`;
       return [
-        createWorkflowEntry("item", `${displayName} 室友提案物品`, "Data/Objects", `${npcName}RoommateProposal`, {
-          DisplayName: `${displayName} 的室友信物`,
-          Description: `送给 ${displayName}，提出成为室友。`,
+        createWorkflowEntry("item", `${displayName} 室友提案物品`, "Data/Objects", roommateItemId, {
+          DisplayName: i18nRef(itemI18nKey(project, "Object", roommateItemId, "Name")),
+          Description: i18nRef(itemI18nKey(project, "Object", roommateItemId, "Description")),
           Price: flow.roommateItemPrice || 5000,
           Category: -2,
           Edibility: -300,
@@ -7278,9 +8103,10 @@ function createEntriesForFlowAction(action: FlowAction, flow: WorkflowState): Ga
         })
       ];
     case "customMap":
+      const homeLocationId = `${npcName}Home`;
       return [
-        createWorkflowEntry("custom", `${displayName} 自定义地点占位`, "Data/Locations", `${npcName}Home`, {
-          DisplayName: `${displayName}的住处`,
+        createWorkflowEntry("custom", `${displayName} 自定义地点占位`, "Data/Locations", homeLocationId, {
+          DisplayName: i18nRef(locationI18nKey(project, homeLocationId, "Name")),
           CreateOnLoad: {
             MapPath: `Maps/${npcName}Home`
           },
@@ -7297,26 +8123,13 @@ function createEntriesForFlowAction(action: FlowAction, flow: WorkflowState): Ga
           Notes: "建议后续用 TextOperations 或精确字段编辑追加到喜欢/最爱分组。"
         })
       ];
-    case "shopForItem":
-      return [
-        createWorkflowEntry("shop", `${itemName} 商店出售`, "Data/Shops", flow.shopId || "SeedShop", {
-          Items: [
-            {
-              Id: itemId,
-              ItemId: `(O)${itemId}`,
-              Price: flow.shopPrice || flow.itemPrice,
-              AvailableStock: -1
-            }
-          ]
-        })
-      ];
     case "mailForItem":
       return [
         createWorkflowEntry("custom", `${itemName} 附件邮件`, "Data/Mail", `${itemId}.RewardMail`, `这是你要的 ${itemName}。^^%item object ${itemId} ${flow.mailQuantity || 1}[#]${itemName}`)
       ];
     case "mapLocation":
       return [
-        createPrimaryMapEntry(flow)
+        createPrimaryMapEntry(project, flow)
       ];
     case "mapWarpTodo":
       return [
@@ -7433,7 +8246,7 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         target: "Data/Characters",
         key: "ExampleNPC",
         value: {
-          DisplayName: "示例角色",
+          DisplayName: i18nRef("Name.ExampleNPC"),
           BirthSeason: "spring",
           BirthDay: 1,
           HomeRegion: "Town",
@@ -7481,8 +8294,8 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         target: "Data/Objects",
         key: "ExampleObject",
         value: {
-          DisplayName: "示例物品",
-          Description: "这是一个由 Stardew CP Studio 生成的示例物品。",
+          DisplayName: i18nRef("Custom.Object.ExampleObject.Name"),
+          Description: i18nRef("Custom.Object.ExampleObject.Description"),
           Price: 100,
           Category: -2,
           Edibility: -300
@@ -7506,21 +8319,6 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         key: "examplenpc_sleep",
         value: "0/1/2"
       };
-    case "shop":
-      return {
-        target: "Data/Shops",
-        key: "ExampleShop",
-        value: {
-          DisplayName: "示例商店",
-          Items: [
-            {
-              Id: "ExampleObject",
-              ItemId: "ExampleObject",
-              Price: 100
-            }
-          ]
-        }
-      };
     case "event":
       return {
         target: "Data/Events/Town",
@@ -7543,6 +8341,12 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
           Actions: ["AddMail ExampleMail"],
           HostOnly: false
         }
+      };
+    case "quest":
+      return {
+        target: "Data/Quests",
+        key: "ExampleQuest",
+        value: "Basic/{{i18n:Custom.Quest.ExampleQuest.Title}}/{{i18n:Custom.Quest.ExampleQuest.Description}}/{{i18n:Custom.Quest.ExampleQuest.Hint}}/null/-1/0/-1/false/{{i18n:Custom.Quest.ExampleQuest.Reaction}}"
       };
     default:
       return {
@@ -7765,6 +8569,10 @@ function fruitTreeTextureTarget(project: Project, saplingId: string) {
 
 function itemI18nKey(project: Project, namespace: "Object" | "FruitTree", itemId: string, field: "Name" | "Description") {
   return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.${namespace}.${sanitizeI18nPart(itemId)}.${field}`;
+}
+
+function locationI18nKey(project: Project, locationId: string, field: "Name") {
+  return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.Location.${sanitizeI18nPart(locationId)}.${field}`;
 }
 
 function i18nKeyFromRef(value: unknown) {
@@ -8373,6 +9181,330 @@ const COMMON_LOCATION_OPTIONS: RulesetOption[] = [
   "Town", "Farm", "FarmHouse", "BusStop", "Mountain", "Forest", "Beach", "SeedShop", "Saloon", "ScienceHouse", "Hospital", "CommunityCenter", "JojaMart", "Blacksmith", "ManorHouse", "ArchaeologyHouse", "AnimalShop", "Carpenter", "AdventureGuild", "Railroad", "Desert", "IslandSouth", "IslandWest", "IslandNorth", "IslandEast"
 ].map((value) => ({ label: value, value }));
 
+const COMMON_NPC_OPTIONS: RulesetOption[] = [
+  "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily", "Evelyn", "George", "Gus", "Haley", "Harvey", "Jas", "Jodi", "Kent", "Leah", "Lewis", "Linus", "Marnie", "Maru", "Pam", "Penny", "Pierre", "Robin", "Sam", "Sandy", "Sebastian", "Shane", "Vincent", "Willy", "Wizard", "Krobus", "Dwarf", "Leo", "Marlon"
+].map((value) => ({ label: value, value }));
+
+const QUEST_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "Basic 基础/自定义完成", value: "Basic" },
+  { label: "Crafting 制作物品", value: "Crafting" },
+  { label: "Location 到达地点", value: "Location" },
+  { label: "Building 建造建筑", value: "Building" },
+  { label: "ItemDelivery 交付物品", value: "ItemDelivery" },
+  { label: "Monster 击杀怪物", value: "Monster" },
+  { label: "ItemHarvest 收获物品", value: "ItemHarvest" },
+  { label: "LostItem 寻找失物", value: "LostItem" },
+  { label: "SecretLostItem 秘密失物", value: "SecretLostItem" },
+  { label: "Social 社交", value: "Social" }
+];
+
+const QUEST_COUNT_OPTIONS: RulesetOption[] = [
+  1, 2, 3, 4, 5, 10, 15, 20, 25, 50, 100
+].map((value) => ({ label: `${value}`, value }));
+
+const QUEST_FRIENDSHIP_OPTIONS: RulesetOption[] = [
+  { label: "0 点", value: 0 },
+  { label: "20 点", value: 20 },
+  { label: "50 点", value: 50 },
+  { label: "100 点", value: 100 },
+  { label: "250 点（1 心）", value: 250 },
+  { label: "500 点（2 心）", value: 500 },
+  { label: "750 点（3 心）", value: 750 },
+  { label: "1000 点（4 心）", value: 1000 }
+];
+
+const FALLBACK_BUILDING_TYPE_OPTIONS: RulesetOption[] = [
+  "Coop", "Big Coop", "Deluxe Coop", "Barn", "Big Barn", "Deluxe Barn", "Shed", "Big Shed", "Fish Pond", "Stable", "Mill", "Silo", "Well", "Cabin", "Junimo Hut", "Slime Hutch"
+].map((value) => ({ label: value, value }));
+
+const FALLBACK_MONSTER_NAME_OPTIONS: RulesetOption[] = [
+  "Green_Slime", "Blue_Slime", "Red_Slime", "Purple_Slime", "Dust_Spirit", "Bat", "Frost_Bat", "Lava_Bat", "Rock_Crab", "Lava_Crab", "Iridium_Crab", "Duggy", "Grub", "Fly", "Skeleton", "Ghost", "Shadow_Brute", "Shadow_Shaman", "Squid_Kid", "Serpent", "Mummy", "Pepper_Rex", "Tiger_Slime"
+].map((value) => ({ label: value.replace(/_/g, " "), value }));
+
+function isQuestEntry(entry: GameDataEntry) {
+  return entry.kind === "quest" || entry.target === "Data/Quests";
+}
+
+function questTextKey(meta: QuestMeta, field: "Title" | "Description" | "Hint" | "Reaction") {
+  if (field === "Title") return meta.titleKey;
+  if (field === "Description") return meta.descriptionKey;
+  if (field === "Hint") return meta.hintKey;
+  return meta.reactionKey;
+}
+
+function questI18nKey(project: Project, questId: string, field: "Title" | "Description" | "Hint" | "Reaction") {
+  return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.Quest.${sanitizeI18nPart(questId || "ExampleQuest")}.${field}`;
+}
+
+function defaultQuestMeta(project: Project, questId = modScopedId(project, "ExampleQuest")): QuestMeta {
+  const id = normalizeItemId(questId || modScopedId(project, "ExampleQuest"));
+  return {
+    mode: "builder",
+    questId: id,
+    type: "Basic",
+    titleKey: questI18nKey(project, id, "Title"),
+    descriptionKey: questI18nKey(project, id, "Description"),
+    hintKey: questI18nKey(project, id, "Hint"),
+    reactionKey: questI18nKey(project, id, "Reaction"),
+    requirement: defaultQuestRequirement("Basic"),
+    nextQuests: [],
+    moneyReward: 0,
+    rewardDescription: "-1",
+    cancellable: false,
+    rawValue: ""
+  };
+}
+
+function defaultQuestRequirement(type: QuestType): JsonDict {
+  switch (type) {
+    case "Crafting":
+      return { itemId: "(O)388", isBigCraftable: false };
+    case "Location":
+      return { location: "Town" };
+    case "Building":
+      return { buildingType: "Coop" };
+    case "ItemDelivery":
+      return { npc: "Abigail", itemId: "(O)66", count: 1 };
+    case "Monster":
+      return { monster: "Green_Slime", count: 10, npc: "Marlon", ignoreFarmMonsters: false };
+    case "ItemHarvest":
+      return { itemId: "(O)24", count: 1 };
+    case "LostItem":
+      return { npc: "Robin", itemId: "(O)788", location: "Forest", x: 110, y: 81 };
+    case "SecretLostItem":
+      return { npc: "Abigail", itemId: "(O)191", friendship: 100, removeQuestId: "" };
+    default:
+      return { raw: "" };
+  }
+}
+
+function defaultQuestEntry(project: Project): GameDataEntry {
+  const meta = defaultQuestMeta(project);
+  return questEntryFromMeta(project, {
+    id: makeId(),
+    kind: "quest",
+    name: "任务条目",
+    target: "Data/Quests",
+    key: meta.questId,
+    value: "",
+    when: {},
+    advanced: {},
+    editMode: "form"
+  }, meta);
+}
+
+function defaultQuestI18n(project: Project, meta: QuestMeta) {
+  return {
+    [questTextKey(meta, "Title")]: "示例任务",
+    [questTextKey(meta, "Description")]: "完成这个任务。",
+    [questTextKey(meta, "Hint")]: "查看任务目标。",
+    [questTextKey(meta, "Reaction")]: ""
+  };
+}
+
+function questMetaFromEntry(project: Project, entry: GameDataEntry): QuestMeta {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  if (isObject(studio.quest)) return normalizeQuestMeta(project, studio.quest as Partial<QuestMeta>);
+  if (typeof entry.value === "string" && entry.value.includes("/")) return parseQuestString(project, entry.key || modScopedId(project, "ExampleQuest"), entry.value);
+  return defaultQuestMeta(project, entry.key || modScopedId(project, "ExampleQuest"));
+}
+
+function normalizeQuestMeta(project: Project, value: Partial<QuestMeta>): QuestMeta {
+  const fallback = defaultQuestMeta(project, value.questId || modScopedId(project, "ExampleQuest"));
+  const type = isQuestType(value.type) ? value.type : fallback.type;
+  const questId = normalizeItemId(stringField(value.questId || fallback.questId));
+  return {
+    ...fallback,
+    ...value,
+    mode: value.mode === "raw" ? "raw" : "builder",
+    questId,
+    type,
+    titleKey: stringField(value.titleKey || questI18nKey(project, questId, "Title")),
+    descriptionKey: stringField(value.descriptionKey || questI18nKey(project, questId, "Description")),
+    hintKey: stringField(value.hintKey || questI18nKey(project, questId, "Hint")),
+    reactionKey: stringField(value.reactionKey || questI18nKey(project, questId, "Reaction")),
+    requirement: isObject(value.requirement) ? value.requirement : defaultQuestRequirement(type),
+    nextQuests: Array.isArray(value.nextQuests) ? value.nextQuests.map(normalizeNextQuest).filter((row) => row.questId) : [],
+    moneyReward: integerInRange(value.moneyReward, 0, 9999999, fallback.moneyReward),
+    rewardDescription: stringField(value.rewardDescription || "-1"),
+    cancellable: Boolean(value.cancellable),
+    rawValue: stringField(value.rawValue || "")
+  };
+}
+
+function normalizeNextQuest(value: unknown): QuestNextQuest {
+  const source = isObject(value) ? value : {};
+  const raw = stringField(source.questId || source.QuestId || source.id || "");
+  return {
+    id: stringField(source.id || makeId()),
+    questId: raw.startsWith("h") ? raw.slice(1) : raw,
+    hostOnly: Boolean(source.hostOnly ?? source.HostOnly ?? raw.startsWith("h"))
+  };
+}
+
+function isQuestType(value: unknown): value is QuestType {
+  return QUEST_TYPE_OPTIONS.some((option) => option.value === value);
+}
+
+function parseQuestString(project: Project, questId: string, rawValue: string): QuestMeta {
+  const parts = rawValue.split("/");
+  while (parts.length < 10) parts.push("");
+  const type = isQuestType(parts[0]) ? parts[0] : "Basic";
+  const textRefs = {
+    Title: i18nKeyFromRef(parts[1]),
+    Description: i18nKeyFromRef(parts[2]),
+    Hint: i18nKeyFromRef(parts[3]),
+    Reaction: i18nKeyFromRef(parts[9])
+  };
+  const canBuild = Boolean(textRefs.Title || parts[1] === "") && Boolean(textRefs.Description || parts[2] === "") && Boolean(textRefs.Hint || parts[3] === "") && Boolean(textRefs.Reaction || parts[9] === "");
+  if (!canBuild) return { ...defaultQuestMeta(project, questId), mode: "raw", rawValue };
+  return normalizeQuestMeta(project, {
+    mode: "builder",
+    questId,
+    type,
+    titleKey: textRefs.Title || questI18nKey(project, questId, "Title"),
+    descriptionKey: textRefs.Description || questI18nKey(project, questId, "Description"),
+    hintKey: textRefs.Hint || questI18nKey(project, questId, "Hint"),
+    reactionKey: textRefs.Reaction || questI18nKey(project, questId, "Reaction"),
+    requirement: parseQuestRequirement(type, parts[4]),
+    nextQuests: parseNextQuests(parts[5]),
+    moneyReward: integerInRange(parts[6], 0, 9999999, 0),
+    rewardDescription: parts[7] || "-1",
+    cancellable: String(parts[8]).toLowerCase() === "true",
+    rawValue
+  });
+}
+
+function parseNextQuests(value: string): QuestNextQuest[] {
+  if (!value || value === "-1") return [];
+  return value.split(/\s+/).filter(Boolean).map((questId) => normalizeNextQuest({ questId }));
+}
+
+function parseQuestRequirement(type: QuestType, raw: string): JsonDict {
+  const parts = raw.trim().split(/\s+/).filter(Boolean);
+  if (!raw || raw === "null" || raw === "-1") return defaultQuestRequirement(type);
+  if (type === "Crafting") return { itemId: parts[0] || "(O)388", isBigCraftable: parts[1] === "true" };
+  if (type === "Location") return { location: parts[0] || "Town" };
+  if (type === "Building") return { buildingType: raw || "Coop" };
+  if (type === "ItemDelivery") return { npc: parts[0] || "Abigail", itemId: parts[1] || "(O)66", count: integerInRange(parts[2], 1, 9999, 1) };
+  if (type === "Monster") return { monster: parts[0] || "Green_Slime", count: integerInRange(parts[1], 1, 9999, 10), npc: parts[2] || "Marlon", ignoreFarmMonsters: parts[3] !== "false" };
+  if (type === "ItemHarvest") return { itemId: parts[0] || "(O)24", count: integerInRange(parts[1], 1, 9999, 1) };
+  if (type === "LostItem") return { npc: parts[0] || "Robin", itemId: parts[1] || "(O)788", location: parts[2] || "Forest", x: integerInRange(parts[3], 0, 999, 0), y: integerInRange(parts[4], 0, 999, 0) };
+  if (type === "SecretLostItem") return { npc: parts[0] || "Abigail", itemId: parts[1] || "(O)191", friendship: integerInRange(parts[2], -9999, 9999, 100), removeQuestId: parts[3] || "" };
+  return { raw };
+}
+
+function questEntryFromMeta(project: Project, entry: GameDataEntry, meta: QuestMeta): GameDataEntry {
+  const normalized = normalizeQuestMeta(project, meta);
+  return {
+    ...entry,
+    kind: "quest",
+    target: "Data/Quests",
+    key: normalized.questId,
+    value: normalized.mode === "raw" ? normalized.rawValue : buildQuestString(normalized),
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+        quest: normalized
+      }
+    }
+  };
+}
+
+function buildQuestString(meta: QuestMeta) {
+  return [
+    meta.type,
+    i18nRef(meta.titleKey),
+    i18nRef(meta.descriptionKey),
+    i18nRef(meta.hintKey),
+    questRequirementString(meta),
+    meta.nextQuests.length ? meta.nextQuests.map((row) => `${row.hostOnly ? "h" : ""}${row.questId}`).join(" ") : "-1",
+    String(integerInRange(meta.moneyReward, 0, 9999999, 0)),
+    meta.rewardDescription || "-1",
+    String(Boolean(meta.cancellable)).toLowerCase(),
+    i18nRef(meta.reactionKey)
+  ].join("/");
+}
+
+function questRequirementString(meta: QuestMeta) {
+  const req = meta.requirement || {};
+  switch (meta.type) {
+    case "Basic":
+      return stringField(req.raw || "").trim() || "null";
+    case "Crafting":
+      return `${stringField(req.itemId || "(O)388")} ${Boolean(req.isBigCraftable)}`;
+    case "Location":
+      return stringField(req.location || "Town");
+    case "Building":
+      return stringField(req.buildingType || "Coop");
+    case "ItemDelivery": {
+      const count = integerInRange(req.count, 1, 9999, 1);
+      return `${stringField(req.npc || "Abigail")} ${stringField(req.itemId || "(O)66")}${count > 1 ? ` ${count}` : ""}`;
+    }
+    case "Monster":
+      return `${stringField(req.monster || "Green_Slime").replace(/\s+/g, "_")} ${integerInRange(req.count, 1, 9999, 10)} ${stringField(req.npc || "null")} ${req.ignoreFarmMonsters !== false}`;
+    case "ItemHarvest": {
+      const count = integerInRange(req.count, 1, 9999, 1);
+      return `${stringField(req.itemId || "(O)24")}${count > 1 ? ` ${count}` : ""}`;
+    }
+    case "LostItem":
+      return `${stringField(req.npc || "Robin")} ${stringField(req.itemId || "(O)788")} ${stringField(req.location || "Forest")} ${integerInRange(req.x, 0, 999, 0)} ${integerInRange(req.y, 0, 999, 0)}`;
+    case "SecretLostItem": {
+      const removeQuestId = stringField(req.removeQuestId || "").trim();
+      return `${stringField(req.npc || "Abigail")} ${stringField(req.itemId || "(O)191")} ${integerInRange(req.friendship, -9999, 9999, 100)}${removeQuestId ? ` ${removeQuestId}` : ""}`;
+    }
+    case "Social":
+      return "null";
+    default:
+      return "null";
+  }
+}
+
+function questTextValues(meta: QuestMeta, i18n: Record<string, string>) {
+  return {
+    Title: i18n[meta.titleKey] ?? "",
+    Description: i18n[meta.descriptionKey] ?? "",
+    Hint: i18n[meta.hintKey] ?? "",
+    Reaction: i18n[meta.reactionKey] ?? ""
+  };
+}
+
+function questSlashWarnings(meta: QuestMeta, i18n: Record<string, string>) {
+  const texts = questTextValues(meta, i18n);
+  return Object.entries(texts).filter(([, value]) => value.includes("/")).map(([key]) => key);
+}
+
+function questOptions(project: Project): RulesetOption[] {
+  const values = new Set<string>();
+  for (const entry of project.game_data) {
+    if (isQuestEntry(entry) && entry.key) values.add(entry.key);
+  }
+  return [...values].sort().map((value) => ({ label: value, value }));
+}
+
+function optionalQuestOptions(options: RulesetOption[]) {
+  return [{ label: "不移除其他任务", value: "" }, ...options];
+}
+
+function npcOptions(project: Project): RulesetOption[] {
+  const values = new Set<string>(COMMON_NPC_OPTIONS.map((option) => String(option.value)));
+  for (const entry of project.game_data) {
+    if (entry.target === "Data/Characters" && entry.key) values.add(entry.key);
+  }
+  return [...values].sort().map((value) => ({ label: value, value }));
+}
+
+function buildingTypeOptions(ruleset: Ruleset) {
+  const fromRules = rulesetOptions(ruleset, "building_types");
+  return fromRules.length ? fromRules : FALLBACK_BUILDING_TYPE_OPTIONS;
+}
+
+function monsterNameOptions(ruleset: Ruleset) {
+  const fromRules = rulesetOptions(ruleset, "monster_names");
+  return fromRules.length ? fromRules : FALLBACK_MONSTER_NAME_OPTIONS;
+}
+
 function mapLocationOptions(project: Project): RulesetOption[] {
   const values = new Set<string>(COMMON_LOCATION_OPTIONS.map((option) => String(option.value)));
   for (const entry of project.game_data) {
@@ -8384,6 +9516,17 @@ function mapLocationOptions(project: Project): RulesetOption[] {
     if (match?.[1]) values.add(match[1]);
   }
   return [...values].map((value) => ({ label: value, value }));
+}
+
+function mapLocationOptionsWithResources(project: Project, mapResources: MapResourceEntry[]): RulesetOption[] {
+  const values = new Map<string, RulesetOption>();
+  const add = (value: string, label = value) => {
+    if (!value || values.has(value)) return;
+    values.set(value, { label, value });
+  };
+  for (const option of mapLocationOptions(project)) add(String(option.value), String(option.label));
+  for (const map of mapResources) add(map.key, `${map.key}（MapResource/${map.filename}）`);
+  return [...values.values()];
 }
 
 function itemSelectionOptions(project: Project, ruleset: Ruleset, catalog: ItemCatalogResponse, mode: "gift" | "qualified" = "gift"): ItemOption[] {
@@ -8695,6 +9838,113 @@ function specialDialogueTitle(entry: GameDataEntry) {
   return specialDialogueName(meta.npcName, meta.kind, entry.target, entry.key);
 }
 
+function createFestivalPositionPatch(npcName: string, displayName: string, existingPatches: Patch[] = []): Patch {
+  const used = new Set(existingPatches.map((patch) => {
+    const meta = festivalPositionMetaFromPatch(patch, npcName);
+    return meta ? `${meta.festivalId}::${meta.phaseKey}` : "";
+  }));
+  const festivalId = String(FESTIVAL_POSITION_OPTIONS.find((option) => !used.has(`${option.value}::Set-Up_additionalCharacters`))?.value || "spring13");
+  return festivalPositionPatchFromMeta({
+    id: makeId(),
+    name: `${displayName || npcName} 节日站位`,
+    action: "EditData",
+    enabled: true,
+    target: `Data/Festivals/${festivalId}`,
+    from_file: null,
+    when: {},
+    fields: {},
+    advanced: {}
+  }, { npcName, festivalId, phaseKey: "Set-Up_additionalCharacters", x: 0, y: 0, direction: "down" });
+}
+
+function festivalPositionPatchFromMeta(patch: Patch, meta: FestivalPositionMeta): Patch {
+  const normalized = normalizeFestivalPositionMeta(meta);
+  const studio = isObject(patch.advanced?.StardewCPStudio) ? patch.advanced.StardewCPStudio as JsonDict : {};
+  const phase = String(FESTIVAL_POSITION_PHASE_OPTIONS.find((option) => option.value === normalized.phaseKey)?.label || normalized.phaseKey);
+  return {
+    ...patch,
+    name: `${normalized.npcName} 节日站位 ${normalized.festivalId} / ${phase}`,
+    action: "EditData",
+    target: `Data/Festivals/${normalized.festivalId}`,
+    from_file: null,
+    fields: {
+      TextOperations: [
+        {
+          Operation: "Append",
+          Target: ["Entries", normalized.phaseKey],
+          Value: festivalPositionValue(normalized),
+          Delimiter: "/"
+        }
+      ]
+    },
+    advanced: {
+      ...patch.advanced,
+      StardewCPStudio: {
+        ...studio,
+        festivalPosition: normalized
+      }
+    }
+  };
+}
+
+function normalizeFestivalPositionMeta(meta: Partial<FestivalPositionMeta>): FestivalPositionMeta {
+  const festivalId = FESTIVAL_POSITION_OPTIONS.some((option) => option.value === meta.festivalId) ? stringField(meta.festivalId) : "spring13";
+  const phaseKey = FESTIVAL_POSITION_PHASE_OPTIONS.some((option) => option.value === meta.phaseKey) ? stringField(meta.phaseKey) : "Set-Up_additionalCharacters";
+  const direction = ["up", "down", "left", "right"].includes(stringField(meta.direction)) ? stringField(meta.direction) : "down";
+  return {
+    npcName: normalizeInternalName(stringField(meta.npcName || "ExampleNPC")),
+    festivalId,
+    phaseKey,
+    x: integerInRange(meta.x ?? 0, 0, 999, 0),
+    y: integerInRange(meta.y ?? 0, 0, 999, 0),
+    direction
+  };
+}
+
+function festivalPositionValue(meta: FestivalPositionMeta) {
+  return `${meta.npcName} ${meta.x} ${meta.y} ${meta.direction}`;
+}
+
+function festivalPositionMetaFromPatch(patch: Patch, npcName = ""): FestivalPositionMeta | null {
+  const studio = isObject(patch.advanced?.StardewCPStudio) ? patch.advanced.StardewCPStudio as JsonDict : {};
+  const saved = isObject(studio.festivalPosition) ? studio.festivalPosition as JsonDict : null;
+  if (saved) {
+    const meta = normalizeFestivalPositionMeta(saved as Partial<FestivalPositionMeta>);
+    return !npcName || meta.npcName === npcName ? meta : null;
+  }
+  const festivalId = stringField(patch.target).replace(/^Data\/Festivals\//, "");
+  if (!FESTIVAL_POSITION_OPTIONS.some((option) => option.value === festivalId)) return null;
+  const operations = Array.isArray(patch.fields?.TextOperations) ? patch.fields.TextOperations : [];
+  const operation = operations.find((item) => isObject(item)) as JsonDict | undefined;
+  if (!operation) return null;
+  const target = Array.isArray(operation.Target) ? operation.Target.map(String) : [];
+  const phaseKey = target[0] === "Entries" ? target[1] : "";
+  const parts = stringField(operation.Value).trim().split(/\s+/);
+  if (parts.length < 4) return null;
+  const meta = normalizeFestivalPositionMeta({
+    npcName: parts[0],
+    festivalId,
+    phaseKey,
+    x: Number(parts[1]),
+    y: Number(parts[2]),
+    direction: parts[3]
+  });
+  return !npcName || meta.npcName === npcName ? meta : null;
+}
+
+function isFestivalPositionPatch(patch: Patch, npcName: string) {
+  return Boolean(festivalPositionMetaFromPatch(patch, npcName));
+}
+
+function festivalPreviewForId(mapResources: MapResourceEntry[], festivalId: string): MapPreviewImage | null {
+  const candidates = FESTIVAL_PREVIEW_CANDIDATES[festivalId] || [festivalId];
+  for (const candidate of candidates) {
+    const resource = mapResources.find((map) => map.key.toLowerCase() === candidate.toLowerCase());
+    if (resource) return { url: resource.url, label: `MapResource/${resource.filename}` };
+  }
+  return null;
+}
+
 function textFromSpecialDialogue(entry: GameDataEntry, i18n: Record<string, string>) {
   const key = extractI18nKey(entry.value);
   if (key) return i18n[key] || "";
@@ -8776,6 +10026,145 @@ function findNpcSpriteAsset(project: Project, npcName: string) {
   const prefix = `assets/CharacterFiles/OverworldSprites/${normalized}/`;
   const candidates = project.assets.filter((asset) => asset.stored_path.startsWith(prefix) && asset.content_type.startsWith("image/"));
   return candidates[candidates.length - 1] || null;
+}
+
+function isShopModuleEntry(entry: GameDataEntry) {
+  return entry.kind === "shop" || entry.target === "Data/Shops";
+}
+
+function shopModuleMode(entry: GameDataEntry): ShopModuleMode {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const shop = isObject(studio.shop) ? studio.shop as JsonDict : {};
+  if (shop.mode === "new" || shop.mode === "editItems") return shop.mode;
+  return shopTargetField(entry).length ? "editItems" : "new";
+}
+
+function withShopModuleMetadata(entry: GameDataEntry, mode: ShopModuleMode): GameDataEntry {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  return {
+    ...entry,
+    kind: "shop",
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...studio,
+        shop: { mode }
+      }
+    }
+  };
+}
+
+function shopTargetField(entry: GameDataEntry) {
+  const targetField = publicAdvanced(entry.advanced).TargetField;
+  return Array.isArray(targetField) ? targetField.map(String) : [];
+}
+
+function defaultShopItem(id: string, itemId: string): JsonDict {
+  return {
+    Id: id,
+    ItemId: itemId,
+    IsRecipe: false
+  };
+}
+
+function defaultShopOwner(shopId: string): JsonDict {
+  return {
+    Name: "Any",
+    Dialogues: [
+      {
+        Id: `${sanitizeI18nPart(shopId)}_Default`,
+        Dialogue: "Welcome!"
+      }
+    ]
+  };
+}
+
+function shopIdOptions(project: Project): RulesetOption[] {
+  const options = new Map<string, RulesetOption>();
+  for (const option of VANILLA_SHOP_OPTIONS) options.set(String(option.value), option);
+  for (const entry of project.game_data) {
+    if (entry.target === "Data/Shops" && shopModuleMode(entry) === "new" && entry.key) {
+      options.set(entry.key, { label: `项目自定义 ${entry.key}`, value: entry.key });
+    }
+  }
+  return [...options.values()];
+}
+
+function isShopOpenPatch(patch: Patch) {
+  const studio = isObject(patch.advanced?.StardewCPStudio) ? patch.advanced.StardewCPStudio as JsonDict : {};
+  return patch.action === "EditMap" && Boolean(studio.shopOpen);
+}
+
+function withShopOpenMetadata(patch: Patch): Patch {
+  const studio = isObject(patch.advanced?.StardewCPStudio) ? patch.advanced.StardewCPStudio as JsonDict : {};
+  return {
+    ...patch,
+    action: "EditMap",
+    advanced: {
+      ...patch.advanced,
+      StardewCPStudio: {
+        ...studio,
+        shopOpen: true
+      }
+    }
+  };
+}
+
+function shopOpenMapFields(shopId: string, position: MapPoint, direction: string, openTime: string, closeTime: string, ownerArea: MapArea | null): JsonDict {
+  return {
+    MapTiles: [
+      {
+        Position: position,
+        Layer: "Buildings",
+        SetProperties: {
+          Action: buildOpenShopAction(shopId, direction, openTime, closeTime, ownerArea)
+        }
+      }
+    ]
+  };
+}
+
+function buildOpenShopAction(shopId: string, direction: string, openTime: string, closeTime: string, ownerArea: MapArea | null) {
+  const parts = ["OpenShop", shopId || "SeedShop"];
+  const hasTime = Boolean(openTime || closeTime);
+  if (direction || hasTime || ownerArea) parts.push(direction || "down");
+  if (hasTime || ownerArea) {
+    parts.push(openTime || "0000");
+    parts.push(closeTime || "2600");
+  }
+  if (ownerArea) parts.push(String(ownerArea.X), String(ownerArea.Y), String(ownerArea.Width), String(ownerArea.Height));
+  return parts.join(" ");
+}
+
+function shopOpenMetaFromPatch(patch: Patch): ShopOpenMeta {
+  const mapTile = Array.isArray(patch.fields.MapTiles) && isObject(patch.fields.MapTiles[0]) ? patch.fields.MapTiles[0] as JsonDict : {};
+  const position = isObject(mapTile.Position) ? mapTile.Position as JsonDict : {};
+  const setProperties = isObject(mapTile.SetProperties) ? mapTile.SetProperties as JsonDict : {};
+  const action = stringField(setProperties.Action || "OpenShop SeedShop down");
+  const parts = action.split(/\s+/).filter(Boolean);
+  const ownerArea = parts.length >= 10 ? {
+    X: Number(parts[6] || 0),
+    Y: Number(parts[7] || 0),
+    Width: Number(parts[8] || 1),
+    Height: Number(parts[9] || 1)
+  } : null;
+  return {
+    shopId: parts[1] || "SeedShop",
+    mapTarget: patch.target || "Maps/Town",
+    position: { X: Number(position.X ?? 0), Y: Number(position.Y ?? 0) },
+    direction: parts[2] || "down",
+    openTime: parts[3] || "",
+    closeTime: parts[4] || "",
+    ownerArea
+  };
+}
+
+function shopTimeLabel(value: string) {
+  const hour = Number(value.slice(0, 2));
+  const minute = value.slice(2, 4);
+  const nextDay = hour >= 24;
+  const displayHour = nextDay ? hour - 24 : hour;
+  return `${nextDay ? "次日" : "当天"} ${String(displayHour).padStart(2, "0")}:${minute} / ${value}`;
 }
 
 function customMapKey(value: string) {

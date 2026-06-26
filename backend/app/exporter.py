@@ -89,6 +89,7 @@ def _write_code_files(project: Project, target: Path, dialogue_files: list["Dial
         "dialogue.json",
         "events.json",
         "mail.json",
+        "quests.json",
         "shops.json",
         "custom.json",
     ]:
@@ -109,6 +110,7 @@ def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], 
         "dialogue.json": [],
         "events.json": [],
         "mail.json": [],
+        "quests.json": [],
         "shops.json": [],
         "custom.json": [],
     }
@@ -167,6 +169,8 @@ def _code_group_for_entry(entry: GameDataEntry) -> str:
         return "events.json"
     if entry.kind in {"mail", "trigger_action"} or target in {"Data/Mail", "Data/TriggerActions"}:
         return "mail.json"
+    if entry.kind == "quest" or target == "Data/Quests":
+        return "quests.json"
     if entry.kind == "shop" or target.startswith("Data/Shops"):
         return "shops.json"
     if "Dialogue" in target or target.startswith("Data/Festivals/") or target == "Data/EngagementDialogue":

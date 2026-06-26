@@ -1399,131 +1399,6 @@
       ]
     },
     {
-      "id": "shops",
-      "target": "Data/Shops",
-      "label": "商店",
-      "kind": "shop",
-      "description": "Shop definitions and inventory. Each entry key is a shop ID, and the value contains shop settings plus an Items array.",
-      "key_hint": "Unique shop ID, e.g. SeedShop, FishShop, AnimalShop, Saloon, IslandShop, QiGemShop, or a custom shop ID.",
-      "fields": [
-        {
-          "name": "DisplayName",
-          "label": "显示名称",
-          "type": "string"
-        },
-        {
-          "name": "Items",
-          "label": "出售物品",
-          "type": "array",
-          "item_type": "shop_item"
-        },
-        {
-          "name": "Owners",
-          "label": "店主",
-          "type": "array"
-        },
-        {
-          "name": "Currency",
-          "label": "货币",
-          "type": "enum",
-          "options": "shop_currencies",
-          "allowCustom": true
-        },
-        {
-          "name": "OpenSound",
-          "label": "打开音效",
-          "type": "string"
-        },
-        {
-          "name": "PurchaseSound",
-          "label": "购买音效",
-          "type": "string"
-        }
-      ],
-      "item_fields": [
-        {
-          "name": "Id",
-          "required": true,
-          "type": "unique_id",
-          "description": "Unique ID for this shop item entry within the shop."
-        },
-        {
-          "name": "ItemId",
-          "required": true,
-          "type": "qualified_item_id",
-          "description": "Item to sell, preferably a qualified item ID like (O)388 or a custom qualified ID."
-        },
-        {
-          "name": "Price",
-          "required": false,
-          "type": "integer",
-          "description": "Override price."
-        },
-        {
-          "name": "AvailableStock",
-          "required": false,
-          "type": "integer",
-          "description": "Available stock count. Use -1 for unlimited stock in common cases."
-        },
-        {
-          "name": "AvailableStockLimit",
-          "required": false,
-          "type": "integer",
-          "description": "Maximum restockable stock limit when separate from current available stock."
-        },
-        {
-          "name": "Stack",
-          "required": false,
-          "type": "integer",
-          "description": "Stack size sold per purchase."
-        },
-        {
-          "name": "Condition",
-          "required": false,
-          "type": "game_state_query",
-          "description": "Game state query controlling whether the item is sold."
-        },
-        {
-          "name": "ActionsOnPurchase",
-          "required": false,
-          "type": "array",
-          "description": "Trigger actions to run after purchase."
-        }
-      ],
-      "substructures": [
-        {
-          "name": "Items",
-          "description": "Array of shop item models. Minimal custom item rows usually need Id, ItemId, and Price."
-        },
-        {
-          "name": "Owners",
-          "description": "Optional owner definitions used by some shops and shop menus."
-        }
-      ],
-      "ai_examples": [
-        {
-          "key": "SeedShop",
-          "value": {
-            "Items": [
-              {
-                "Id": "ExampleObject",
-                "ItemId": "(O)ExampleObject",
-                "Price": 100,
-                "AvailableStock": -1
-              }
-            ]
-          }
-        }
-      ],
-      "ai_guidance": [
-        "Target Data/Shops and use the shop ID as the entry key.",
-        "Use Items as an array of shop item models with Id, ItemId, Price, and optional AvailableStock, AvailableStockLimit, Stack, Condition, and ActionsOnPurchase.",
-        "For Pierre, use SeedShop rather than Pierre as the shop key.",
-        "When adding a custom item to an existing shop, preserve existing shop fields and patch only the Items data needed by the mod.",
-        "Use Condition for date, friendship, mail, event, or config-gated stock instead of hardcoding separate duplicate shop entries."
-      ]
-    },
-    {
       "id": "events",
       "target": "Data/Events",
       "label": "事件",
@@ -2970,6 +2845,80 @@
       ]
     },
     {
+      "id": "quests",
+      "target": "Data/Quests",
+      "label": "任务",
+      "kind": "quest",
+      "description": "Quest data entries written as slash-delimited strings in Data/Quests.",
+      "key_hint": "Unique quest ID; use a namespaced ID like Author.Mod.ExampleQuest.",
+      "fields": [
+        {
+          "name": "Type",
+          "label": "任务类型",
+          "type": "enum",
+          "options": "quest_types",
+          "allowCustom": false
+        },
+        {
+          "name": "Title",
+          "label": "标题",
+          "type": "i18n_string"
+        },
+        {
+          "name": "Description",
+          "label": "描述",
+          "type": "i18n_string"
+        },
+        {
+          "name": "Hint",
+          "label": "目标提示",
+          "type": "i18n_string"
+        },
+        {
+          "name": "Requirement",
+          "label": "完成条件",
+          "type": "string"
+        },
+        {
+          "name": "Next Quests",
+          "label": "后续任务",
+          "type": "string"
+        },
+        {
+          "name": "Money Reward",
+          "label": "金钱奖励",
+          "type": "integer"
+        },
+        {
+          "name": "Cancellable",
+          "label": "可取消",
+          "type": "boolean"
+        },
+        {
+          "name": "Reaction Text",
+          "label": "完成反应",
+          "type": "i18n_string"
+        }
+      ],
+      "quest_string_order": [
+        "Type",
+        "Title",
+        "Description",
+        "Hint",
+        "Requirement",
+        "Next Quests",
+        "Money Reward",
+        "Reward Description",
+        "Cancellable",
+        "Reaction Text"
+      ],
+      "ai_guidance": [
+        "Write quest entries to Data/Quests using EditData.",
+        "Quest values are slash-delimited; avoid literal slash characters in translated text.",
+        "Use i18n references for title, description, hint, and reaction text."
+      ]
+    },
+    {
       "id": "locations",
       "target": "Data/Locations",
       "label": "地点",
@@ -3225,6 +3174,208 @@
       {
         "label": "风 Wind",
         "value": "Wind"
+      }
+    ],
+    "quest_types": [
+      {
+        "label": "Basic 基础/自定义完成",
+        "value": "Basic"
+      },
+      {
+        "label": "Crafting 制作物品",
+        "value": "Crafting"
+      },
+      {
+        "label": "Location 到达地点",
+        "value": "Location"
+      },
+      {
+        "label": "Building 建造建筑",
+        "value": "Building"
+      },
+      {
+        "label": "ItemDelivery 交付物品",
+        "value": "ItemDelivery"
+      },
+      {
+        "label": "Monster 击杀怪物",
+        "value": "Monster"
+      },
+      {
+        "label": "ItemHarvest 收获物品",
+        "value": "ItemHarvest"
+      },
+      {
+        "label": "LostItem 寻找失物",
+        "value": "LostItem"
+      },
+      {
+        "label": "SecretLostItem 秘密失物",
+        "value": "SecretLostItem"
+      },
+      {
+        "label": "Social 社交",
+        "value": "Social"
+      }
+    ],
+    "building_types": [
+      {
+        "label": "鸡舍 Coop",
+        "value": "Coop"
+      },
+      {
+        "label": "大鸡舍 Big Coop",
+        "value": "Big Coop"
+      },
+      {
+        "label": "豪华鸡舍 Deluxe Coop",
+        "value": "Deluxe Coop"
+      },
+      {
+        "label": "畜棚 Barn",
+        "value": "Barn"
+      },
+      {
+        "label": "大畜棚 Big Barn",
+        "value": "Big Barn"
+      },
+      {
+        "label": "豪华畜棚 Deluxe Barn",
+        "value": "Deluxe Barn"
+      },
+      {
+        "label": "小屋 Shed",
+        "value": "Shed"
+      },
+      {
+        "label": "大小屋 Big Shed",
+        "value": "Big Shed"
+      },
+      {
+        "label": "鱼塘 Fish Pond",
+        "value": "Fish Pond"
+      },
+      {
+        "label": "马厩 Stable",
+        "value": "Stable"
+      },
+      {
+        "label": "磨坊 Mill",
+        "value": "Mill"
+      },
+      {
+        "label": "筒仓 Silo",
+        "value": "Silo"
+      },
+      {
+        "label": "水井 Well",
+        "value": "Well"
+      },
+      {
+        "label": "小屋 Cabin",
+        "value": "Cabin"
+      },
+      {
+        "label": "祝尼魔小屋 Junimo Hut",
+        "value": "Junimo Hut"
+      },
+      {
+        "label": "史莱姆屋 Slime Hutch",
+        "value": "Slime Hutch"
+      }
+    ],
+    "monster_names": [
+      {
+        "label": "绿色史莱姆 Green Slime",
+        "value": "Green_Slime"
+      },
+      {
+        "label": "蓝色史莱姆 Blue Slime",
+        "value": "Blue_Slime"
+      },
+      {
+        "label": "红色史莱姆 Red Slime",
+        "value": "Red_Slime"
+      },
+      {
+        "label": "紫色史莱姆 Purple Slime",
+        "value": "Purple_Slime"
+      },
+      {
+        "label": "灰尘精灵 Dust Spirit",
+        "value": "Dust_Spirit"
+      },
+      {
+        "label": "蝙蝠 Bat",
+        "value": "Bat"
+      },
+      {
+        "label": "寒霜蝙蝠 Frost Bat",
+        "value": "Frost_Bat"
+      },
+      {
+        "label": "熔岩蝙蝠 Lava Bat",
+        "value": "Lava_Bat"
+      },
+      {
+        "label": "岩石蟹 Rock Crab",
+        "value": "Rock_Crab"
+      },
+      {
+        "label": "熔岩蟹 Lava Crab",
+        "value": "Lava_Crab"
+      },
+      {
+        "label": "铱蟹 Iridium Crab",
+        "value": "Iridium_Crab"
+      },
+      {
+        "label": "掘地虫 Duggy",
+        "value": "Duggy"
+      },
+      {
+        "label": "蛆 Grub",
+        "value": "Grub"
+      },
+      {
+        "label": "苍蝇 Fly",
+        "value": "Fly"
+      },
+      {
+        "label": "骷髅 Skeleton",
+        "value": "Skeleton"
+      },
+      {
+        "label": "幽灵 Ghost",
+        "value": "Ghost"
+      },
+      {
+        "label": "暗影狂徒 Shadow Brute",
+        "value": "Shadow_Brute"
+      },
+      {
+        "label": "暗影萨满 Shadow Shaman",
+        "value": "Shadow_Shaman"
+      },
+      {
+        "label": "鱿鱼娃 Squid Kid",
+        "value": "Squid_Kid"
+      },
+      {
+        "label": "飞蛇 Serpent",
+        "value": "Serpent"
+      },
+      {
+        "label": "木乃伊 Mummy",
+        "value": "Mummy"
+      },
+      {
+        "label": "霸王喷火龙 Pepper Rex",
+        "value": "Pepper_Rex"
+      },
+      {
+        "label": "虎纹史莱姆 Tiger Slime",
+        "value": "Tiger_Slime"
       }
     ],
     "genders": [
