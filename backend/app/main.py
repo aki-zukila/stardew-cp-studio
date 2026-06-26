@@ -16,6 +16,8 @@ from .models import (
     ExportRequest,
     ImportAssetResponse,
     ItemCatalogResponse,
+    MapResourceEntry,
+    MapResourceResponse,
     OpenProjectRequest,
     Project,
     SaveAIConfigRequest,
@@ -31,6 +33,7 @@ app = FastAPI(title="Stardew CP Studio API")
 RUNTIME_DIR = Path(__file__).resolve().parents[2] / ".runtime"
 ROOT_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+MAP_RESOURCE_DIR = ROOT_DIR / "MapResource"
 UPLOAD_DIR = RUNTIME_DIR / "uploads"
 ASSET_SOURCES: dict[str, Path] = {}
 
@@ -61,6 +64,45 @@ def get_rule_library():
 @app.get("/api/items/catalog")
 def get_item_catalog() -> ItemCatalogResponse:
     return load_item_catalog()
+
+
+@app.get("/api/maps/resources")
+def get_map_resources() -> MapResourceResponse:
+    if not MAP_RESOURCE_DIR.exists():
+        return MapResourceResponse(source_path=str(MAP_RESOURCE_DIR), warning="MapResource folder not found.")
+    maps: list[MapResourceEntry] = []
+    for path in sorted(MAP_RESOURCE_DIR.glob("*.png")):
+        try:
+            width, height = _png_size(path)
+        except ValueError:
+            continue
+        maps.append(MapResourceEntry(
+            key=path.stem,
+            filename=path.name,
+            width=width,
+            height=height,
+            tile_width=width // 16,
+            tile_height=height // 16,
+            url=f"/api/maps/resources/{path.name}",
+        ))
+    return MapResourceResponse(maps=maps, source_path=str(MAP_RESOURCE_DIR))
+
+
+@app.get("/api/maps/resources/{filename}")
+def get_map_resource_image(filename: str):
+    path = (MAP_RESOURCE_DIR / filename).resolve()
+    root = MAP_RESOURCE_DIR.resolve()
+    if path.parent != root or path.suffix.lower() != ".png" or not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Map resource not found.")
+    return FileResponse(path)
+
+
+def _png_size(path: Path) -> tuple[int, int]:
+    with path.open("rb") as file:
+        header = file.read(24)
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("Not a PNG file.")
+    return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
 
 
 @app.get("/api/rules/ai-context")

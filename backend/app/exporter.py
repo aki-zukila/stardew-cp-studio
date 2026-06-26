@@ -31,11 +31,13 @@ def export_content_pack(
     (target / "assets").mkdir(exist_ok=True)
     (target / "code").mkdir(exist_ok=True)
 
+    export_i18n = dict(project.i18n)
     dialogue_files = _write_dialogue_files(project, target)
+    schedule_files = _write_schedule_files(project, target, export_i18n)
     _write_json(target / "manifest.json", _manifest_json(project.manifest))
-    include_files = _write_code_files(project, target, dialogue_files)
+    include_files = _write_code_files(project, target, dialogue_files, schedule_files)
     _write_json(target / "content.json", _root_content_json(include_files))
-    _write_json(target / "i18n" / "default.json", project.i18n)
+    _write_json(target / "i18n" / "default.json", export_i18n)
     _write_json(target / "assets" / "blank.json", {})
     _copy_assets(project, target, project_package, asset_sources or {})
     return target
@@ -77,8 +79,8 @@ def _root_content_json(include_files: list[str]) -> dict[str, Any]:
     }
 
 
-def _write_code_files(project: Project, target: Path, dialogue_files: list["DialogueFile"] | None = None) -> list[str]:
-    groups = _code_change_groups(project, dialogue_files or [])
+def _write_code_files(project: Project, target: Path, dialogue_files: list["DialogueFile"] | None = None, schedule_files: list["ScheduleFile"] | None = None) -> list[str]:
+    groups = _code_change_groups(project, dialogue_files or [], schedule_files or [])
     include_files: list[str] = []
     for filename in [
         "patches.json",
@@ -99,7 +101,7 @@ def _write_code_files(project: Project, target: Path, dialogue_files: list["Dial
     return include_files
 
 
-def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"]) -> dict[str, list[dict[str, Any]]]:
+def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], schedule_files: list["ScheduleFile"] | None = None) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {
         "patches.json": [],
         "characters.json": [],
@@ -119,12 +121,18 @@ def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"]) 
         if not _has_equivalent_patch(groups["dialogue.json"], patch):
             groups["dialogue.json"].append(patch)
 
+    for patch in _schedule_bootstrap_patches(schedule_files or []):
+        if not _has_equivalent_patch(groups["characters.json"], patch):
+            groups["characters.json"].append(patch)
+
     for patch in _mail_background_load_patches(project):
         if not _has_equivalent_patch(groups["mail.json"], patch):
             groups["mail.json"].append(patch)
 
     for entry in project.game_data:
         if _dialogue_entry_info(entry):
+            continue
+        if _schedule_entry_info(entry) and not entry.when:
             continue
         groups[_code_group_for_entry(entry)].append(_game_data_patch_json(entry))
 
@@ -151,7 +159,7 @@ def _content_json(project: Project, dialogue_files: list["DialogueFile"] | None 
 
 def _code_group_for_entry(entry: GameDataEntry) -> str:
     target = entry.target or ""
-    if entry.kind == "npc" or target in {"Data/Characters", "Data/NPCGiftTastes", "Data/MoviesReactions"} or target.startswith("Characters/schedules/"):
+    if entry.kind in {"npc", "schedule", "animation"} or target in {"Data/Characters", "Data/NPCGiftTastes", "Data/MoviesReactions", "Data/animationDescriptions"} or target.startswith("Characters/schedules/"):
         return "characters.json"
     if entry.kind == "item" or target.startswith("Data/Objects") or target.startswith("Data/BigCraftables"):
         return "items.json"
@@ -524,6 +532,13 @@ class DialogueFile(dict):
     from_file: str
 
 
+class ScheduleFile(dict):
+    npc: str
+    target: str
+    from_file: str
+    dialogue_file: str | None
+
+
 def _dialogue_entry_info(entry: GameDataEntry) -> dict[str, str] | None:
     if entry.kind != "dialogue":
         return None
@@ -544,6 +559,21 @@ def _dialogue_entry_info(entry: GameDataEntry) -> dict[str, str] | None:
             "from_file": f"assets/CharacterFiles/Dialogue/{normal.group(1)}/dialogue.json",
         }
     return None
+
+
+def _schedule_entry_info(entry: GameDataEntry) -> dict[str, str] | None:
+    if entry.kind != "schedule":
+        return None
+    match = re.fullmatch(r"Characters/[Ss]chedules/([^/]+)", entry.target or "")
+    if not match:
+        return None
+    npc = match.group(1)
+    return {
+        "npc": npc,
+        "target": entry.target,
+        "from_file": f"assets/CharacterFiles/Schedules/{npc}/Schedule.json",
+        "dialogue_file": f"assets/CharacterFiles/Schedules/{npc}/ScheduleDialogue.json",
+    }
 
 
 def _write_dialogue_files(project: Project, target: Path) -> list[DialogueFile]:
@@ -585,6 +615,81 @@ def _write_dialogue_files(project: Project, target: Path) -> list[DialogueFile]:
     return dialogue_files
 
 
+def _write_schedule_files(project: Project, target: Path, export_i18n: dict[str, str]) -> list[ScheduleFile]:
+    grouped: dict[str, dict[str, Any]] = {}
+    dialogue_entries: dict[str, dict[str, str]] = {}
+    for entry in project.game_data:
+        info = _schedule_entry_info(entry)
+        if not info or entry.when or not entry.key:
+            continue
+        bucket = grouped.setdefault(info["npc"], {"info": info, "entries": {}})
+        bucket["entries"][entry.key] = entry.value
+        for dialogue_key, i18n_key in _schedule_dialogue_entries(entry, export_i18n).items():
+            dialogue_entries.setdefault(info["npc"], {})[dialogue_key] = f"{{{{i18n:{i18n_key}}}}}"
+
+    schedule_files: list[ScheduleFile] = []
+    for npc, bucket in grouped.items():
+        info = bucket["info"]
+        entries = bucket["entries"]
+        if not entries:
+            continue
+        _write_json(target / info["from_file"], entries)
+        dialogue_file = None
+        if dialogue_entries.get(npc):
+            dialogue_file = info["dialogue_file"]
+            _write_json(target / dialogue_file, {
+                "Changes": [
+                    {
+                        "Action": "EditData",
+                        "Target": f"Strings/schedules/{npc}",
+                        "Entries": dialogue_entries[npc],
+                    }
+                ]
+            })
+        schedule_files.append({
+            "npc": npc,
+            "target": info["target"],
+            "from_file": info["from_file"],
+            "dialogue_file": dialogue_file,
+        })
+    return schedule_files
+
+
+def _schedule_dialogue_entries(entry: GameDataEntry, export_i18n: dict[str, str]) -> dict[str, str]:
+    studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+    if not isinstance(studio, dict):
+        return {}
+    schedule = studio.get("schedule")
+    if not isinstance(schedule, dict):
+        return {}
+    rows = schedule.get("dialogueEntries")
+    if not isinstance(rows, list):
+        return {}
+    entries: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("key") or "").strip()
+        i18n_key = str(row.get("i18nKey") or "").strip()
+        if key and i18n_key:
+            entries[key] = i18n_key
+    points = schedule.get("points")
+    info = _schedule_entry_info(entry)
+    npc = str(schedule.get("npcName") or (info.get("npc") if info else "")).strip()
+    if isinstance(points, list) and npc:
+        for index, point in enumerate(points):
+            if not isinstance(point, dict):
+                continue
+            text = str(point.get("dialogueText") or "").strip()
+            if not text:
+                continue
+            key = str(point.get("dialogueKey") or f"{entry.key}.{index:03d}").strip()
+            i18n_key = f"{npc}.Schedule.{key}"
+            entries[key] = i18n_key
+            export_i18n[i18n_key] = text
+    return entries
+
+
 def _dialogue_bootstrap_patches(project: Project, dialogue_files: list[DialogueFile]) -> list[dict[str, Any]]:
     patches: list[dict[str, Any]] = []
     targets: set[str] = set()
@@ -600,6 +705,23 @@ def _dialogue_bootstrap_patches(project: Project, dialogue_files: list[DialogueF
             "Action": "Include",
             "FromFile": file_info["from_file"],
         })
+    return patches
+
+
+def _schedule_bootstrap_patches(schedule_files: list[ScheduleFile]) -> list[dict[str, Any]]:
+    patches: list[dict[str, Any]] = []
+    for file_info in schedule_files:
+        patches.append({
+            "Action": "Load",
+            "Priority": "Low",
+            "Target": file_info["target"],
+            "FromFile": file_info["from_file"],
+        })
+        if file_info.get("dialogue_file"):
+            patches.append({
+                "Action": "Include",
+                "FromFile": file_info["dialogue_file"],
+            })
     return patches
 
 

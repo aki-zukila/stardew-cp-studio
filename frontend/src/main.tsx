@@ -29,7 +29,7 @@ type Patch = {
 
 type GameDataEntry = {
   id: string;
-  kind: "npc" | "item" | "dialogue" | "shop" | "event" | "mail" | "trigger_action" | "custom";
+  kind: "npc" | "item" | "dialogue" | "schedule" | "animation" | "shop" | "event" | "mail" | "trigger_action" | "custom";
   name: string;
   target: string;
   key: string;
@@ -124,6 +124,16 @@ type ItemCatalogEntry = { id: string; qualified_id: string; name: string; displa
 type ItemCatalogResponse = { items: ItemCatalogEntry[]; source_path: string; warning: string };
 type ItemOption = RulesetOption & { source?: string };
 type TriggerActionRow = { kind: TriggerActionCommandKind; player: string; mailId: string; mailType: string; amount: number; targetAction: string; raw: string };
+type MapResourceEntry = { key: string; filename: string; width: number; height: number; tile_width: number; tile_height: number; url: string };
+type MapResourceResponse = { maps: MapResourceEntry[]; source_path: string; warning: string };
+type MapArea = { X: number; Y: number; Width: number; Height: number };
+type MapPoint = { X: number; Y: number };
+type MapPreviewImage = Asset | { url: string; label: string };
+type ScheduleKeyField = { name: string; type: string; options?: string; min?: number; max?: number };
+type ScheduleKeyFormat = { id: string; category: string; label: string; template: string; fields: ScheduleKeyField[] };
+type SchedulePoint = { id: string; time: string; location: string; x: number; y: number; direction: number; animation: string; dialogueKey: string; dialogueText: string };
+type ScheduleMeta = { npcName: string; keyType: string; fields: Record<string, string | number>; initialCommand: string; gotoKey: string; friendshipNpc: string; friendshipHearts: number; mailId: string; mailMissingKey: string; mailReceivedKey: string; points: SchedulePoint[]; dialogueEntries: { key: string; i18nKey: string }[] };
+type AnimationMeta = { npcName: string; isSleep: boolean; customKey: string; framesText: string };
 type FlowTodo = { id: string; label: string; description: string; action: FlowAction; done: boolean };
 type FlowAction = "dialogue" | "giftTaste" | "schedule" | "mail" | "event" | "roommateItem" | "customMap" | "giftTasteForItem" | "shopForItem" | "mailForItem" | "mapLocation" | "mapWarpTodo" | "mapEventTodo";
 type FlowKind = "character" | "item" | "map";
@@ -304,7 +314,8 @@ class SafeAppErrorBoundary extends React.Component<{ children: React.ReactNode }
 function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [ruleset, setRuleset] = useState<Ruleset | null>(null);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("manifest");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projectPath, setProjectPath] = useState("E:\\Codex\\stardew-cp-studio\\example.cpgen");
   const [openPath, setOpenPath] = useState("");
   const [exportPath, setExportPath] = useState("E:\\Codex\\stardew-cp-studio\\exports");
@@ -386,7 +397,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <Icon name="pkg" />
@@ -395,16 +406,27 @@ function App() {
             <span>Content Patcher 本地工作台</span>
           </div>
         </div>
+        <button type="button" className="sidebar-toggle" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}>
+          <Icon name="menu" />{!sidebarCollapsed && "收起侧栏"}
+        </button>
         <nav>
-          <TabButton icon={<Icon name="box" />} id="overview" label="工程总览" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="settings" />} id="manifest" label="模组信息" tab={tab} setTab={setTab} />
+          <details className="sidebar-subnav" open={tab === "data" || tab === "items" || tab === "maps" || tab === "quests" || tab === "special-orders"}>
+            <summary><Icon name="data" /><span>游戏数据</span></summary>
+            <div>
+              <TabButton icon={<Icon name="data" />} id="data" label="角色 / 通用数据" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="item" />} id="items" label="物品添加" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="map" />} id="maps" label="地图添加" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="quest" />} id="quests" label="任务功能" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="order" />} id="special-orders" label="特殊订单" tab={tab} setTab={setTab} />
+            </div>
+          </details>
           <TabButton icon={<Icon name="story" />} id="story" label="剧情模块" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="json" />} id="patches" label="CP 补丁" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="assets" />} id="assets" label="素材库" tab={tab} setTab={setTab} />
-          <TabButton icon={<Icon name="data" />} id="data" label="游戏数据" tab={tab} setTab={setTab} />
+          <div className="nav-spacer" />
+          <TabButton icon={<Icon name="box" />} id="workspace" label="工程管理" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="rules" />} id="rules" label="规则库" tab={tab} setTab={setTab} />
-          <TabButton icon={<Icon name="ai" />} id="ai" label="AI 设置" tab={tab} setTab={setTab} />
-          <TabButton icon={<Icon name="export" />} id="export" label="校验与导出" tab={tab} setTab={setTab} />
         </nav>
       </aside>
 
@@ -422,39 +444,32 @@ function App() {
 
         {status && <div className="status">{status}</div>}
 
-        {tab === "overview" && (
-          <Section title="工程总览">
-            <div className="grid two">
-              <Field label="工程名称" value={project.meta.name} onChange={(value) => updateProject({ ...project, meta: { ...project.meta, name: value } })} />
-              <Field label="保存到 .cpgen 路径" value={projectPath} onChange={setProjectPath} />
-              <Field label="打开 .cpgen 路径" value={openPath} onChange={setOpenPath} />
-              <div className="button-row align-end">
-                <button onClick={openProject}><Icon name="open" />打开</button>
-                <button onClick={saveProject}><Icon name="save" />保存</button>
-              </div>
-            </div>
-            <Stats project={project} issues={issues} />
-          </Section>
-        )}
-
         {tab === "manifest" && <ManifestEditor project={project} setProject={updateProject} />}
         {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
+        {tab === "items" && <PlaceholderModule title="物品添加" description="这里将拆出完整的 Data/Objects / 贴图 / 价格 / 分类 / 礼物联动编辑器。" />}
+        {tab === "maps" && <MapStudio project={project} ruleset={ruleset} setProject={updateProject} />}
+        {tab === "quests" && <PlaceholderModule title="任务功能" description="这里将制作任务数据、触发条件、邮件/事件联动与完成条件编辑器。" />}
+        {tab === "special-orders" && <PlaceholderModule title="特殊订单" description="这里将制作 Special Orders 的目标、奖励、期限、文本与触发逻辑。" />}
         {tab === "assets" && <AssetManager project={project} setProject={updateProject} />}
         {tab === "rules" && <RuleLibraryView />}
-        {tab === "ai" && <AISettings />}
-        {tab === "export" && (
-          <Section title="校验与导出">
-            <div className="grid two">
-              <Field label="导出目录" value={exportPath} onChange={setExportPath} />
-              <div className="button-row align-end">
-                <button onClick={() => validate()}><Icon name="check" />校验</button>
-                <button onClick={exportPack}><Icon name="export" />导出内容包</button>
-              </div>
-            </div>
-            <IssueList issues={issues} />
-          </Section>
+        {tab === "workspace" && (
+          <WorkspaceManager
+            project={project}
+            projectPath={projectPath}
+            openPath={openPath}
+            exportPath={exportPath}
+            issues={issues}
+            setProjectPath={setProjectPath}
+            setOpenPath={setOpenPath}
+            setExportPath={setExportPath}
+            updateProject={updateProject}
+            openProject={openProject}
+            saveProject={saveProject}
+            validate={() => validate()}
+            exportPack={exportPack}
+          />
         )}
       </main>
     </div>
@@ -462,7 +477,49 @@ function App() {
 }
 
 function TabButton({ icon, id, label, tab, setTab }: { icon: React.ReactNode; id: string; label: string; tab: string; setTab: (id: string) => void }) {
-  return <button className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{icon}{label}</button>;
+  return <button className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{icon}<span>{label}</span></button>;
+}
+
+function PlaceholderModule({ title, description }: { title: string; description: string }) {
+  return (
+    <Section title={title}>
+      <div className="placeholder-module">
+        <strong>模块占位</strong>
+        <p>{description}</p>
+        <span>后续会从“游戏数据向导”中拆分到这个独立页面，降低角色创建后的拥挤度。</span>
+      </div>
+    </Section>
+  );
+}
+
+function WorkspaceManager({ project, projectPath, openPath, exportPath, issues, setProjectPath, setOpenPath, setExportPath, updateProject, openProject, saveProject, validate, exportPack }: { project: Project; projectPath: string; openPath: string; exportPath: string; issues: ValidationIssue[]; setProjectPath: (value: string) => void; setOpenPath: (value: string) => void; setExportPath: (value: string) => void; updateProject: (project: Project) => void; openProject: () => void; saveProject: () => void; validate: () => void; exportPack: () => void }) {
+  return (
+    <div className="workspace-grid">
+      <Section title="工程总览">
+        <div className="grid two">
+          <Field label="工程名称" value={project.meta.name} onChange={(value) => updateProject({ ...project, meta: { ...project.meta, name: value } })} />
+          <Field label="保存到 .cpgen 路径" value={projectPath} onChange={setProjectPath} />
+          <Field label="打开 .cpgen 路径" value={openPath} onChange={setOpenPath} />
+          <div className="button-row align-end">
+            <button onClick={openProject}><Icon name="open" />打开</button>
+            <button onClick={saveProject}><Icon name="save" />保存</button>
+          </div>
+        </div>
+        <Stats project={project} issues={issues} />
+      </Section>
+      <Section title="校验与导出">
+        <div className="grid two">
+          <Field label="导出目录" value={exportPath} onChange={setExportPath} />
+          <div className="button-row align-end">
+            <button onClick={validate}><Icon name="check" />校验</button>
+            <button onClick={exportPack}><Icon name="export" />导出内容包</button>
+          </div>
+        </div>
+        <IssueList issues={issues} />
+      </Section>
+      <AISettings />
+    </div>
+  );
 }
 
 function Icon({ name }: { name: string }) {
@@ -474,10 +531,15 @@ function Icon({ name }: { name: string }) {
     data: "D",
     export: "E",
     flow: "F",
+    item: "I",
     json: "{}",
+    map: "M",
+    menu: "≡",
     open: "O",
+    order: "SO",
     pkg: "S",
     plus: "+",
+    quest: "Q",
     rules: "R",
     save: "S",
     settings: "*",
@@ -490,6 +552,15 @@ function Icon({ name }: { name: string }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="section"><h2>{title}</h2>{children}</section>;
+}
+
+function CollapsibleSubsection({ title, children, highlight = false, defaultOpen = true, className = "" }: { title: string; children: React.ReactNode; highlight?: boolean; defaultOpen?: boolean; className?: string }) {
+  return (
+    <details className={`subsection collapsible-subsection ${highlight ? "highlight" : ""} ${className}`} open={defaultOpen}>
+      <summary><h3>{title}</h3></summary>
+      <div className="collapsible-subsection-body">{children}</div>
+    </details>
+  );
 }
 
 function Field({ label, value, onChange, textarea = false }: { label: string; value: string; onChange: (value: string) => void; textarea?: boolean }) {
@@ -1154,6 +1225,7 @@ function PatchCard({ patch, ruleset, onChange, onRemove }: { patch: Patch; rules
 }
 
 function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
   const visibleEntries = project.game_data
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => !isNpcManagedEntry(entry));
@@ -1177,49 +1249,58 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
 
   return (
     <Section title="游戏数据向导">
-      <div className="toolbar">
-        {ruleset.game_data_kinds.map((kind) => <button key={kind.kind} onClick={() => addEntry(kind.kind)}><Icon name="plus" />{gameDataLabel(kind.kind, kind.label)}</button>)}
-      </div>
-      <div className="stack">
-        {visibleEntries.map(({ entry, index }) => (
-          <article className="card" key={entry.id}>
-            <div className="card-head">
-              <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
-              <div className="segmented">
-                <button className={(entry.editMode || "form") === "form" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "form" }) })}>表单</button>
-                <button className={entry.editMode === "code" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "code" }) })}>代码</button>
-              </div>
-              <button onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加类型"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              {ruleset.game_data_kinds.map((kind) => <button className="compact-add-button" key={kind.kind} onClick={() => addEntry(kind.kind)}><Icon name="plus" /><span>{gameDataLabel(kind.kind, kind.label)}</span></button>)}
             </div>
-            {(entry.editMode || "form") === "form" ? (
-              <GameDataForm
-                project={project}
-                entry={entry}
-                ruleset={ruleset}
-                itemCatalog={itemCatalog}
-                i18n={project.i18n}
-                onI18nChange={(i18n) => setProject({ ...project, i18n })}
-                onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
-                setProject={setProject}
-              />
-            ) : (
-              <div className="code-layout">
-                <div className="grid two">
-                  <JsonField label="当前导出的 EditData 补丁" value={gameDataPatchPreview(entry)} onChange={(value) => setProject({ ...project, game_data: replaceAt(project.game_data, index, gameDataFromPatchPreview(entry, value)) })} />
-                  <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(value) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, advanced: mergePublicAdvanced(entry.advanced, value as JsonDict) }) })} />
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {visibleEntries.map(({ entry, index }) => (
+            <article className="card" key={entry.id}>
+              <div className="card-head">
+                <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
+                <div className="segmented">
+                  <button className={(entry.editMode || "form") === "form" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "form" }) })}>表单</button>
+                  <button className={entry.editMode === "code" ? "active" : ""} onClick={() => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, editMode: "code" }) })}>代码</button>
                 </div>
-                <AIAssistantPanel
+                <button onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+              </div>
+              {(entry.editMode || "form") === "form" ? (
+                <GameDataForm
                   project={project}
                   entry={entry}
-                  onApply={(kind, value) => {
-                    const nextEntry = applyAISuggestionToGameData(entry, kind, value);
-                    setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry) });
-                  }}
+                  ruleset={ruleset}
+                  itemCatalog={itemCatalog}
+                  i18n={project.i18n}
+                  onI18nChange={(i18n) => setProject({ ...project, i18n })}
+                  onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+                  setProject={setProject}
                 />
-              </div>
-            )}
-          </article>
-        ))}
+              ) : (
+                <div className="code-layout">
+                  <div className="grid two">
+                    <JsonField label="当前导出的 EditData 补丁" value={gameDataPatchPreview(entry)} onChange={(value) => setProject({ ...project, game_data: replaceAt(project.game_data, index, gameDataFromPatchPreview(entry, value)) })} />
+                    <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(value) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, advanced: mergePublicAdvanced(entry.advanced, value as JsonDict) }) })} />
+                  </div>
+                  <AIAssistantPanel
+                    project={project}
+                    entry={entry}
+                    onApply={(kind, value) => {
+                      const nextEntry = applyAISuggestionToGameData(entry, kind, value);
+                      setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry) });
+                    }}
+                  />
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
       </div>
     </Section>
   );
@@ -1232,7 +1313,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
   return (
     <div className="grid two">
-      {entry.kind !== "dialogue" && entry.kind !== "mail" && entry.kind !== "trigger_action" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "mail" && entry.kind !== "trigger_action" && (
         <>
           <Field label="数据目标 Target" value={entry.target} onChange={(target) => onChange({ ...entry, target })} />
           <Field label="条目键 Key" value={entry.key} onChange={(key) => onChange({ ...entry, key })} />
@@ -1255,6 +1336,14 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
       {entry.kind === "dialogue" && (
         <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+      )}
+
+      {entry.kind === "schedule" && (
+        <ScheduleEntryForm project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+      )}
+
+      {entry.kind === "animation" && (
+        <AnimationEntryForm project={project} entry={entry} onChange={onChange} />
       )}
 
       {entry.kind === "mail" && (
@@ -1284,10 +1373,433 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
-      {entry.kind !== "dialogue" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && (
         <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
       )}
     </div>
+  );
+}
+
+function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const [drafts, setDrafts] = useState<{ id: string; kind: "custom" | "edit" | "warp" }[]>([{ id: makeId(), kind: "custom" }]);
+  const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources")
+      .then((next) => { if (!cancelled) setMapResources(next); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  function addDraft(kind: "custom" | "edit" | "warp") {
+    setDrafts([...drafts, { id: makeId(), kind }]);
+  }
+
+  function removeDraft(id: string) {
+    setDrafts(drafts.filter((draft) => draft.id !== id));
+  }
+
+  return (
+    <Section title="地图添加">
+      <div className={`map-module-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加地图操作"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button type="button" className="compact-add-button" onClick={() => addDraft("custom")}><Icon name="plus" /><span>自定义新地图</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addDraft("edit")}><Icon name="plus" /><span>修改原有地图</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addDraft("warp")}><Icon name="plus" /><span>添加传送点</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {drafts.map((draft, index) => (
+            <article className="card" key={draft.id}>
+              <div className="card-head">
+                <strong>{index + 1}. {draft.kind === "custom" ? "自定义新地图" : draft.kind === "edit" ? "修改原有地图" : "添加传送点"}</strong>
+                <button type="button" className="secondary" onClick={() => removeDraft(draft.id)}>删除</button>
+              </div>
+              {draft.kind === "custom" && <CustomMapDraftForm project={project} setProject={setProject} />}
+              {draft.kind === "edit" && <EditMapDraftForm project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} />}
+              {draft.kind === "warp" && <MapWarpDraftForm project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} />}
+            </article>
+          ))}
+          {!drafts.length && <div className="empty compact-empty">暂无地图操作。请从左侧添加。</div>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function CustomMapDraftForm({ project, setProject }: { project: Project; setProject: (project: Project) => void }) {
+  const [mapKeyRaw, setMapKeyRaw] = useState("ExampleCave");
+  const [displayName, setDisplayName] = useState("Example Cave");
+  const [mapFile, setMapFile] = useState("");
+  const [previewFile, setPreviewFile] = useState("");
+  const [arrival, setArrival] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [locationType, setLocationType] = useState("Default");
+  const [alwaysActive, setAlwaysActive] = useState(false);
+  const [canPlant, setCanPlant] = useState(false);
+  const [greenRainSpawns, setGreenRainSpawns] = useState(false);
+  const [excludePathfinding, setExcludePathfinding] = useState(false);
+  const [status, setStatus] = useState("");
+  const mapKey = customMapKey(mapKeyRaw);
+  const customPreview = previewAssetForPath(project, previewFile);
+
+  function upsertCustomMap(nextProject = project, nextMapFile = mapFile, nextPreviewFile = previewFile) {
+    if (!nextMapFile) {
+      setStatus("请先导入 tmx/tbin 地图文件。");
+      return;
+    }
+    const locationEntry = createWorkflowEntry("custom", `${mapKey} 地点数据`, "Data/Locations", mapKey, compactObject({
+      DisplayName: displayName || mapKey,
+      CreateOnLoad: { MapPath: `Maps/${mapKey}` },
+      DefaultArrivalTile: arrival,
+      Type: locationType || undefined,
+      AlwaysActive: alwaysActive || undefined,
+      CanPlantHere: canPlant || undefined,
+      CanHaveGreenRainSpawns: greenRainSpawns || undefined,
+      ExcludeFromNpcPathfinding: excludePathfinding || undefined
+    }));
+    const locationEntryWithMeta: GameDataEntry = {
+      ...locationEntry,
+      advanced: {
+        ...locationEntry.advanced,
+        StardewCPStudio: {
+          ...(isObject(locationEntry.advanced.StardewCPStudio) ? locationEntry.advanced.StardewCPStudio as JsonDict : {}),
+          map: { key: mapKey, previewFile: nextPreviewFile }
+        }
+      }
+    };
+    const loadPatch: Patch = {
+      id: makeId(),
+      name: `加载地图 ${mapKey}`,
+      action: "Load",
+      enabled: true,
+      target: `Maps/${mapKey}`,
+      from_file: nextMapFile,
+      when: {},
+      fields: {},
+      advanced: {}
+    };
+    setProject({
+      ...nextProject,
+      game_data: mergeWorkflowEntries(nextProject.game_data, [locationEntryWithMeta]),
+      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch])
+    });
+    setStatus(`已生成 ${mapKey} 的 Data/Locations 与 Load Maps/${mapKey}。`);
+  }
+
+  return (
+    <div className="map-studio">
+      {status && <div className="status">{status}</div>}
+      <div className="grid two">
+        <Field label="地图 Key（自动 Custom_ 前缀）" value={mapKeyRaw} onChange={setMapKeyRaw} />
+        <div className="field"><span>最终地图 Key</span><code>{mapKey}</code></div>
+        <Field label="显示名称 DisplayName" value={displayName} onChange={setDisplayName} />
+        <ComboField label="地点类型 Type" value={locationType} options={MAP_LOCATION_TYPE_OPTIONS} onChange={(value) => setLocationType(String(value))} />
+        <Field label="默认到达 X" value={String(arrival.X)} onChange={(value) => setArrival({ ...arrival, X: integerInRange(value, 0, 999, 0) })} />
+        <Field label="默认到达 Y" value={String(arrival.Y)} onChange={(value) => setArrival({ ...arrival, Y: integerInRange(value, 0, 999, 0) })} />
+        <BoolField label="AlwaysActive" value={alwaysActive} onChange={setAlwaysActive} />
+        <BoolField label="CanPlantHere" value={canPlant} onChange={setCanPlant} />
+        <BoolField label="CanHaveGreenRainSpawns" value={greenRainSpawns} onChange={setGreenRainSpawns} />
+        <BoolField label="ExcludeFromNpcPathfinding" value={excludePathfinding} onChange={setExcludePathfinding} />
+        <TargetedAssetImport label="导入地图文件 tmx/tbin" project={project} accept=".tmx,.tbin" storedPath={`assets/Maps/${mapKey}/${mapKey}.tmx`} onImported={(nextProject, storedPath) => { setMapFile(storedPath); upsertCustomMap(nextProject, storedPath, previewFile); }} />
+        <TargetedAssetImport label="导入预览图 PNG" project={project} accept="image/png,image/jpeg,image/webp" storedPath={`assets/Maps/${mapKey}/preview.png`} onImported={(nextProject, storedPath) => { setPreviewFile(storedPath); upsertCustomMap(nextProject, mapFile, storedPath); }} />
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={() => upsertCustomMap()}><Icon name="plus" />生成/更新自定义地图</button>
+      </div>
+      {customPreview && <MapPreviewPicker title="预览图坐标" image={assetToMapPreview(customPreview)} selected={arrival} onPick={setArrival} />}
+    </div>
+  );
+}
+
+function EditMapDraftForm({ project, ruleset, setProject, mapResources }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[] }) {
+  const [sourceMapFile, setSourceMapFile] = useState("");
+  const [sourcePreviewFile, setSourcePreviewFile] = useState("");
+  const [editTarget, setEditTarget] = useState("Maps/Town");
+  const [patchMode, setPatchMode] = useState("ReplaceByLayer");
+  const [fromArea, setFromArea] = useState<MapArea>({ X: 0, Y: 0, Width: 4, Height: 4 });
+  const [toArea, setToArea] = useState<MapArea>({ X: 0, Y: 0, Width: 4, Height: 4 });
+  const [status, setStatus] = useState("");
+  const allMapOptions = mapTargetOptions(project, ruleset);
+  const sourcePreview = assetToMapPreview(previewAssetForPath(project, sourcePreviewFile));
+  const targetPreview = previewForMapTarget(project, editTarget, mapResources);
+
+  function addOverlayPatch() {
+    if (!sourceMapFile) {
+      setStatus("请先导入用于覆盖的 tmx/tbin 地图文件。");
+      return;
+    }
+    const patch: Patch = {
+      id: makeId(),
+      name: `地图区域替换 ${editTarget}`,
+      action: "EditMap",
+      enabled: true,
+      target: editTarget,
+      from_file: sourceMapFile,
+      when: {},
+      fields: {
+        FromArea: fromArea,
+        ToArea: { ...toArea, Width: fromArea.Width, Height: fromArea.Height },
+        PatchMode: patchMode
+      },
+      advanced: {}
+    };
+    setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    setStatus(`已生成 EditMap 区域替换：${editTarget}`);
+  }
+
+  return (
+    <div className="map-studio">
+      {status && <div className="status">{status}</div>}
+      <div className="grid two">
+        <ComboField label="目标地图 Target" value={editTarget} options={allMapOptions} onChange={(value) => setEditTarget(String(value))} />
+        <ComboField label="合并模式 PatchMode" value={patchMode} options={MAP_PATCH_MODE_OPTIONS} onChange={(value) => setPatchMode(String(value))} />
+        <TargetedAssetImport label="导入替换来源 tmx/tbin" project={project} accept=".tmx,.tbin" storedPath={`assets/MapEdits/${sanitizeI18nPart(mapNameFromTarget(editTarget))}/overlay.tmx`} onImported={(nextProject, storedPath) => { setSourceMapFile(storedPath); setProject(nextProject); }} />
+        <TargetedAssetImport label="导入替换来源预览图" project={project} accept="image/png,image/jpeg,image/webp" storedPath={`assets/MapEdits/${sanitizeI18nPart(mapNameFromTarget(editTarget))}/preview.png`} onImported={(nextProject, storedPath) => { setSourcePreviewFile(storedPath); setProject(nextProject); }} />
+      </div>
+      <div className="map-compare-grid">
+        <MapAreaPicker title="来源区域 FromArea" image={sourcePreview} area={fromArea} onChange={(area) => { setFromArea(area); setToArea({ ...toArea, Width: area.Width, Height: area.Height }); }} />
+        <MapAreaPicker title="目标区域 ToArea" image={targetPreview} area={{ ...toArea, Width: fromArea.Width, Height: fromArea.Height }} onChange={(area) => setToArea({ ...area, Width: fromArea.Width, Height: fromArea.Height })} lockSize />
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={addOverlayPatch}><Icon name="plus" />确认生成区域替换</button>
+      </div>
+    </div>
+  );
+}
+
+function MapWarpDraftForm({ project, ruleset, setProject, mapResources }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[] }) {
+  const [warpSourceMap, setWarpSourceMap] = useState("Maps/Town");
+  const [warpTargetMap, setWarpTargetMap] = useState("Maps/Farm");
+  const [warpFrom, setWarpFrom] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [warpTo, setWarpTo] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [warpKind, setWarpKind] = useState<"AddWarps" | "AddNpcWarps">("AddWarps");
+  const [status, setStatus] = useState("");
+  const allMapOptions = mapTargetOptions(project, ruleset);
+  const warpSourcePreview = previewForMapTarget(project, warpSourceMap, mapResources);
+  const warpTargetPreview = previewForMapTarget(project, warpTargetMap, mapResources);
+
+  function addWarpPatch() {
+    const warp = `${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`;
+    const patch: Patch = {
+      id: makeId(),
+      name: `${warpKind === "AddNpcWarps" ? "NPC" : "玩家"}传送 ${warpSourceMap}`,
+      action: "EditMap",
+      enabled: true,
+      target: warpSourceMap,
+      from_file: null,
+      when: {},
+      fields: { [warpKind]: [warp] },
+      advanced: {}
+    };
+    setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    setStatus(`已生成 ${warpKind}: ${warp}`);
+  }
+
+  return (
+    <div className="map-studio">
+      {status && <div className="status">{status}</div>}
+      <div className="grid two">
+        <ComboField label="出发地图 Target" value={warpSourceMap} options={allMapOptions} onChange={(value) => setWarpSourceMap(String(value))} />
+        <ComboField label="目标地图" value={warpTargetMap} options={allMapOptions} onChange={(value) => setWarpTargetMap(String(value))} />
+        <ComboField label="传送类型" value={warpKind} options={MAP_WARP_KIND_OPTIONS} onChange={(value) => setWarpKind(value as "AddWarps" | "AddNpcWarps")} />
+        <div className="field"><span>生成语句</span><code>{`${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`}</code></div>
+      </div>
+      <div className="map-compare-grid">
+        <MapPreviewPicker title="出发坐标" image={warpSourcePreview} selected={warpFrom} onPick={setWarpFrom} />
+        <MapPreviewPicker title="到达坐标" image={warpTargetPreview} selected={warpTo} onPick={setWarpTo} />
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={addWarpPatch}><Icon name="plus" />确认生成传送</button>
+      </div>
+    </div>
+  );
+}
+
+function LegacyMapStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+  const [mapKeyRaw, setMapKeyRaw] = useState("ExampleCave");
+  const [displayName, setDisplayName] = useState("Example Cave");
+  const [mapFile, setMapFile] = useState("");
+  const [previewFile, setPreviewFile] = useState("");
+  const [arrival, setArrival] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [locationType, setLocationType] = useState("Default");
+  const [alwaysActive, setAlwaysActive] = useState(false);
+  const [canPlant, setCanPlant] = useState(false);
+  const [greenRainSpawns, setGreenRainSpawns] = useState(false);
+  const [excludePathfinding, setExcludePathfinding] = useState(false);
+  const [sourceMapFile, setSourceMapFile] = useState("");
+  const [sourcePreviewFile, setSourcePreviewFile] = useState("");
+  const [editTarget, setEditTarget] = useState("Maps/Town");
+  const [patchMode, setPatchMode] = useState("ReplaceByLayer");
+  const [fromArea, setFromArea] = useState<MapArea>({ X: 0, Y: 0, Width: 4, Height: 4 });
+  const [toArea, setToArea] = useState<MapArea>({ X: 0, Y: 0, Width: 4, Height: 4 });
+  const [warpSourceMap, setWarpSourceMap] = useState("Maps/Town");
+  const [warpTargetMap, setWarpTargetMap] = useState("Maps/Farm");
+  const [warpFrom, setWarpFrom] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [warpTo, setWarpTo] = useState<MapPoint>({ X: 0, Y: 0 });
+  const [warpKind, setWarpKind] = useState<"AddWarps" | "AddNpcWarps">("AddWarps");
+  const [status, setStatus] = useState("");
+  const mapKey = customMapKey(mapKeyRaw);
+  const allMapOptions = mapTargetOptions(project, ruleset);
+  const customPreview = previewAssetForPath(project, previewFile);
+  const sourcePreview = previewAssetForPath(project, sourcePreviewFile);
+  const targetPreview = previewForMapTarget(project, editTarget);
+  const warpSourcePreview = previewForMapTarget(project, warpSourceMap);
+  const warpTargetPreview = previewForMapTarget(project, warpTargetMap);
+
+  function upsertCustomMap(nextProject = project, nextMapFile = mapFile, nextPreviewFile = previewFile) {
+    if (!nextMapFile) {
+      setStatus("请先导入 tmx/tbin 地图文件。");
+      return;
+    }
+    const locationEntry = createWorkflowEntry("custom", `${mapKey} 地点数据`, "Data/Locations", mapKey, compactObject({
+      DisplayName: displayName || mapKey,
+      CreateOnLoad: { MapPath: `Maps/${mapKey}` },
+      DefaultArrivalTile: arrival,
+      Type: locationType || undefined,
+      AlwaysActive: alwaysActive || undefined,
+      CanPlantHere: canPlant || undefined,
+      CanHaveGreenRainSpawns: greenRainSpawns || undefined,
+      ExcludeFromNpcPathfinding: excludePathfinding || undefined
+    }));
+    const locationEntryWithMeta: GameDataEntry = {
+      ...locationEntry,
+      advanced: {
+        ...locationEntry.advanced,
+        StardewCPStudio: {
+          ...(isObject(locationEntry.advanced.StardewCPStudio) ? locationEntry.advanced.StardewCPStudio as JsonDict : {}),
+          map: {
+            key: mapKey,
+            previewFile: nextPreviewFile
+          }
+        }
+      }
+    };
+    const loadPatch: Patch = {
+      id: makeId(),
+      name: `加载地图 ${mapKey}`,
+      action: "Load",
+      enabled: true,
+      target: `Maps/${mapKey}`,
+      from_file: nextMapFile,
+      when: {},
+      fields: {},
+      advanced: {}
+    };
+    setProject({
+      ...nextProject,
+      game_data: mergeWorkflowEntries(nextProject.game_data, [locationEntryWithMeta]),
+      patches: mergeWorkflowPatches(nextProject.patches, [loadPatch])
+    });
+    setStatus(`已生成 ${mapKey} 的 Data/Locations 与 Load Maps/${mapKey}。`);
+  }
+
+  function addOverlayPatch() {
+    if (!sourceMapFile) {
+      setStatus("请先导入用于覆盖的 tmx/tbin 地图文件。");
+      return;
+    }
+    const patch: Patch = {
+      id: makeId(),
+      name: `地图区域替换 ${editTarget}`,
+      action: "EditMap",
+      enabled: true,
+      target: editTarget,
+      from_file: sourceMapFile,
+      when: {},
+      fields: {
+        FromArea: fromArea,
+        ToArea: { ...toArea, Width: fromArea.Width, Height: fromArea.Height },
+        PatchMode: patchMode
+      },
+      advanced: {}
+    };
+    setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    setStatus(`已生成 EditMap 区域替换：${editTarget}`);
+  }
+
+  function addWarpPatch() {
+    const warp = `${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`;
+    const patch: Patch = {
+      id: makeId(),
+      name: `${warpKind === "AddNpcWarps" ? "NPC" : "玩家"}传送 ${warpSourceMap}`,
+      action: "EditMap",
+      enabled: true,
+      target: warpSourceMap,
+      from_file: null,
+      when: {},
+      fields: { [warpKind]: [warp] },
+      advanced: {}
+    };
+    setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    setStatus(`已生成 ${warpKind}: ${warp}`);
+  }
+
+  return (
+    <Section title="地图添加">
+      {status && <div className="status">{status}</div>}
+      <div className="map-studio">
+        <CollapsibleSubsection title="自定义新地图" highlight>
+          <div className="grid two">
+            <Field label="地图 Key（自动 Custom_ 前缀）" value={mapKeyRaw} onChange={setMapKeyRaw} />
+            <div className="field"><span>最终地图 Key</span><code>{mapKey}</code></div>
+            <Field label="显示名称 DisplayName" value={displayName} onChange={setDisplayName} />
+            <ComboField label="地点类型 Type" value={locationType} options={MAP_LOCATION_TYPE_OPTIONS} onChange={(value) => setLocationType(String(value))} />
+            <Field label="默认到达 X" value={String(arrival.X)} onChange={(value) => setArrival({ ...arrival, X: integerInRange(value, 0, 999, 0) })} />
+            <Field label="默认到达 Y" value={String(arrival.Y)} onChange={(value) => setArrival({ ...arrival, Y: integerInRange(value, 0, 999, 0) })} />
+            <BoolField label="AlwaysActive" value={alwaysActive} onChange={setAlwaysActive} />
+            <BoolField label="CanPlantHere" value={canPlant} onChange={setCanPlant} />
+            <BoolField label="CanHaveGreenRainSpawns" value={greenRainSpawns} onChange={setGreenRainSpawns} />
+            <BoolField label="ExcludeFromNpcPathfinding" value={excludePathfinding} onChange={setExcludePathfinding} />
+            <TargetedAssetImport label="导入地图文件 tmx/tbin" project={project} accept=".tmx,.tbin" storedPath={`assets/Maps/${mapKey}/${mapKey}.tmx`} onImported={(nextProject, storedPath) => { setMapFile(storedPath); upsertCustomMap(nextProject, storedPath, previewFile); }} />
+            <TargetedAssetImport label="导入预览图 PNG" project={project} accept="image/png,image/jpeg,image/webp" storedPath={`assets/Maps/${mapKey}/preview.png`} onImported={(nextProject, storedPath) => { setPreviewFile(storedPath); upsertCustomMap(nextProject, mapFile, storedPath); }} />
+          </div>
+          <div className="button-row">
+            <button type="button" onClick={() => upsertCustomMap()}><Icon name="plus" />生成/更新自定义地图</button>
+          </div>
+          {customPreview && <MapPreviewPicker title="预览图坐标" image={customPreview} selected={arrival} onPick={setArrival} />}
+        </CollapsibleSubsection>
+
+        <CollapsibleSubsection title="编辑原有地图：区域替换">
+          <div className="grid two">
+            <ComboField label="目标地图 Target" value={editTarget} options={allMapOptions} onChange={(value) => setEditTarget(String(value))} />
+            <ComboField label="合并模式 PatchMode" value={patchMode} options={MAP_PATCH_MODE_OPTIONS} onChange={(value) => setPatchMode(String(value))} />
+            <TargetedAssetImport label="导入替换来源 tmx/tbin" project={project} accept=".tmx,.tbin" storedPath={`assets/MapEdits/${sanitizeI18nPart(mapNameFromTarget(editTarget))}/overlay.tmx`} onImported={(nextProject, storedPath) => { setSourceMapFile(storedPath); setProject(nextProject); }} />
+            <TargetedAssetImport label="导入替换来源预览图" project={project} accept="image/png,image/jpeg,image/webp" storedPath={`assets/MapEdits/${sanitizeI18nPart(mapNameFromTarget(editTarget))}/preview.png`} onImported={(nextProject, storedPath) => { setSourcePreviewFile(storedPath); setProject(nextProject); }} />
+          </div>
+          <div className="map-compare-grid">
+            <MapAreaPicker title="来源区域 FromArea" image={sourcePreview} area={fromArea} onChange={(area) => { setFromArea(area); setToArea({ ...toArea, Width: area.Width, Height: area.Height }); }} />
+            <MapAreaPicker title="目标区域 ToArea" image={targetPreview} area={{ ...toArea, Width: fromArea.Width, Height: fromArea.Height }} onChange={(area) => setToArea({ ...area, Width: fromArea.Width, Height: fromArea.Height })} lockSize />
+          </div>
+          <div className="button-row">
+            <button type="button" onClick={addOverlayPatch}><Icon name="plus" />确认生成区域替换</button>
+          </div>
+        </CollapsibleSubsection>
+
+        <CollapsibleSubsection title="添加传送点 Warp / NPCWarp">
+          <div className="grid two">
+            <ComboField label="出发地图 Target" value={warpSourceMap} options={allMapOptions} onChange={(value) => setWarpSourceMap(String(value))} />
+            <ComboField label="目标地图" value={warpTargetMap} options={allMapOptions} onChange={(value) => setWarpTargetMap(String(value))} />
+            <ComboField label="传送类型" value={warpKind} options={MAP_WARP_KIND_OPTIONS} onChange={(value) => setWarpKind(value as "AddWarps" | "AddNpcWarps")} />
+            <div className="field"><span>生成语句</span><code>{`${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`}</code></div>
+          </div>
+          <div className="map-compare-grid">
+            <MapPreviewPicker title="出发坐标" image={warpSourcePreview} selected={warpFrom} onPick={setWarpFrom} />
+            <MapPreviewPicker title="到达坐标" image={warpTargetPreview} selected={warpTo} onPick={setWarpTo} />
+          </div>
+          <div className="button-row">
+            <button type="button" onClick={addWarpPatch}><Icon name="plus" />确认生成传送</button>
+          </div>
+        </CollapsibleSubsection>
+      </div>
+    </Section>
   );
 }
 
@@ -1346,6 +1858,682 @@ function MailEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProj
       </div>
     </div>
   );
+}
+
+function ScheduleEntryForm({ project, entry, ruleset, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+  const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
+  const [mapError, setMapError] = useState("");
+  const meta = scheduleMetaFromEntry(entry);
+  const formats = scheduleKeyFormats(ruleset);
+  const selectedFormat = formats.find((format) => format.id === meta.keyType) || formats.find((format) => format.id === "season") || formats[0];
+  const finalKey = selectedFormat ? buildScheduleKey(selectedFormat, meta.fields) : entry.key || "spring";
+  const npcName = normalizeInternalName(meta.npcName || npcNameFromScheduleTarget(entry.target) || "ExampleNPC");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources")
+      .then((next) => { if (!cancelled) setMapResources(next); })
+      .catch((error) => { if (!cancelled) setMapError(error instanceof Error ? error.message : String(error)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function commit(nextMeta: ScheduleMeta) {
+    const nextFormat = formats.find((format) => format.id === nextMeta.keyType) || selectedFormat;
+    const nextKey = nextFormat ? buildScheduleKey(nextFormat, nextMeta.fields) : finalKey;
+    const nextNpc = normalizeInternalName(nextMeta.npcName || npcName);
+    const nextTarget = `Characters/schedules/${nextNpc}`;
+    const nextValue = buildScheduleScript(nextMeta, nextNpc, nextKey);
+    onChange({
+      ...entry,
+      target: nextTarget,
+      key: nextKey,
+      value: nextValue,
+      advanced: {
+        ...entry.advanced,
+        StardewCPStudio: {
+          ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+          schedule: {
+            ...nextMeta,
+            npcName: nextNpc,
+            dialogueEntries: scheduleDialogueRows(nextMeta, nextNpc, nextKey)
+          }
+        }
+      }
+    });
+  }
+
+  function updateMeta(patch: Partial<ScheduleMeta>) {
+    commit({ ...meta, ...patch });
+  }
+
+  function updateField(name: string, value: string | number) {
+    commit({ ...meta, fields: { ...meta.fields, [name]: value } });
+  }
+
+  function addPoint() {
+    const nextPoint = defaultSchedulePoint(meta.points.length, mapResources.maps[0]?.key || "Town");
+    commit({ ...meta, points: [...meta.points, nextPoint] });
+  }
+
+  function updatePoint(index: number, point: SchedulePoint) {
+    const points = replaceAt(meta.points, index, point);
+    commit({ ...meta, points });
+  }
+
+  function removePoint(index: number) {
+    commit({ ...meta, points: meta.points.filter((_, itemIndex) => itemIndex !== index) });
+  }
+
+  function movePoint(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= meta.points.length) return;
+    const points = [...meta.points];
+    [points[index], points[target]] = [points[target], points[index]];
+    commit({ ...meta, points });
+  }
+
+  return (
+    <div className="subsection highlight schedule-module">
+      <h3>日程模块</h3>
+      <div className="grid two">
+        <Field label="NPC 内部名" value={npcName} onChange={(next) => updateMeta({ npcName: normalizeInternalName(next || "ExampleNPC") })} />
+        <div className="field">
+          <span>导出目标</span>
+          <code>{`Characters/schedules/${npcName}`}</code>
+        </div>
+        <ComboField label="Key 类型" value={meta.keyType} options={scheduleFormatOptions(formats)} onChange={(keyType) => {
+          const format = formats.find((item) => item.id === keyType) || selectedFormat;
+          commit({ ...meta, keyType: String(keyType), fields: { ...meta.fields, ...defaultScheduleFields(format) } });
+        }} />
+        <div className="field">
+          <span>最终 Key</span>
+          <code>{finalKey}</code>
+        </div>
+        {selectedFormat?.fields.map((field) => (
+          <ScheduleKeyFieldInput key={field.name} field={field} ruleset={ruleset} value={meta.fields[field.name] ?? defaultScheduleFieldValue(field)} onChange={(next) => updateField(field.name, next)} />
+        ))}
+      </div>
+      {finalKey === "spring" && <div className="notice compact-note">Wiki 提醒：spring 常作为默认日程，建议保留至少一个可用 spring 日程。</div>}
+      <div className="grid two">
+        <ComboField label="初始命令" value={meta.initialCommand} options={rulesetOptions(ruleset, "schedule_initial_commands")} onChange={(initialCommand) => updateMeta({ initialCommand: String(initialCommand) })} />
+        {meta.initialCommand === "GOTO" && <Field label="跳转 Key" value={meta.gotoKey} onChange={(gotoKey) => updateMeta({ gotoKey })} />}
+        {meta.initialCommand === "NOT_FRIENDSHIP" && <>
+          <Field label="NPC" value={meta.friendshipNpc} onChange={(friendshipNpc) => updateMeta({ friendshipNpc })} />
+          <Field label="心数" value={stringField(meta.friendshipHearts)} onChange={(friendshipHearts) => updateMeta({ friendshipHearts: integerInRange(friendshipHearts, 0, 14, 6) })} />
+          <Field label="好感不足跳转 Key" value={meta.gotoKey} onChange={(gotoKey) => updateMeta({ gotoKey })} />
+        </>}
+        {meta.initialCommand === "MAIL" && <>
+          <Field label="邮件 ID" value={meta.mailId} onChange={(mailId) => updateMeta({ mailId })} />
+          <Field label="未收到跳转 Key" value={meta.mailMissingKey} onChange={(mailMissingKey) => updateMeta({ mailMissingKey })} />
+          <Field label="已收到跳转 Key" value={meta.mailReceivedKey} onChange={(mailReceivedKey) => updateMeta({ mailReceivedKey })} />
+        </>}
+      </div>
+      <div className="structured-editor">
+        <div className="structured-editor-head">
+          <div>
+          <strong>移动点位 / 地点列表</strong>
+          <span>一个日程可以去多个地方；每个点位会按 Wiki 格式用 / 串成 schedule script。</span>
+        </div>
+          <button type="button" className="secondary" onClick={addPoint}><Icon name="plus" />添加下一个地点</button>
+        </div>
+        {mapError && <div className="inline-error">{mapError}</div>}
+        {meta.points.map((point, index) => (
+          <SchedulePointEditor
+            key={point.id}
+            project={project}
+            npcName={npcName}
+            scheduleKey={finalKey}
+            index={index}
+            point={point}
+            ruleset={ruleset}
+            mapResources={mapResources.maps}
+            onChange={(nextPoint) => updatePoint(index, nextPoint)}
+            onMoveUp={() => movePoint(index, -1)}
+            onMoveDown={() => movePoint(index, 1)}
+            onRemove={() => removePoint(index)}
+          />
+        ))}
+        {!meta.points.length && <div className="empty compact-empty">暂无日程点位。</div>}
+      </div>
+      <div className="field">
+        <span>脚本预览</span>
+        <code>{buildScheduleScript(meta, npcName, finalKey)}</code>
+      </div>
+      {entry.kind !== "schedule" && <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />}
+    </div>
+  );
+}
+
+function SchedulePointEditor({ project, npcName, scheduleKey, index, point, ruleset, mapResources, onChange, onMoveUp, onMoveDown, onRemove }: { project: Project; npcName: string; scheduleKey: string; index: number; point: SchedulePoint; ruleset: Ruleset; mapResources: MapResourceEntry[]; onChange: (point: SchedulePoint) => void; onMoveUp: () => void; onMoveDown: () => void; onRemove: () => void }) {
+  const selectedMap = mapResources.find((item) => item.key === point.location);
+  const isBed = point.location === "bed";
+  const locationOptions = scheduleLocationOptions(project, mapResources);
+  const dialogueKey = point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`;
+
+  function patchPoint(patch: Partial<SchedulePoint>) {
+    onChange({ ...point, ...patch });
+  }
+
+  return (
+    <div className="schedule-point-row">
+      <div className="schedule-point-toolbar">
+        <strong>{index + 1}. {point.time} {point.location}</strong>
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={onMoveUp}>上移</button>
+          <button type="button" className="secondary" onClick={onMoveDown}>下移</button>
+          <button type="button" className="secondary" onClick={onRemove}>删除</button>
+        </div>
+      </div>
+      <div className="grid two">
+        <ComboField label="时间" value={point.time} options={SCHEDULE_TIME_OPTIONS} onChange={(time) => patchPoint({ time: String(time) })} />
+        <ComboField label="地点" value={point.location} options={locationOptions} onChange={(location) => patchPoint({ location: String(location) })} />
+        {!isBed && <>
+          <Field label="X" value={stringField(point.x)} onChange={(x) => patchPoint({ x: integerInRange(x, 0, 999, 0) })} />
+          <Field label="Y" value={stringField(point.y)} onChange={(y) => patchPoint({ y: integerInRange(y, 0, 999, 0) })} />
+          <ComboField label="朝向" value={point.direction} options={SCHEDULE_DIRECTION_OPTIONS} onChange={(direction) => patchPoint({ direction: Number(direction) })} />
+          <ComboField label="动画" value={point.animation} options={scheduleAnimationOptions(ruleset, npcName)} onChange={(animation) => patchPoint({ animation: String(animation).replace("<npc>", npcName) })} />
+          <Field label="自定义动画" value={point.animation} onChange={(animation) => patchPoint({ animation })} />
+          <Field label="日程台词 Key" value={dialogueKey} onChange={(nextKey) => patchPoint({ dialogueKey: nextKey })} />
+          <DialogueTextTools label="日程台词" project={project} npcName={npcName} value={point.dialogueText} onChange={(dialogueText) => patchPoint({ dialogueText, dialogueKey })} />
+        </>}
+      </div>
+      {selectedMap && !isBed ? (
+        <div className="schedule-map-picker">
+          <div className="schedule-map-meta">{selectedMap.filename}：{selectedMap.width}x{selectedMap.height}px，{selectedMap.tile_width}x{selectedMap.tile_height} 格；当前 {point.x} {point.y}</div>
+          <div className="schedule-map-scroll">
+            <img
+              src={selectedMap.url}
+              alt={selectedMap.key}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const x = Math.floor(((event.clientX - rect.left) / rect.width) * selectedMap.width / 16);
+                const y = Math.floor(((event.clientY - rect.top) / rect.height) * selectedMap.height / 16);
+                patchPoint({ x: Math.max(0, Math.min(selectedMap.tile_width - 1, x)), y: Math.max(0, Math.min(selectedMap.tile_height - 1, y)), location: selectedMap.key });
+              }}
+            />
+          </div>
+        </div>
+      ) : !isBed ? <div className="notice compact-note">这个地点没有内置预览图，可手动输入坐标。</div> : null}
+    </div>
+  );
+}
+
+function AnimationEntryForm({ project, entry, onChange }: { project: Project; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+  const [insertIndex, setInsertIndex] = useState<number | null>(null);
+  const meta = animationMetaFromEntry(entry);
+  const npcName = normalizeInternalName(meta.npcName || npcNameFromAnimationKey(entry.key) || "ExampleNPC");
+  const finalKey = meta.isSleep ? sleepAnimationKey(npcName) : normalizeAnimationKey(meta.customKey || entry.key || `${npcName}_CustomAnimation`);
+  const framesText = stringField(meta.framesText || entry.value || "");
+  const editableFrames = parseAnimationFrameNumbers(framesText);
+
+  function commit(nextMeta: AnimationMeta) {
+    const nextNpc = normalizeInternalName(nextMeta.npcName || npcName);
+    const key = nextMeta.isSleep ? sleepAnimationKey(nextNpc) : normalizeAnimationKey(nextMeta.customKey || `${nextNpc}_CustomAnimation`);
+    const value = stringField(nextMeta.framesText);
+    onChange({
+      ...entry,
+      target: "Data/animationDescriptions",
+      key,
+      value,
+      name: entry.name || `${nextNpc} 动画`,
+      advanced: {
+        ...entry.advanced,
+        StardewCPStudio: {
+          ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+          animation: {
+            ...nextMeta,
+            npcName: nextNpc,
+            customKey: key,
+            framesText: value
+          }
+        }
+      }
+    });
+  }
+
+  function updateMeta(patch: Partial<AnimationMeta>) {
+    commit({ ...meta, npcName, customKey: finalKey, framesText, ...patch });
+  }
+
+  function updateFrames(frames: number[]) {
+    const nextFramesText = animationFramesToText(frames);
+    updateMeta({ framesText: nextFramesText });
+    setInsertIndex(Math.min(insertIndex ?? frames.length, frames.length));
+  }
+
+  function insertFrame(frame: number) {
+    const frames = editableFrames.valid ? editableFrames.frames : [];
+    const targetIndex = Math.max(0, Math.min(insertIndex ?? frames.length, frames.length));
+    updateFrames([...frames.slice(0, targetIndex), frame, ...frames.slice(targetIndex)]);
+    setInsertIndex(targetIndex + 1);
+  }
+
+  function removeFrame(index: number) {
+    if (!editableFrames.valid) return;
+    updateFrames(editableFrames.frames.filter((_, itemIndex) => itemIndex !== index));
+    setInsertIndex(Math.max(0, Math.min(index, editableFrames.frames.length - 1)));
+  }
+
+  return (
+    <div className="subsection highlight animation-module">
+      <h3>角色特定动画</h3>
+      <div className="grid two">
+        <Field label="NPC 内部名" value={npcName} onChange={(next) => updateMeta({ npcName: normalizeInternalName(next) })} />
+        <label className="field">
+          <span>动画类型</span>
+          <select value={meta.isSleep ? "sleep" : "custom"} onChange={(event) => updateMeta({ isSleep: event.target.value === "sleep" })}>
+            <option value="sleep">睡眠动画：&lt;lowercase npc&gt;_sleep</option>
+            <option value="custom">自定义动画 Key</option>
+          </select>
+        </label>
+        {meta.isSleep ? (
+          <div className="field">
+            <span>动画 Key</span>
+            <code>{sleepAnimationKey(npcName)}</code>
+          </div>
+        ) : (
+          <Field label="动画 Key" value={finalKey} onChange={(customKey) => updateMeta({ customKey: normalizeAnimationKey(customKey), isSleep: false })} />
+        )}
+        <div className="field">
+          <span>导出目标</span>
+          <code>Data/animationDescriptions</code>
+        </div>
+      </div>
+      <AnimationFrameSequence
+        frames={editableFrames.valid ? editableFrames.frames : []}
+        valid={editableFrames.valid}
+        error={editableFrames.error}
+        insertIndex={insertIndex ?? (editableFrames.valid ? editableFrames.frames.length : 0)}
+        onSelectInsertIndex={setInsertIndex}
+        onRemove={removeFrame}
+      />
+      <SpriteFramePicker project={project} npcName={npcName} framesText={framesText} insertIndex={insertIndex ?? (editableFrames.valid ? editableFrames.frames.length : 0)} onInsert={insertFrame} />
+      <div className="notice compact-note">
+        当前导出：<code>Data/animationDescriptions</code> / Key <code>{finalKey}</code> = <code>{framesText || "0/1/2"}</code>
+      </div>
+    </div>
+  );
+}
+
+function AnimationFrameSequence({ frames, valid, error, insertIndex, onSelectInsertIndex, onRemove }: { frames: number[]; valid: boolean; error: string; insertIndex: number; onSelectInsertIndex: (index: number) => void; onRemove: (index: number) => void }) {
+  return (
+    <div className="animation-sequence-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>动画帧序列</strong>
+          <span>点击两个编号之间的空隙选择插入位置；点击下方行走图帧后会插入到该位置。</span>
+        </div>
+      </div>
+      {!valid && <div className="inline-error">{error}</div>}
+      {valid ? (
+        <div className="animation-frame-sequence">
+          <button type="button" className={`animation-insert-slot ${insertIndex === 0 ? "active" : ""}`} onClick={() => onSelectInsertIndex(0)} title="插入到开头" />
+          {frames.map((frame, index) => (
+            <React.Fragment key={`${index}-${frame}`}>
+              <div className="animation-frame-cell">
+                <span>{frame}</span>
+                <button type="button" className="animation-frame-remove" onClick={() => onRemove(index)} title={`删除 ${frame}`}>×</button>
+              </div>
+              <button type="button" className={`animation-insert-slot ${insertIndex === index + 1 ? "active" : ""}`} onClick={() => onSelectInsertIndex(index + 1)} title={`插入到第 ${index + 1} 格后`} />
+            </React.Fragment>
+          ))}
+          {!frames.length && <div className="compact-empty">暂无帧。选择下方编号后会插入到这里。</div>}
+        </div>
+      ) : (
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={() => onSelectInsertIndex(0)}>等待正确格式</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpriteFramePicker({ project, npcName, framesText, insertIndex, onInsert }: { project: Project; npcName: string; framesText: string; insertIndex: number; onInsert: (index: number) => void }) {
+  const [frames, setFrames] = useState<string[]>([]);
+  const [activeFrame, setActiveFrame] = useState(0);
+  const spriteAsset = findNpcSpriteAsset(project, npcName);
+  const parsed = parseAnimationFrames(framesText, frames.length);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFrames([]);
+    if (!spriteAsset) return;
+    const image = new Image();
+    image.onload = () => {
+      if (cancelled) return;
+      const columns = Math.floor(image.width / 16);
+      const rows = Math.floor(image.height / 32);
+      const nextFrames: string[] = [];
+      const canvas = document.createElement("canvas");
+      canvas.width = 16;
+      canvas.height = 32;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < columns; x += 1) {
+          context.clearRect(0, 0, 16, 32);
+          context.drawImage(image, x * 16, y * 32, 16, 32, 0, 0, 16, 32);
+          nextFrames.push(canvas.toDataURL("image/png"));
+        }
+      }
+      setFrames(nextFrames);
+      setActiveFrame(0);
+    };
+    image.src = `/api/assets/${spriteAsset.id}`;
+    return () => {
+      cancelled = true;
+    };
+  }, [spriteAsset?.id]);
+
+  useEffect(() => {
+    if (!parsed.valid || parsed.frames.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setActiveFrame((current) => (current + 1) % parsed.frames.length);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [parsed.valid, parsed.frames.join("/")]);
+
+  if (!spriteAsset) {
+    return <div className="notice compact-note">导入该 NPC 的行走图 Sprite PNG 后，这里会显示 16x32 动画帧按钮。</div>;
+  }
+
+  const previewIndex = parsed.valid ? parsed.frames[activeFrame % Math.max(1, parsed.frames.length)] : null;
+
+  return (
+    <div className="sprite-frame-picker">
+      <div className="structured-editor-head">
+        <div>
+          <strong>行走图帧编号</strong>
+          <span>{spriteAsset.stored_path}；从左到右、从上到下编号。当前插入位置：{insertIndex}</span>
+        </div>
+        <div className="animation-preview">
+          {previewIndex !== null && frames[previewIndex] ? (
+            <img src={frames[previewIndex]} alt={`frame ${previewIndex}`} />
+          ) : (
+            <span>{framesText.trim() ? "等待正确格式" : "等待帧序列"}</span>
+          )}
+        </div>
+      </div>
+      {!parsed.valid && framesText.trim() && <div className="inline-error">{parsed.error}</div>}
+      <div className="sprite-frame-grid">
+        {frames.map((frame, index) => (
+          <button type="button" className="sprite-frame-token" key={`${spriteAsset.id}-${index}`} onClick={() => onInsert(index)} title={`插入 ${index}`}>
+            <img src={frame} alt={`frame ${index}`} />
+            <span>{index}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function animationMetaFromEntry(entry: GameDataEntry): AnimationMeta {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const saved = isObject(studio.animation) ? studio.animation as JsonDict : {};
+  const npcName = stringField(saved.npcName || npcNameFromAnimationKey(entry.key) || "ExampleNPC");
+  const isSleep = saved.isSleep === undefined ? /_sleep$/i.test(entry.key) : Boolean(saved.isSleep);
+  return {
+    npcName,
+    isSleep,
+    customKey: stringField(saved.customKey || entry.key || `${npcName}_CustomAnimation`),
+    framesText: stringField(saved.framesText || entry.value || "0/1/2")
+  };
+}
+
+function parseAnimationFrames(text: string, frameCount: number) {
+  const trimmed = text.trim();
+  if (!trimmed) return { valid: false, frames: [] as number[], error: "请输入帧编号，例如 50/50/50。" };
+  if (!/^\d+(\s*\/\s*\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "格式应为数字用 / 分隔，例如 0/1/2。" };
+  const frames = trimmed.split("/").map((part) => Number(part.trim()));
+  const outOfRange = frames.find((frame) => frame < 0 || frame >= frameCount);
+  if (outOfRange !== undefined) return { valid: false, frames, error: `帧 ${outOfRange} 超出当前行走图范围。` };
+  return { valid: true, frames, error: "" };
+}
+
+function parseAnimationFrameNumbers(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return { valid: true, frames: [] as number[], error: "" };
+  if (!/^\d+(\s*\/\s*\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "已有帧序列格式异常；请选择下方帧重新生成序列。" };
+  return { valid: true, frames: trimmed.split("/").map((part) => Number(part.trim())), error: "" };
+}
+
+function animationFramesToText(frames: number[]) {
+  return frames.map((frame) => String(Math.max(0, Math.round(frame)))).join("/");
+}
+
+function npcNameFromAnimationKey(key: string) {
+  const sleep = key.match(/^(.+)_sleep$/i);
+  if (sleep) return normalizeInternalName(sleep[1]);
+  const custom = key.match(/^([A-Za-z0-9_]+?)[._-]/);
+  return custom ? normalizeInternalName(custom[1]) : "";
+}
+
+function sleepAnimationKey(npcName: string) {
+  return normalizeInternalName(npcName).toLowerCase() + "_sleep";
+}
+
+function normalizeAnimationKey(key: string) {
+  return key.replace(/[^A-Za-z0-9_.-]/g, "").trim() || "CustomAnimation";
+}
+
+function scheduleMetaFromEntry(entry: GameDataEntry): ScheduleMeta {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const saved = isObject(studio.schedule) ? studio.schedule as JsonDict : {};
+  const npcName = stringField(saved.npcName || npcNameFromScheduleTarget(entry.target) || "ExampleNPC");
+  const keyType = stringField(saved.keyType || inferScheduleKeyType(entry.key) || "season");
+  const fields = isObject(saved.fields) ? saved.fields as Record<string, string | number> : fieldsFromScheduleKey(entry.key);
+  const points = Array.isArray(saved.points) ? saved.points.map(normalizeSchedulePoint) : parseSchedulePoints(stringField(entry.value), entry.key || "spring");
+  return {
+    npcName,
+    keyType,
+    fields,
+    initialCommand: stringField(saved.initialCommand || "none"),
+    gotoKey: stringField(saved.gotoKey || "spring"),
+    friendshipNpc: stringField(saved.friendshipNpc || npcName),
+    friendshipHearts: integerInRange(saved.friendshipHearts, 0, 14, 6),
+    mailId: stringField(saved.mailId || "ExampleMail"),
+    mailMissingKey: stringField(saved.mailMissingKey || "spring"),
+    mailReceivedKey: stringField(saved.mailReceivedKey || "spring"),
+    points: points.length ? points : [defaultSchedulePoint(0, "Town")],
+    dialogueEntries: Array.isArray(saved.dialogueEntries) ? saved.dialogueEntries as { key: string; i18nKey: string }[] : []
+  };
+}
+
+function normalizeSchedulePoint(value: unknown): SchedulePoint {
+  const source = isObject(value) ? value : {};
+  return {
+    id: stringField(source.id || makeId()),
+    time: stringField(source.time || "0900"),
+    location: stringField(source.location || "Town"),
+    x: integerInRange(source.x, 0, 999, 64),
+    y: integerInRange(source.y, 0, 999, 15),
+    direction: integerInRange(source.direction, 0, 3, 2),
+    animation: stringField(source.animation || ""),
+    dialogueKey: stringField(source.dialogueKey || ""),
+    dialogueText: stringField(source.dialogueText || "")
+  };
+}
+
+function defaultSchedulePoint(index: number, location: string): SchedulePoint {
+  const times = ["0900", "1200", "1500", "1800", "2200"];
+  return { id: makeId(), time: times[index] || "0900", location, x: 0, y: 0, direction: 2, animation: "", dialogueKey: "", dialogueText: "" };
+}
+
+function scheduleKeyFormats(ruleset: Ruleset): ScheduleKeyFormat[] {
+  const target = (ruleset.field_schemas?.schedule_key_formats || ruleset.field_schemas?.schedule_formats) as unknown;
+  if (Array.isArray(target)) return target.filter((item): item is ScheduleKeyFormat => isObject(item) && typeof item.id === "string" && Array.isArray(item.fields)) as ScheduleKeyFormat[];
+  return FALLBACK_SCHEDULE_KEY_FORMATS;
+}
+
+function scheduleFormatOptions(formats: ScheduleKeyFormat[]): RulesetOption[] {
+  return formats.map((format) => ({ label: `${format.category} - ${format.label}`, value: format.id }));
+}
+
+function buildScheduleKey(format: ScheduleKeyFormat, fields: Record<string, string | number>) {
+  return (format.template || "spring").replace(/<([^>]+)>/g, (_, name) => String(fields[name] ?? defaultScheduleFieldValue({ name, type: "text" })));
+}
+
+function defaultScheduleFields(format?: ScheduleKeyFormat) {
+  const fields: Record<string, string | number> = {};
+  for (const field of format?.fields || []) fields[field.name] = defaultScheduleFieldValue(field);
+  return fields;
+}
+
+function defaultScheduleFieldValue(field: ScheduleKeyField): string | number {
+  if (field.name === "season") return "spring";
+  if (field.name === "weekday") return "Mon";
+  if (field.name === "hearts") return 6;
+  if (field.name === "day") return 1;
+  if (field.name === "festivalDay") return 1;
+  if (field.name === "festival") return "spring13";
+  if (field.name === "customKey") return "CustomSchedule";
+  return field.type === "number" ? field.min ?? 1 : "";
+}
+
+function ScheduleKeyFieldInput({ field, ruleset, value, onChange }: { field: ScheduleKeyField; ruleset: Ruleset; value: string | number; onChange: (value: string | number) => void }) {
+  if (field.type === "select" && field.options) {
+    return <ComboField label={scheduleFieldLabel(field.name)} value={value} options={rulesetOptions(ruleset, field.options)} onChange={(next) => onChange(String(next))} />;
+  }
+  if (field.type === "number") {
+    return <Field label={scheduleFieldLabel(field.name)} value={stringField(value)} onChange={(next) => onChange(integerInRange(next, field.min ?? 0, field.max ?? 999, Number(defaultScheduleFieldValue(field))))} />;
+  }
+  return <Field label={scheduleFieldLabel(field.name)} value={stringField(value)} onChange={onChange} />;
+}
+
+function scheduleFieldLabel(name: string) {
+  const labels: Record<string, string> = { season: "季节", weekday: "星期", day: "日期", hearts: "心数", festival: "节日 ID", festivalDay: "节日天数", customKey: "自定义 Key" };
+  return labels[name] || name;
+}
+
+function buildScheduleScript(meta: ScheduleMeta, npcName: string, scheduleKey: string) {
+  const parts: string[] = [];
+  if (meta.initialCommand === "GOTO") parts.push(`GOTO ${meta.gotoKey || "spring"}`);
+  if (meta.initialCommand === "NOT_FRIENDSHIP") parts.push(`NOT friendship ${meta.friendshipNpc || npcName} ${Math.max(0, meta.friendshipHearts || 0) * 250}`, `GOTO ${meta.gotoKey || "spring"}`);
+  if (meta.initialCommand === "MAIL") parts.push(`MAIL ${meta.mailId || "ExampleMail"}`, `GOTO ${meta.mailMissingKey || "spring"}`, `GOTO ${meta.mailReceivedKey || "spring"}`);
+  for (const [index, point] of meta.points.entries()) parts.push(schedulePointScript(point, npcName, scheduleKey, index));
+  return parts.filter(Boolean).join("/");
+}
+
+function schedulePointScript(point: SchedulePoint, npcName: string, scheduleKey: string, index: number) {
+  if (point.location === "bed") return `${point.time} bed`;
+  const pieces = [point.time, point.location || "Town", String(point.x || 0), String(point.y || 0), String(point.direction ?? 2)];
+  if (point.animation.trim()) pieces.push(point.animation.trim().replace("<npc>", npcName));
+  if (point.dialogueText.trim()) pieces.push(`"Strings\\\\schedules\\\\${npcName}:${point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`}"`);
+  return pieces.join(" ");
+}
+
+function scheduleDialogueRows(meta: ScheduleMeta, npcName: string, scheduleKey: string) {
+  return meta.points
+    .map((point, index) => {
+      if (!point.dialogueText.trim()) return null;
+      const key = point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`;
+      return { key, i18nKey: `${npcName}.Schedule.${key}` };
+    })
+    .filter((item): item is { key: string; i18nKey: string } => Boolean(item));
+}
+
+function parseSchedulePoints(script: string, scheduleKey: string): SchedulePoint[] {
+  if (!script.trim()) return [];
+  return script.split("/").map((segment, index) => {
+    const tokens = segment.trim().match(/"[^"]*"|\S+/g) || [];
+    if (!tokens.length || ["GOTO", "NOT", "MAIL"].includes(tokens[0])) return null;
+    if (tokens[1] === "bed") return { ...defaultSchedulePoint(index, "bed"), time: tokens[0], location: "bed" };
+    const point = defaultSchedulePoint(index, tokens[1] || "Town");
+    point.time = tokens[0] || point.time;
+    point.x = integerInRange(tokens[2], 0, 999, 0);
+    point.y = integerInRange(tokens[3], 0, 999, 0);
+    point.direction = integerInRange(tokens[4], 0, 3, 2);
+    if (tokens[5] && !tokens[5].startsWith("\"")) point.animation = tokens[5];
+    const dialogue = tokens.find((token) => token.startsWith("\"Strings\\\\schedules\\\\"));
+    if (dialogue) point.dialogueKey = dialogue.replace(/^"|"$/g, "").split(":")[1] || `${scheduleKey}.${String(index).padStart(3, "0")}`;
+    return point;
+  }).filter((point): point is SchedulePoint => Boolean(point));
+}
+
+function npcNameFromScheduleTarget(target: string) {
+  return target.match(/^Characters\/[Ss]chedules\/([^/]+)$/)?.[1] || "";
+}
+
+function inferScheduleKeyType(key: string) {
+  if (key === "GreenRain") return "green_rain";
+  if (key === "marriageJob") return "marriage_job";
+  if (key === "bus" || key === "rain" || key === "rain2" || key === "default") return key;
+  if (/^marriage_[A-Z][a-z]{2}$/.test(key)) return "marriage_weekday";
+  if (/^[a-z]+_[A-Z][a-z]{2}_\d+$/.test(key)) return "season_weekday_hearts";
+  if (/^[a-z]+_[A-Z][a-z]{2}$/.test(key)) return "season_weekday";
+  if (/^[A-Z][a-z]{2}_\d+$/.test(key)) return "weekday_hearts";
+  if (/^[A-Z][a-z]{2}$/.test(key)) return "weekday";
+  if (/^[a-z]+_\d+$/.test(key)) return "season_day";
+  if (/^\d+_\d+$/.test(key)) return "day_hearts";
+  if (/^\d+$/.test(key)) return "day";
+  if (["spring", "summer", "fall", "winter"].includes(key)) return "season";
+  return "custom";
+}
+
+function fieldsFromScheduleKey(key: string): Record<string, string | number> {
+  const type = inferScheduleKeyType(key);
+  if (type === "season") return { season: key || "spring" };
+  if (type === "weekday") return { weekday: key };
+  if (type === "season_weekday_hearts") { const [season, weekday, hearts] = key.split("_"); return { season, weekday, hearts: Number(hearts) || 6 }; }
+  if (type === "season_weekday") { const [season, weekday] = key.split("_"); return { season, weekday }; }
+  if (type === "weekday_hearts") { const [weekday, hearts] = key.split("_"); return { weekday, hearts: Number(hearts) || 6 }; }
+  if (type === "season_day") { const [season, day] = key.split("_"); return { season, day: Number(day) || 1 }; }
+  if (type === "day_hearts") { const [day, hearts] = key.split("_"); return { day: Number(day) || 1, hearts: Number(hearts) || 6 }; }
+  if (type === "day") return { day: Number(key) || 1 };
+  if (type === "custom") return { customKey: key || "CustomSchedule" };
+  return {};
+}
+
+function scheduleLocationOptions(project: Project, maps: MapResourceEntry[]): RulesetOption[] {
+  const values = new Set<string>(["bed", ...maps.map((map) => map.key), ...mapLocationOptions(project).map((option) => String(option.value))]);
+  return [...values].map((value) => ({ label: value === "bed" ? "bed 睡觉" : value, value }));
+}
+
+function MapPreviewPicker({ title, image, selected, onPick }: { title: string; image: MapPreviewImage | null; selected: MapPoint; onPick: (point: MapPoint) => void }) {
+  if (!image) return <div className="notice compact-note">{title}：请先导入预览图，之后可点击图片选择 16x16 tile 坐标。</div>;
+  const imageUrl = "id" in image ? `/api/assets/${image.id}` : image.url;
+  const imageLabel = "stored_path" in image ? image.stored_path : image.label;
+  return (
+    <div className="map-visual-picker">
+      <div className="schedule-map-meta">{title}：当前 {selected.X} {selected.Y}；{imageLabel}</div>
+      <div className="schedule-map-scroll">
+        <img
+          src={imageUrl}
+          alt={title}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const naturalWidth = event.currentTarget.naturalWidth || rect.width;
+            const naturalHeight = event.currentTarget.naturalHeight || rect.height;
+            const x = Math.floor(((event.clientX - rect.left) / rect.width) * naturalWidth / 16);
+            const y = Math.floor(((event.clientY - rect.top) / rect.height) * naturalHeight / 16);
+            onPick({ X: Math.max(0, x), Y: Math.max(0, y) });
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MapAreaPicker({ title, image, area, onChange, lockSize = false }: { title: string; image: MapPreviewImage | null; area: MapArea; onChange: (area: MapArea) => void; lockSize?: boolean }) {
+  function patch(patchValue: Partial<MapArea>) {
+    onChange({ ...area, ...patchValue });
+  }
+  return (
+    <div className="map-area-picker">
+      <div className="grid two tight-grid">
+        <Field label={`${title} X`} value={String(area.X)} onChange={(value) => patch({ X: integerInRange(value, 0, 999, 0) })} />
+        <Field label={`${title} Y`} value={String(area.Y)} onChange={(value) => patch({ Y: integerInRange(value, 0, 999, 0) })} />
+        <Field label="宽 Width" value={String(area.Width)} onChange={(value) => !lockSize && patch({ Width: integerInRange(value, 1, 999, 1) })} />
+        <Field label="高 Height" value={String(area.Height)} onChange={(value) => !lockSize && patch({ Height: integerInRange(value, 1, 999, 1) })} />
+      </div>
+      <MapPreviewPicker title={title} image={image} selected={{ X: area.X, Y: area.Y }} onPick={(point) => patch({ X: point.X, Y: point.Y })} />
+      <div className="field"><span>{title} 预览</span><code>{`{ X: ${area.X}, Y: ${area.Y}, Width: ${area.Width}, Height: ${area.Height} }`}</code></div>
+    </div>
+  );
+}
+
+function scheduleAnimationOptions(ruleset: Ruleset, npcName: string): RulesetOption[] {
+  return rulesetOptions(ruleset, "schedule_animations").map((option) => ({ ...option, value: String(option.value).replace("<npc>", npcName), label: String(option.label).replace("<npc>", npcName) }));
 }
 
 function TriggerActionForm({ entry, ruleset, onChange }: { entry: GameDataEntry; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void }) {
@@ -1742,6 +2930,27 @@ const MAIL_TEXT_COLOR_OPTIONS: RulesetOption[] = [
   { label: "紫色 purple", value: "purple" },
   { label: "红色 red", value: "red" },
   { label: "白色 white", value: "white" }
+];
+
+const MAP_LOCATION_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "Default 默认", value: "Default" },
+  { label: "Town 城镇", value: "Town" },
+  { label: "Farm 农场", value: "Farm" },
+  { label: "Mine 矿洞", value: "Mine" },
+  { label: "Underground 地下", value: "Underground" },
+  { label: "Outdoors 户外", value: "Outdoors" },
+  { label: "Indoors 室内", value: "Indoors" }
+];
+
+const MAP_PATCH_MODE_OPTIONS: RulesetOption[] = [
+  { label: "ReplaceByLayer 默认：按图层替换", value: "ReplaceByLayer" },
+  { label: "Overlay：只覆盖非空瓦片", value: "Overlay" },
+  { label: "Replace：完整替换", value: "Replace" }
+];
+
+const MAP_WARP_KIND_OPTIONS: RulesetOption[] = [
+  { label: "玩家 Warp / AddWarps", value: "AddWarps" },
+  { label: "NPC Warp / AddNpcWarps", value: "AddNpcWarps" }
 ];
 
 function heartsToFriendshipPoints(hearts: number) {
@@ -2588,9 +3797,42 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     const tile = isObject(home.Tile) ? home.Tile : {};
     const x = Number(tile.X ?? 0);
     const y = Number(tile.Y ?? 0);
-    upsertNpcEntries([
-      npcModuleMetadata(createWorkflowEntry("custom", `${displayName} 基础日程`, `Characters/schedules/${npcName}`, "spring", `900 ${map} ${Number.isFinite(x) ? x : 0} ${Number.isFinite(y) ? y : 0} 2/2200 ${map} ${Number.isFinite(x) ? x : 0} ${Number.isFinite(y) ? y : 0} 2`), "schedule")
-    ]);
+    const startX = Number.isFinite(x) ? x : 0;
+    const startY = Number.isFinite(y) ? y : 0;
+    const points: SchedulePoint[] = [
+      { ...defaultSchedulePoint(0, map), x: startX, y: startY, direction: 2 },
+      { ...defaultSchedulePoint(1, map), time: "2200", x: startX, y: startY, direction: 2 }
+    ];
+    const meta: ScheduleMeta = {
+      npcName,
+      keyType: "season",
+      fields: { season: "spring" },
+      initialCommand: "none",
+      gotoKey: "spring",
+      friendshipNpc: npcName,
+      friendshipHearts: 6,
+      mailId: "ExampleMail",
+      mailMissingKey: "spring",
+      mailReceivedKey: "spring",
+      points,
+      dialogueEntries: []
+    };
+    const scheduleEntry = npcModuleMetadata(createWorkflowEntry("schedule", `${displayName} 基础日程`, `Characters/schedules/${npcName}`, "spring", buildScheduleScript(meta, npcName, "spring")), "schedule");
+    upsertNpcEntries([{ ...scheduleEntry, advanced: { ...scheduleEntry.advanced, StardewCPStudio: { ...(isObject(scheduleEntry.advanced.StardewCPStudio) ? scheduleEntry.advanced.StardewCPStudio as JsonDict : {}), schedule: meta } } }]);
+  }
+
+  function createNpcAnimationPlaceholder(isSleep: boolean) {
+    const displayName = stringField(value.DisplayName || npcName);
+    const key = isSleep ? sleepAnimationKey(npcName) : `${npcName}_CustomAnimation`;
+    const meta: AnimationMeta = {
+      npcName,
+      isSleep,
+      customKey: key,
+      framesText: "0/1/2"
+    };
+    const animationEntry = npcModuleMetadata(createWorkflowEntry("animation", `${displayName} ${isSleep ? "睡眠动画" : "自定义动画"}`, "Data/animationDescriptions", key, meta.framesText), "animation");
+    setExpandedNpcEntryId(mergedEntryId(project, animationEntry));
+    upsertNpcEntries([{ ...animationEntry, advanced: { ...animationEntry.advanced, StardewCPStudio: { ...(isObject(animationEntry.advanced.StardewCPStudio) ? animationEntry.advanced.StardewCPStudio as JsonDict : {}), animation: meta } } }]);
   }
 
   function createNpcMailPlaceholder() {
@@ -2632,16 +3874,21 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   const normalDialogueEntries = project.game_data.filter((item) => item.kind === "dialogue" && item.target === `Characters/Dialogue/${npcName}`);
   const marriageDialogueEntries = project.game_data.filter((item) => item.kind === "dialogue" && item.target === `Characters/Dialogue/MarriageDialogue${npcName}`);
   const specialDialogueEntries = project.game_data.filter((item) => isSpecialDialogueEntry(item, npcName));
+  const scheduleEntries = project.game_data.filter((item) => item.kind === "schedule" && item.target === `Characters/schedules/${npcName}`);
+  const animationEntries = project.game_data.filter((item) => isNpcAnimationEntry(item, npcName));
   const giftTasteEntry = project.game_data.find((item) => item.target === "Data/NPCGiftTastes" && item.key === npcName);
   const movieReactionEntry = project.game_data.find((item) => item.target === "Data/MoviesReactions" && item.key === npcName);
   const hasGiftTaste = hasEntry("Data/NPCGiftTastes", npcName);
   const hasMovieReaction = hasEntry("Data/MoviesReactions", npcName);
   const hasSchedule = hasEntry(`Characters/schedules/${npcName}`, "spring");
+  const hasSleepAnimation = hasEntry("Data/animationDescriptions", sleepAnimationKey(npcName));
   const hasMail = hasEntry("Data/Mail", `${npcName}.Welcome`);
   const hasEvent = project.game_data.some((item) => item.target === "Data/Events/Town" && item.key.startsWith(`${workflowEventId(npcName)}/`));
   const canVisitIsland = value.CanVisitIsland ?? value.CanVisitIslandCondition;
   const hasExpandedSpecialDialogue = specialDialogueEntries.some((item) => item.id === expandedNpcEntryId);
   const hasExpandedMarriageDialogue = marriageDialogueEntries.some((item) => item.id === expandedNpcEntryId);
+  const hasExpandedSchedule = scheduleEntries.some((item) => item.id === expandedNpcEntryId);
+  const hasExpandedAnimation = animationEntries.some((item) => item.id === expandedNpcEntryId);
 
   return (
     <div className="npc-group">
@@ -2652,8 +3899,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </div>
       </div>
 
-      <div className="subsection">
-        <h3>基础信息</h3>
+      <CollapsibleSubsection title="基础信息">
         <div className="grid two">
           <Field label="显示名称 DisplayName" value={stringField(value.DisplayName)} onChange={(next) => updateValue({ DisplayName: next })} />
           <ComboField label="语言 Language" value={value.Language || "Default"} options={[{ label: "默认 Default", value: "Default" }, { label: "矮人语 Dwarvish", value: "Dwarvish" }]} onChange={(next) => updateValue({ Language: next })} />
@@ -2666,10 +3912,9 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <ComboField label="乐观程度 Optimism" value={value.Optimism || "Neutral"} options={options("npc_optimism")} onChange={(next) => updateValue({ Optimism: next })} />
           <Field label="默认地图 DefaultMap" value={stringField(value.DefaultMap || "Town")} onChange={(next) => updateValue({ DefaultMap: next })} />
         </div>
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>社交与关系</h3>
+      <CollapsibleSubsection title="社交与关系">
         <div className="grid two">
           <label className="field">
             <span>关系路线</span>
@@ -2691,11 +3936,10 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <BoolField label="排除介绍任务 ExcludeFromIntroductionsQuest" value={Boolean(value.ExcludeFromIntroductionsQuest)} onChange={(next) => updateValue({ ExcludeFromIntroductionsQuest: next })} />
           <BoolField label="排除完美度 ExcludeFromPerfectionScore" value={Boolean(value.ExcludeFromPerfectionScore)} onChange={(next) => updateValue({ ExcludeFromPerfectionScore: next })} />
         </div>
-      </div>
+      </CollapsibleSubsection>
 
       {route === "roommate" && (
-        <div className="subsection highlight">
-          <h3>室友提案物品</h3>
+        <CollapsibleSubsection title="室友提案物品" highlight>
           <div className="notice compact-note">
             参考 Cale.json 的 <code>LCF.InvitationLetter</code>：物品必须包含 <code>{roommateContextTag(npcName)}</code>，送给 NPC 后触发室友提案。
           </div>
@@ -2713,11 +3957,10 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <div className="button-row">
             <button type="button" onClick={upsertRoommateItem}><Icon name="plus" />生成/更新室友提案物品</button>
           </div>
-        </div>
+        </CollapsibleSubsection>
       )}
 
-      <div className="subsection">
-        <h3>素材与外观</h3>
+      <CollapsibleSubsection title="素材与外观">
         <div className="grid two">
           <Field label="行走图 TextureName" value={stringField(value.TextureName || `Characters/${npcName}`)} onChange={(next) => updateValue({ TextureName: next })} />
           <BoolField label="深色皮肤 IsDarkSkinned" value={Boolean(value.IsDarkSkinned)} onChange={(next) => updateValue({ IsDarkSkinned: next })} />
@@ -2737,10 +3980,20 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           />
           <NpcHomeEditor value={value.Home || []} project={project} npcName={npcName} ruleset={ruleset} onChange={(next) => updateValue({ Home: next })} />
         </div>
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>节日与高级字段</h3>
+      <CollapsibleSubsection title="角色特定动画">
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={() => createNpcAnimationPlaceholder(true)}><Icon name="plus" />{hasSleepAnimation ? "更新睡眠动画" : "添加睡眠动画"}</button>
+          <button type="button" className="secondary" onClick={() => createNpcAnimationPlaceholder(false)}><Icon name="plus" />添加自定义动画</button>
+        </div>
+        <details className="dialogue-section" open={hasExpandedAnimation || Boolean(animationEntries.length) || undefined}>
+          <summary>动画条目 <span>{animationEntries.length} 条</span></summary>
+          <NpcAnimationList entries={animationEntries} expandedEntryId={expandedNpcEntryId} project={project} onChange={updateNpcModuleEntry} onRemove={removeDialogueEntry} />
+        </details>
+      </CollapsibleSubsection>
+
+      <CollapsibleSubsection title="节日与高级字段">
         <div className="grid two">
           <OptionalBoolField label="花舞节可跳舞 FlowerDanceCanDance" value={value.FlowerDanceCanDance} onChange={(next) => updateValue({ FlowerDanceCanDance: next })} />
           <ConditionField label="冬星盛宴参与 WinterStarParticipant" value={value.WinterStarParticipant ?? true} onChange={(next) => updateValue({ WinterStarParticipant: next })} placeholder="TRUE" />
@@ -2765,10 +4018,9 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <NpcSpousePatioEditor value={value.SpousePatio || {}} onChange={(next) => updateValue({ SpousePatio: next })} />
           <JsonField label="自定义字段 CustomFields" value={value.CustomFields || {}} onChange={(next) => updateValue({ CustomFields: next as JsonDict })} />
         </div>
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>对话条目</h3>
+      <CollapsibleSubsection title="对话条目">
         <div className="button-row">
           <button type="button" className="secondary" onClick={() => createNpcDialoguePlaceholder(false)}><Icon name="plus" />添加普通对话</button>
           <button type="button" className="secondary" onClick={() => createSpecialDialogue("engagement")}><Icon name="plus" />添加邀请后对话</button>
@@ -2788,10 +4040,19 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <summary>婚后/室友对话 <span>{marriageDialogueEntries.length} 条</span></summary>
           <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>礼物喜好</h3>
+      <CollapsibleSubsection title="日程">
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={createNpcSchedulePlaceholder}><Icon name="plus" />{hasSchedule ? "添加/更新 spring 日程" : "创建基础日程"}</button>
+        </div>
+        <details className="dialogue-section" open={hasExpandedSchedule || Boolean(scheduleEntries.length) || undefined}>
+          <summary>日程条目 <span>{scheduleEntries.length} 条</span></summary>
+          <NpcScheduleList entries={scheduleEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} onChange={updateNpcModuleEntry} onRemove={removeDialogueEntry} />
+        </details>
+      </CollapsibleSubsection>
+
+      <CollapsibleSubsection title="礼物喜好">
         <div className="button-row">
           <button type="button" className="secondary" onClick={createNpcGiftTastePlaceholder}><Icon name="plus" />{hasGiftTaste ? "重置/更新草稿" : "创建礼物喜好"}</button>
         </div>
@@ -2800,10 +4061,9 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         ) : (
           <div className="empty compact-empty">尚未创建礼物喜好条目。</div>
         )}
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>电影观感</h3>
+      <CollapsibleSubsection title="电影观感">
         <div className="button-row">
           <button type="button" className="secondary" onClick={createMovieReactionPlaceholder}><Icon name="plus" />{hasMovieReaction ? "重置/更新草稿" : "创建电影观感"}</button>
         </div>
@@ -2812,10 +4072,9 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         ) : (
           <div className="empty compact-empty">尚未创建电影观感条目。</div>
         )}
-      </div>
+      </CollapsibleSubsection>
 
-      <div className="subsection">
-        <h3>后续模块框架</h3>
+      <CollapsibleSubsection title="后续模块框架" defaultOpen={false} className="floating-framework">
         <div className="module-grid">
           <div>
             <strong>普通对话</strong>
@@ -2853,7 +4112,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
             <button type="button" className="secondary" disabled><Icon name="plus" />待设计</button>
           </div>
         </div>
-      </div>
+      </CollapsibleSubsection>
     </div>
   );
 }
@@ -2869,6 +4128,40 @@ function NpcDialogueList({ entries, expandedEntryId, project, ruleset, i18n, onI
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
           </summary>
           <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function NpcScheduleList({ entries, expandedEntryId, project, ruleset, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+  return (
+    <div className="npc-dialogue-list">
+      {!entries.length && <div className="empty compact-empty">暂无日程条目。</div>}
+      {entries.map((entry) => (
+        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
+          <summary className="npc-dialogue-head">
+            <strong>{entry.key}</strong>
+            <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
+          </summary>
+          <ScheduleEntryForm project={project} entry={entry} ruleset={ruleset} onChange={onChange} />
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function NpcAnimationList({ entries, expandedEntryId, project, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+  return (
+    <div className="npc-dialogue-list">
+      {!entries.length && <div className="empty compact-empty">暂无动画条目。</div>}
+      {entries.map((entry) => (
+        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
+          <summary className="npc-dialogue-head">
+            <strong>{entry.key}</strong>
+            <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
+          </summary>
+          <AnimationEntryForm project={project} entry={entry} onChange={onChange} />
         </details>
       ))}
     </div>
@@ -4878,6 +6171,45 @@ const STORY_MAIL_COMMAND_OPTIONS: RulesetOption[] = [
   { label: "addMailReceived（旧别名）", value: "addMailReceived" }
 ];
 
+const SCHEDULE_DIRECTION_OPTIONS: RulesetOption[] = [
+  { label: "上 0", value: 0 },
+  { label: "右 1", value: 1 },
+  { label: "下 2", value: 2 },
+  { label: "左 3", value: 3 }
+];
+
+const SCHEDULE_TIME_OPTIONS: RulesetOption[] = [
+  { label: "0 起始点", value: "0" },
+  ...Array.from({ length: 41 }, (_, index) => {
+    const totalMinutes = 360 + index * 30;
+    const stardewHour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    const stardewTime = `${String(stardewHour).padStart(2, "0")}${String(minute).padStart(2, "0")}`;
+    const displayHour24 = stardewHour >= 24 ? stardewHour - 24 : stardewHour;
+    const labelPrefix = stardewHour >= 24 ? "凌晨" : stardewHour < 12 ? "上午" : stardewHour < 18 ? "下午" : "晚上";
+    return { label: `${labelPrefix} ${String(displayHour24).padStart(2, "0")}:${String(minute).padStart(2, "0")} / ${stardewTime}`, value: stardewTime };
+  })
+];
+
+const FALLBACK_SCHEDULE_KEY_FORMATS: ScheduleKeyFormat[] = [
+  { id: "green_rain", category: "Special", label: "GreenRain", template: "GreenRain", fields: [] },
+  { id: "marriage_weekday", category: "Marriage", label: "marriage_<dayOfWeek>", template: "marriage_<weekday>", fields: [{ name: "weekday", type: "select", options: "days_of_week" }] },
+  { id: "marriage_job", category: "Marriage", label: "marriageJob", template: "marriageJob", fields: [] },
+  { id: "season_weekday_hearts", category: "Normal", label: "<season>_<dayOfWeek>_<hearts>", template: "<season>_<weekday>_<hearts>", fields: [{ name: "season", type: "select", options: "seasons" }, { name: "weekday", type: "select", options: "days_of_week" }, { name: "hearts", type: "number", min: 0, max: 14 }] },
+  { id: "season_weekday", category: "Normal", label: "<season>_<dayOfWeek>", template: "<season>_<weekday>", fields: [{ name: "season", type: "select", options: "seasons" }, { name: "weekday", type: "select", options: "days_of_week" }] },
+  { id: "weekday_hearts", category: "Normal", label: "<dayOfWeek>_<hearts>", template: "<weekday>_<hearts>", fields: [{ name: "weekday", type: "select", options: "days_of_week" }, { name: "hearts", type: "number", min: 0, max: 14 }] },
+  { id: "weekday", category: "Normal", label: "<dayOfWeek>", template: "<weekday>", fields: [{ name: "weekday", type: "select", options: "days_of_week" }] },
+  { id: "season_day", category: "Normal", label: "<season>_<day>", template: "<season>_<day>", fields: [{ name: "season", type: "select", options: "seasons" }, { name: "day", type: "number", min: 1, max: 28 }] },
+  { id: "day_hearts", category: "Normal", label: "<day>_<hearts>", template: "<day>_<hearts>", fields: [{ name: "day", type: "number", min: 1, max: 28 }, { name: "hearts", type: "number", min: 0, max: 14 }] },
+  { id: "day", category: "Normal", label: "<day>", template: "<day>", fields: [{ name: "day", type: "number", min: 1, max: 28 }] },
+  { id: "rain", category: "Normal", label: "rain", template: "rain", fields: [] },
+  { id: "rain2", category: "Normal", label: "rain2", template: "rain2", fields: [] },
+  { id: "bus", category: "Normal", label: "bus", template: "bus", fields: [] },
+  { id: "season", category: "Normal", label: "<season>", template: "<season>", fields: [{ name: "season", type: "select", options: "seasons" }] },
+  { id: "default", category: "Normal", label: "default", template: "default", fields: [] },
+  { id: "custom", category: "Custom", label: "自定义 key", template: "<customKey>", fields: [{ name: "customKey", type: "text" }] }
+];
+
 const STORY_END_OPTIONS: RulesetOption[] = [
   { label: "end", value: "end" },
   { label: "end warpOut", value: "warpOut" },
@@ -4930,6 +6262,8 @@ function gameDataLabel(kind: GameDataEntry["kind"], fallback = "") {
     npc: "NPC / 角色",
     item: "物品 / 对象",
     dialogue: "对话",
+    schedule: "日程",
+    animation: "角色动画",
     shop: "商店",
     event: "事件",
     mail: "信件",
@@ -5431,6 +6765,18 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         target: "Characters/Dialogue/ExampleNPC",
         key: "Mon",
         value: "你好，@。这是一个示例对话。"
+      };
+    case "schedule":
+      return {
+        target: "Characters/schedules/ExampleNPC",
+        key: "spring",
+        value: "900 Town 64 15 2"
+      };
+    case "animation":
+      return {
+        target: "Data/animationDescriptions",
+        key: "examplenpc_sleep",
+        value: "0/1/2"
       };
     case "shop":
       return {
@@ -6348,6 +7694,71 @@ function findNpcPortraitAsset(project: Project, npcName: string) {
   const prefix = `assets/CharacterFiles/Portraits/${normalized}/`;
   const candidates = project.assets.filter((asset) => asset.stored_path.startsWith(prefix) && asset.content_type.startsWith("image/"));
   return candidates[candidates.length - 1] || null;
+}
+
+function findNpcSpriteAsset(project: Project, npcName: string) {
+  const normalized = normalizeInternalName(npcName || "ExampleNPC");
+  const prefix = `assets/CharacterFiles/OverworldSprites/${normalized}/`;
+  const candidates = project.assets.filter((asset) => asset.stored_path.startsWith(prefix) && asset.content_type.startsWith("image/"));
+  return candidates[candidates.length - 1] || null;
+}
+
+function customMapKey(value: string) {
+  const cleaned = normalizeInternalName(value || "ExampleMap");
+  return cleaned.startsWith("Custom_") ? cleaned : `Custom_${cleaned}`;
+}
+
+function mapTargetOptions(project: Project, ruleset: Ruleset): RulesetOption[] {
+  const values = new Set<string>();
+  for (const option of rulesetOptions(ruleset, "common_maps")) values.add(`Maps/${String(option.value)}`);
+  for (const option of mapLocationOptions(project)) values.add(`Maps/${String(option.value)}`);
+  for (const patch of project.patches) {
+    if (patch.action === "Load" && patch.target.startsWith("Maps/")) values.add(patch.target);
+  }
+  values.add("Maps/Town");
+  values.add("Maps/Farm");
+  return [...values].sort().map((value) => ({ label: value, value }));
+}
+
+function previewAssetForPath(project: Project, storedPath: string) {
+  if (!storedPath) return null;
+  return project.assets.find((asset) => asset.stored_path === storedPath && asset.content_type.startsWith("image/")) || null;
+}
+
+function assetToMapPreview(asset: Asset | null): MapPreviewImage | null {
+  return asset;
+}
+
+function previewForMapTarget(project: Project, target: string, mapResources: MapResourceEntry[] = []): MapPreviewImage | null {
+  const key = mapNameFromTarget(target);
+  const resource = mapResources.find((map) => map.key.toLowerCase() === key.toLowerCase());
+  if (resource) return { url: resource.url, label: `MapResource/${resource.filename}` };
+  const locationEntry = project.game_data.find((entry) => entry.target === "Data/Locations" && entry.key === key);
+  const studio = isObject(locationEntry?.advanced?.StardewCPStudio) ? locationEntry?.advanced.StardewCPStudio as JsonDict : {};
+  const mapMeta = isObject(studio.map) ? studio.map as JsonDict : {};
+  const savedPreview = previewAssetForPath(project, stringField(mapMeta.previewFile));
+  if (savedPreview) return savedPreview;
+  const candidates = project.assets.filter((asset) =>
+    asset.content_type.startsWith("image/") &&
+    (
+      asset.stored_path === `assets/Maps/${key}/preview.png` ||
+      asset.stored_path.startsWith(`assets/Maps/${key}/`) ||
+      asset.stored_path.toLowerCase().includes(`/${key.toLowerCase()}/preview`)
+    )
+  );
+  return candidates[candidates.length - 1] || null;
+}
+
+function mapNameFromTarget(target: string) {
+  return target.replace(/^Maps\//, "");
+}
+
+function isNpcAnimationEntry(entry: GameDataEntry, npcName: string) {
+  if (entry.kind !== "animation" || entry.target !== "Data/animationDescriptions") return false;
+  const normalized = normalizeInternalName(npcName || "ExampleNPC");
+  const meta = animationMetaFromEntry(entry);
+  if (normalizeInternalName(meta.npcName || "") === normalized) return true;
+  return entry.key === sleepAnimationKey(normalized) || entry.key.startsWith(`${normalized}_`) || entry.key.startsWith(`${normalized}.`) || entry.key.startsWith(`${normalized}-`);
 }
 
 function nextDialogueKey(project: Project, target: string, candidates: string[]) {

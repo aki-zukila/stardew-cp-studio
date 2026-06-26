@@ -36,6 +36,9 @@ def merged_field_schemas() -> dict[str, Any]:
             "script_format": events.get("script_format", {}),
             "flow_builder": events.get("flow_builder", {}),
         }
+    schedules = next((target for target in game_data.get("targets", []) if target.get("kind") == "schedule"), None)
+    if schedules:
+        schemas["schedule_key_formats"] = schedules.get("schedule_key_formats", [])
     return schemas
 
 
@@ -76,6 +79,7 @@ def ai_rule_context() -> dict[str, Any]:
                     "preconditions": target.get("preconditions", []),
                     "event_commands": target.get("event_commands", []),
                     "schedule_points": target.get("schedule_points", []),
+                    "schedule_key_formats": target.get("schedule_key_formats", []),
                     "keys": target.get("keys", []),
                     "item_fields": target.get("item_fields", []),
                     "taste_groups": target.get("taste_groups", []),

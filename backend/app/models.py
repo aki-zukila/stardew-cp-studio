@@ -56,7 +56,7 @@ class PatchEntry(BaseModel):
     advanced: JsonDict = Field(default_factory=dict)
 
 
-GameDataKind = Literal["npc", "item", "dialogue", "shop", "event", "mail", "trigger_action", "custom"]
+GameDataKind = Literal["npc", "item", "dialogue", "schedule", "animation", "shop", "event", "mail", "trigger_action", "custom"]
 
 
 class GameDataEntry(BaseModel):
@@ -144,6 +144,22 @@ class ItemCatalogEntry(BaseModel):
 
 class ItemCatalogResponse(BaseModel):
     items: list[ItemCatalogEntry] = Field(default_factory=list)
+    source_path: str = ""
+    warning: str = ""
+
+
+class MapResourceEntry(BaseModel):
+    key: str
+    filename: str
+    width: int
+    height: int
+    tile_width: int
+    tile_height: int
+    url: str
+
+
+class MapResourceResponse(BaseModel):
+    maps: list[MapResourceEntry] = Field(default_factory=list)
     source_path: str = ""
     warning: str = ""
 

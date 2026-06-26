@@ -2252,19 +2252,95 @@
       ],
       "key_patterns": [
         {
-          "pattern": "<season>",
+          "pattern": "GreenRain",
           "examples": [
-            "spring",
-            "summer"
+            "GreenRain"
           ],
-          "description": "Default schedule for a season."
+          "description": "Green rain special schedule."
+        },
+        {
+          "pattern": "marriage_<festival ID>_<festival day>",
+          "examples": [
+            "marriage_spring13_1"
+          ],
+          "description": "Marriage festival schedule for a festival day."
+        },
+        {
+          "pattern": "marriage_<festival ID>",
+          "examples": [
+            "marriage_spring13"
+          ],
+          "description": "Marriage festival schedule."
+        },
+        {
+          "pattern": "marriage_<season>_<day>",
+          "examples": [
+            "marriage_spring_15"
+          ],
+          "description": "Marriage schedule for a season day."
+        },
+        {
+          "pattern": "marriageJob",
+          "examples": [
+            "marriageJob"
+          ],
+          "description": "Marriage job schedule."
+        },
+        {
+          "pattern": "marriage_<dayOfWeek>",
+          "examples": [
+            "marriage_Mon"
+          ],
+          "description": "Marriage schedule for a weekday."
+        },
+        {
+          "pattern": "<festival ID>_<festival day>",
+          "examples": [
+            "spring13_1"
+          ],
+          "description": "Festival schedule for a festival day."
+        },
+        {
+          "pattern": "<festival ID>",
+          "examples": [
+            "spring13"
+          ],
+          "description": "Festival schedule."
         },
         {
           "pattern": "<season>_<day>",
           "examples": [
-            "spring_15"
+            "summer_15"
           ],
-          "description": "Schedule for a specific season day."
+          "description": "Specific season day schedule."
+        },
+        {
+          "pattern": "<day>_<hearts>",
+          "examples": [
+            "11_6"
+          ],
+          "description": "Day of month schedule gated by hearts."
+        },
+        {
+          "pattern": "<day>",
+          "examples": [
+            "11"
+          ],
+          "description": "Day of month schedule."
+        },
+        {
+          "pattern": "bus",
+          "examples": [
+            "bus"
+          ],
+          "description": "Bus schedule."
+        },
+        {
+          "pattern": "rain2",
+          "examples": [
+            "rain2"
+          ],
+          "description": "Alternate rainy schedule."
         },
         {
           "pattern": "rain",
@@ -2274,11 +2350,53 @@
           "description": "Rainy schedule."
         },
         {
-          "pattern": "marriage_<weekday>",
+          "pattern": "<season>_<dayOfWeek>_<hearts>",
           "examples": [
-            "marriage_Mon"
+            "spring_Mon_6"
           ],
-          "description": "Marriage schedule for a weekday."
+          "description": "Season weekday schedule gated by hearts."
+        },
+        {
+          "pattern": "<season>_<dayOfWeek>",
+          "examples": [
+            "spring_Mon"
+          ],
+          "description": "Season weekday schedule."
+        },
+        {
+          "pattern": "<dayOfWeek>_<hearts>",
+          "examples": [
+            "Mon_6"
+          ],
+          "description": "Weekday schedule gated by hearts."
+        },
+        {
+          "pattern": "<dayOfWeek>",
+          "examples": [
+            "Mon"
+          ],
+          "description": "Weekday schedule."
+        },
+        {
+          "pattern": "<season>",
+          "examples": [
+            "spring"
+          ],
+          "description": "Season default schedule; spring is commonly used as the fallback."
+        },
+        {
+          "pattern": "default",
+          "examples": [
+            "default"
+          ],
+          "description": "Default fallback schedule."
+        },
+        {
+          "pattern": "custom",
+          "examples": [
+            "CustomKey"
+          ],
+          "description": "Custom schedule key."
         }
       ],
       "schedule_points": [
@@ -2323,6 +2441,324 @@
         "Build schedules as slash-separated time/location points.",
         "Keep map names and tile coordinates explicit; do not invent coordinates if the user did not provide them.",
         "Use CP When conditions or schedule keys for broad timing rules depending on the user goal."
+      ],
+      "schedule_key_formats": [
+        {
+          "id": "green_rain",
+          "category": "Special",
+          "label": "GreenRain",
+          "template": "GreenRain",
+          "fields": []
+        },
+        {
+          "id": "marriage_festival_day",
+          "category": "Marriage",
+          "label": "marriage_<festival ID>_<festival day>",
+          "template": "marriage_<festival>_<festivalDay>",
+          "fields": [
+            {
+              "name": "festival",
+              "type": "text"
+            },
+            {
+              "name": "festivalDay",
+              "type": "number",
+              "min": 1,
+              "max": 9
+            }
+          ]
+        },
+        {
+          "id": "marriage_festival",
+          "category": "Marriage",
+          "label": "marriage_<festival ID>",
+          "template": "marriage_<festival>",
+          "fields": [
+            {
+              "name": "festival",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "marriage_season_day",
+          "category": "Marriage",
+          "label": "marriage_<season>_<day>",
+          "template": "marriage_<season>_<day>",
+          "fields": [
+            {
+              "name": "season",
+              "type": "select",
+              "options": "seasons"
+            },
+            {
+              "name": "day",
+              "type": "number",
+              "min": 1,
+              "max": 28
+            }
+          ]
+        },
+        {
+          "id": "marriage_job",
+          "category": "Marriage",
+          "label": "marriageJob",
+          "template": "marriageJob",
+          "fields": []
+        },
+        {
+          "id": "marriage_weekday",
+          "category": "Marriage",
+          "label": "marriage_<dayOfWeek>",
+          "template": "marriage_<weekday>",
+          "fields": [
+            {
+              "name": "weekday",
+              "type": "select",
+              "options": "days_of_week"
+            }
+          ]
+        },
+        {
+          "id": "festival_day",
+          "category": "Normal",
+          "label": "<festival ID>_<festival day>",
+          "template": "<festival>_<festivalDay>",
+          "fields": [
+            {
+              "name": "festival",
+              "type": "text"
+            },
+            {
+              "name": "festivalDay",
+              "type": "number",
+              "min": 1,
+              "max": 9
+            }
+          ]
+        },
+        {
+          "id": "festival",
+          "category": "Normal",
+          "label": "<festival ID>",
+          "template": "<festival>",
+          "fields": [
+            {
+              "name": "festival",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "season_day",
+          "category": "Normal",
+          "label": "<season>_<day>",
+          "template": "<season>_<day>",
+          "fields": [
+            {
+              "name": "season",
+              "type": "select",
+              "options": "seasons"
+            },
+            {
+              "name": "day",
+              "type": "number",
+              "min": 1,
+              "max": 28
+            }
+          ]
+        },
+        {
+          "id": "day_hearts",
+          "category": "Normal",
+          "label": "<day>_<hearts>",
+          "template": "<day>_<hearts>",
+          "fields": [
+            {
+              "name": "day",
+              "type": "number",
+              "min": 1,
+              "max": 28
+            },
+            {
+              "name": "hearts",
+              "type": "number",
+              "min": 0,
+              "max": 14
+            }
+          ]
+        },
+        {
+          "id": "day",
+          "category": "Normal",
+          "label": "<day>",
+          "template": "<day>",
+          "fields": [
+            {
+              "name": "day",
+              "type": "number",
+              "min": 1,
+              "max": 28
+            }
+          ]
+        },
+        {
+          "id": "bus",
+          "category": "Normal",
+          "label": "bus",
+          "template": "bus",
+          "fields": []
+        },
+        {
+          "id": "rain2",
+          "category": "Normal",
+          "label": "rain2",
+          "template": "rain2",
+          "fields": []
+        },
+        {
+          "id": "rain",
+          "category": "Normal",
+          "label": "rain",
+          "template": "rain",
+          "fields": []
+        },
+        {
+          "id": "season_weekday_hearts",
+          "category": "Normal",
+          "label": "<season>_<dayOfWeek>_<hearts>",
+          "template": "<season>_<weekday>_<hearts>",
+          "fields": [
+            {
+              "name": "season",
+              "type": "select",
+              "options": "seasons"
+            },
+            {
+              "name": "weekday",
+              "type": "select",
+              "options": "days_of_week"
+            },
+            {
+              "name": "hearts",
+              "type": "number",
+              "min": 0,
+              "max": 14
+            }
+          ]
+        },
+        {
+          "id": "season_weekday",
+          "category": "Normal",
+          "label": "<season>_<dayOfWeek>",
+          "template": "<season>_<weekday>",
+          "fields": [
+            {
+              "name": "season",
+              "type": "select",
+              "options": "seasons"
+            },
+            {
+              "name": "weekday",
+              "type": "select",
+              "options": "days_of_week"
+            }
+          ]
+        },
+        {
+          "id": "weekday_hearts",
+          "category": "Normal",
+          "label": "<dayOfWeek>_<hearts>",
+          "template": "<weekday>_<hearts>",
+          "fields": [
+            {
+              "name": "weekday",
+              "type": "select",
+              "options": "days_of_week"
+            },
+            {
+              "name": "hearts",
+              "type": "number",
+              "min": 0,
+              "max": 14
+            }
+          ]
+        },
+        {
+          "id": "weekday",
+          "category": "Normal",
+          "label": "<dayOfWeek>",
+          "template": "<weekday>",
+          "fields": [
+            {
+              "name": "weekday",
+              "type": "select",
+              "options": "days_of_week"
+            }
+          ]
+        },
+        {
+          "id": "season",
+          "category": "Normal",
+          "label": "<season>",
+          "template": "<season>",
+          "fields": [
+            {
+              "name": "season",
+              "type": "select",
+              "options": "seasons"
+            }
+          ]
+        },
+        {
+          "id": "default",
+          "category": "Normal",
+          "label": "default",
+          "template": "default",
+          "fields": []
+        },
+        {
+          "id": "custom",
+          "category": "Custom",
+          "label": "自定义 key",
+          "template": "<customKey>",
+          "fields": [
+            {
+              "name": "customKey",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "animation_descriptions",
+      "target": "Data/animationDescriptions",
+      "label": "角色动画",
+      "kind": "animation",
+      "description": "NPC-specific animation descriptions. Sleep animation keys use lowercase NPC name plus _sleep.",
+      "key_hint": "For sleep animations use <lowercase NPC name>_sleep; other animation keys can be custom.",
+      "fields": [
+        {
+          "name": "key",
+          "label": "动画 Key",
+          "type": "string",
+          "examples": [
+            "pufferbob_sleep",
+            "Cale_CustomAnimation"
+          ]
+        },
+        {
+          "name": "value",
+          "label": "帧序列",
+          "type": "string",
+          "notes": "Slash-separated frame indexes like 50/50/50."
+        }
+      ],
+      "ai_guidance": [
+        "Use lowercase NPC name for sleep animation keys.",
+        "Animation value should be slash-separated sprite frame indexes.",
+        "Frames are usually selected from the NPC sprite sheet using 16x32 tiles."
       ]
     },
     {
@@ -3950,6 +4386,46 @@
       {
         "label": "周日 Sunday",
         "value": "Sunday"
+      }
+    ],
+    "schedule_initial_commands": [
+      {
+        "label": "无",
+        "value": "none"
+      },
+      {
+        "label": "GOTO 跳转",
+        "value": "GOTO"
+      },
+      {
+        "label": "NOT friendship 好感不足",
+        "value": "NOT_FRIENDSHIP"
+      },
+      {
+        "label": "MAIL 邮件分支",
+        "value": "MAIL"
+      }
+    ],
+    "schedule_animations": [
+      {
+        "label": "无",
+        "value": ""
+      },
+      {
+        "label": "睡觉 <npc>_sleep",
+        "value": "<npc>_sleep"
+      },
+      {
+        "label": "方块动画 square_X_Y_facing",
+        "value": "square_0_0_2"
+      },
+      {
+        "label": "换泳装 change_beach",
+        "value": "change_beach"
+      },
+      {
+        "label": "恢复普通 change_normal",
+        "value": "change_normal"
       }
     ]
   },

@@ -82,6 +82,18 @@
       "description": "Dialogue entries for a character file."
     },
     {
+      "kind": "schedule",
+      "label": "Schedule",
+      "defaultTarget": "Characters/schedules",
+      "description": "NPC schedule entries and SVE-style schedule files."
+    },
+    {
+      "kind": "animation",
+      "label": "Animation",
+      "defaultTarget": "Data/animationDescriptions",
+      "description": "NPC animationDescriptions entries such as lowercase sleep animations."
+    },
+    {
       "kind": "shop",
       "label": "Shop",
       "defaultTarget": "Data/Shops",

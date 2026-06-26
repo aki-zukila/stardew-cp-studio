@@ -63,6 +63,75 @@ class CoreTests(unittest.TestCase):
             content = json.loads((output / "content.json").read_text(encoding="utf-8"))
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_schedule_uses_sve_style_files(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.i18n = {"Sophia.Schedule.Mon.000": "Hello from schedule."}
+            project.game_data.extend([
+                GameDataEntry(
+                    kind="schedule",
+                    target="Characters/schedules/Sophia",
+                    key="Mon",
+                    value="900 Town 64 15 2 \"Strings\\\\schedules\\\\Sophia:Mon.000\"",
+                    advanced={"StardewCPStudio": {"schedule": {
+                        "npcName": "Sophia",
+                        "points": [{"time": "900", "location": "Town", "x": 64, "y": 15, "direction": 2, "dialogueKey": "Mon.000", "dialogueText": "Hello from schedule."}],
+                        "dialogueEntries": [{"key": "Mon.000", "i18nKey": "Sophia.Schedule.Mon.000"}],
+                    }}},
+                ),
+                GameDataEntry(
+                    kind="schedule",
+                    target="Characters/schedules/Sophia",
+                    key="rain",
+                    value="900 Town 1 2 2",
+                    when={"Weather": "Rain"},
+                ),
+            ])
+
+            output = export_content_pack(project, temp_dir)
+            characters = json.loads((output / "code" / "characters.json").read_text(encoding="utf-8"))
+            schedule = json.loads((output / "assets" / "CharacterFiles" / "Schedules" / "Sophia" / "Schedule.json").read_text(encoding="utf-8"))
+            schedule_dialogue = json.loads((output / "assets" / "CharacterFiles" / "Schedules" / "Sophia" / "ScheduleDialogue.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(schedule["Mon"], "900 Town 64 15 2 \"Strings\\\\schedules\\\\Sophia:Mon.000\"")
+            self.assertNotIn("rain", schedule)
+            self.assertTrue(any(change.get("Action") == "Load" and change.get("Target") == "Characters/schedules/Sophia" for change in characters["Changes"]))
+            self.assertTrue(any(change.get("Action") == "Include" and change.get("FromFile") == "assets/CharacterFiles/Schedules/Sophia/ScheduleDialogue.json" for change in characters["Changes"]))
+            rain_patch = next(change for change in characters["Changes"] if change.get("Entries", {}).get("rain") == "900 Town 1 2 2")
+            self.assertEqual(rain_patch["When"], {"Weather": "Rain"})
+            self.assertEqual(schedule_dialogue["Changes"][0]["Target"], "Strings/schedules/Sophia")
+            self.assertEqual(schedule_dialogue["Changes"][0]["Entries"]["Mon.000"], "{{i18n:Sophia.Schedule.Mon.000}}")
+            self.assertEqual(json.loads((output / "i18n" / "default.json").read_text(encoding="utf-8"))["Sophia.Schedule.Mon.000"], "Hello from schedule.")
+
+    def test_export_animation_descriptions_to_character_code(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.append(
+                GameDataEntry(
+                    kind="animation",
+                    target="Data/animationDescriptions",
+                    key="pufferbob_sleep",
+                    value="50/50/50",
+                    advanced={"StardewCPStudio": {"animation": {"npcName": "Pufferbob", "isSleep": True}}},
+                )
+            )
+
+            output = export_content_pack(project, temp_dir)
+            characters = json.loads((output / "code" / "characters.json").read_text(encoding="utf-8"))
+            patch = next(change for change in characters["Changes"] if change.get("Target") == "Data/animationDescriptions")
+            self.assertEqual(patch["Entries"], {"pufferbob_sleep": "50/50/50"})
+            self.assertNotIn("StardewCPStudio", json.dumps(characters))
+
     def test_export_mail_newlines_and_trigger_actions_are_separate(self):
         import json
 
