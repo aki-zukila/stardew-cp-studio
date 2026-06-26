@@ -131,6 +131,23 @@ def open_project_endpoint(request: OpenProjectRequest) -> Project:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/projects/open-upload")
+async def open_uploaded_project_endpoint(file: UploadFile = File(...)) -> Project:
+    try:
+        safe_name = "".join(char if char.isalnum() or char in "._-" else "_" for char in (file.filename or "project.cpgen"))
+        project_dir = UPLOAD_DIR / "projects"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        project_path = project_dir / safe_name
+        with project_path.open("wb") as target:
+            while chunk := await file.read(1024 * 1024):
+                target.write(chunk)
+        project = open_project(str(project_path))
+        ASSET_SOURCES.update(restore_package_assets(str(project_path), UPLOAD_DIR))
+        return project
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/projects/save")
 def save_project_endpoint(request: SaveProjectRequest) -> dict[str, str]:
     try:

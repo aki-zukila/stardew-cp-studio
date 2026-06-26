@@ -245,6 +245,60 @@ h2 {
   gap: 16px;
 }
 
+.project-drop-zone {
+  align-items: center;
+  background: #f4f7f1;
+  border: 1px dashed #aab7a5;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.project-drop-zone div {
+  display: grid;
+  gap: 4px;
+}
+
+.project-drop-zone span,
+.project-open-preview span,
+.preview-grid span {
+  color: #59655c;
+  font-size: 12px;
+}
+
+.project-open-preview {
+  background: #fbfaf5;
+  border: 1px solid #ded7c9;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.project-open-preview > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.preview-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.preview-grid div {
+  background: #fffdf8;
+  border: 1px solid #e4ded2;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
 .placeholder-module {
   background: #fbfaf5;
   border: 1px solid #ded7c9;
@@ -257,6 +311,31 @@ h2 {
 
 .placeholder-module p {
   margin: 0;
+}
+
+.recipe-split {
+  display: grid;
+  gap: 16px;
+}
+
+.item-studio-group {
+  background: #fbfaf5;
+}
+
+.item-form-grid > .wide-editor,
+.wide-editor {
+  grid-column: 1 / -1;
+}
+
+.recipe-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+}
+
+.compact-card {
+  background: #fffdf8;
 }
 
 .map-studio {
@@ -292,6 +371,25 @@ h2 {
   border: 1px solid #ded7c9;
   border-radius: 8px;
   padding: 12px;
+}
+
+.map-picker-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.compact-toggle {
+  flex: 0 0 auto;
+  font-size: 12px;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.compact-toggle.active {
+  border-color: #7a8d72;
+  color: #23301f;
 }
 
 .game-data-layout {
@@ -1047,10 +1145,17 @@ code {
 }
 
 .schedule-map-scroll img {
-  cursor: crosshair;
   display: block;
   image-rendering: pixelated;
   max-width: none;
+}
+
+.schedule-map-scroll img.map-pick-unlocked {
+  cursor: crosshair;
+}
+
+.schedule-map-scroll img.map-pick-locked {
+  cursor: default;
 }
 
 .dialogue-builder {

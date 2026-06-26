@@ -83,6 +83,7 @@ type Project = {
 
 type ValidationIssue = { level: "error" | "warning"; path: string; message: string };
 type ValidationResult = { errors: ValidationIssue[]; warnings: ValidationIssue[]; can_export: boolean };
+type PendingProjectOpen = { project: Project; label: string };
 type RulesetOption = { label: string; value: string | number | boolean };
 type WhenConditionSchema = { key: string; label: string; valueType: string; options?: string; allowCustom?: boolean; parameterLabel?: string; parameterOptions?: string };
 type TriggerActionCommandKind = "AddMail" | "RemoveMail" | "AddMoney" | "RunTriggerAction" | "custom";
@@ -123,12 +124,17 @@ type ImportAssetResponse = { project: Project; asset: Asset };
 type ItemCatalogEntry = { id: string; qualified_id: string; name: string; display_name: string; description?: string; category?: number | null; type?: string; source: string };
 type ItemCatalogResponse = { items: ItemCatalogEntry[]; source_path: string; warning: string };
 type ItemOption = RulesetOption & { source?: string };
+type ItemModuleKind = "object" | "crop" | "fruitTree" | "cooking" | "crafting";
+type RecipeIngredientRow = { id: string; itemId: string; count: number };
 type TriggerActionRow = { kind: TriggerActionCommandKind; player: string; mailId: string; mailType: string; amount: number; targetAction: string; raw: string };
 type MapResourceEntry = { key: string; filename: string; width: number; height: number; tile_width: number; tile_height: number; url: string };
 type MapResourceResponse = { maps: MapResourceEntry[]; source_path: string; warning: string };
 type MapArea = { X: number; Y: number; Width: number; Height: number };
 type MapPoint = { X: number; Y: number };
 type MapPreviewImage = Asset | { url: string; label: string };
+type MapDraftKind = "custom" | "edit" | "warp";
+type MapGeneratedRef = { target: string; key?: string; action?: Patch["action"]; from_file?: string | null };
+type MapDraft = { id: string; kind: MapDraftKind; generated: MapGeneratedRef[] };
 type ScheduleKeyField = { name: string; type: string; options?: string; min?: number; max?: number };
 type ScheduleKeyFormat = { id: string; category: string; label: string; template: string; fields: ScheduleKeyField[] };
 type SchedulePoint = { id: string; time: string; location: string; x: number; y: number; direction: number; animation: string; dialogueKey: string; dialogueText: string };
@@ -322,6 +328,7 @@ function App() {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [status, setStatus] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [pendingProjectOpen, setPendingProjectOpen] = useState<PendingProjectOpen | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [itemCatalog, setItemCatalog] = useState<ItemCatalogResponse>({ items: [], source_path: "", warning: "" });
 
@@ -345,16 +352,48 @@ function App() {
 
   async function saveProject() {
     if (!project) return;
-    await postJson("/api/projects/save", { project, path: projectPath });
-    setStatus(`已保存工程：${projectPath}`);
+    try {
+      await postJson("/api/projects/save", { project, path: projectPath });
+      setStatus(`已保存工程：${projectPath}`);
+    } catch (error) {
+      setStatus(`保存失败：${errorMessage(error)}`);
+    }
   }
 
   async function openProject() {
-    const opened = await postJson<Project>("/api/projects/open", { path: openPath });
-    setProject(opened);
-    setProjectPath(openPath);
-    setStatus(`已打开工程：${openPath}`);
-    await validate(opened);
+    if (!openPath.trim()) {
+      setStatus("请先填写 .cpgen 工程路径，或直接拖入/选择工程文件。");
+      return;
+    }
+    try {
+      const opened = await postJson<Project>("/api/projects/open", { path: openPath });
+      setProject(opened);
+      setPendingProjectOpen(null);
+      setProjectPath(openPath);
+      setStatus(`已打开工程：${openPath}`);
+      await validate(opened);
+    } catch (error) {
+      setStatus(`打开失败：${errorMessage(error)}`);
+    }
+  }
+
+  async function previewProjectFile(file: File) {
+    try {
+      const opened = await openUploadedProject(file);
+      setPendingProjectOpen({ project: opened, label: file.name });
+      setStatus(`已读取工程预览：${file.name}`);
+    } catch (error) {
+      setStatus(`读取工程失败：${errorMessage(error)}`);
+    }
+  }
+
+  async function confirmPendingProjectOpen() {
+    if (!pendingProjectOpen) return;
+    setProject(pendingProjectOpen.project);
+    setOpenPath("");
+    setPendingProjectOpen(null);
+    setStatus(`已打开工程：${pendingProjectOpen.label}。保存位置仍使用当前“保存到 .cpgen 路径”。`);
+    await validate(pendingProjectOpen.project);
   }
 
   async function exportPack() {
@@ -448,7 +487,7 @@ function App() {
         {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
-        {tab === "items" && <PlaceholderModule title="物品添加" description="这里将拆出完整的 Data/Objects / 贴图 / 价格 / 分类 / 礼物联动编辑器。" />}
+        {tab === "items" && <ItemStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "maps" && <MapStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "quests" && <PlaceholderModule title="任务功能" description="这里将制作任务数据、触发条件、邮件/事件联动与完成条件编辑器。" />}
         {tab === "special-orders" && <PlaceholderModule title="特殊订单" description="这里将制作 Special Orders 的目标、奖励、期限、文本与触发逻辑。" />}
@@ -466,12 +505,40 @@ function App() {
             setExportPath={setExportPath}
             updateProject={updateProject}
             openProject={openProject}
+            pendingProjectOpen={pendingProjectOpen}
+            previewProjectFile={previewProjectFile}
+            confirmPendingProjectOpen={confirmPendingProjectOpen}
+            cancelPendingProjectOpen={() => setPendingProjectOpen(null)}
             saveProject={saveProject}
             validate={() => validate()}
             exportPack={exportPack}
           />
         )}
       </main>
+    </div>
+  );
+}
+
+function ProjectOpenPreview({ pending, onConfirm, onCancel }: { pending: PendingProjectOpen; onConfirm: () => void; onCancel: () => void }) {
+  const project = pending.project;
+  return (
+    <div className="project-open-preview">
+      <div>
+        <strong>待打开工程预览</strong>
+        <span>{pending.label}</span>
+      </div>
+      <div className="preview-grid">
+        <div><span>工程名</span><strong>{project.meta.name}</strong></div>
+        <div><span>模组名</span><strong>{project.manifest.Name || "未填写"}</strong></div>
+        <div><span>UniqueID</span><strong>{project.manifest.UniqueID || "未填写"}</strong></div>
+        <div><span>数据条目</span><strong>{project.game_data.length}</strong></div>
+        <div><span>补丁</span><strong>{project.patches.length}</strong></div>
+        <div><span>素材</span><strong>{project.assets.length}</strong></div>
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={onConfirm}><Icon name="open" />确认打开</button>
+        <button type="button" className="secondary" onClick={onCancel}>取消</button>
+      </div>
     </div>
   );
 }
@@ -492,7 +559,461 @@ function PlaceholderModule({ title, description }: { title: string; description:
   );
 }
 
-function WorkspaceManager({ project, projectPath, openPath, exportPath, issues, setProjectPath, setOpenPath, setExportPath, updateProject, openProject, saveProject, validate, exportPack }: { project: Project; projectPath: string; openPath: string; exportPath: string; issues: ValidationIssue[]; setProjectPath: (value: string) => void; setOpenPath: (value: string) => void; setExportPath: (value: string) => void; updateProject: (project: Project) => void; openProject: () => void; saveProject: () => void; validate: () => void; exportPack: () => void }) {
+function ItemStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const itemEntries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isItemStudioEntry(entry));
+
+  function addItemEntry(module: ItemModuleKind) {
+    const entry = defaultItemStudioEntry(project, module);
+    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...defaultItemStudioI18n(project, entry, module) } });
+  }
+
+  function updateEntry(index: number, entry: GameDataEntry) {
+    setProject({ ...project, game_data: replaceAt(project.game_data, index, entry) });
+  }
+
+  function removeEntry(entry: GameDataEntry) {
+    setProject({
+      ...project,
+      game_data: project.game_data.filter((item) => item.id !== entry.id)
+    });
+  }
+
+  return (
+    <Section title="物品添加">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加物品类型"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button type="button" className="compact-add-button" onClick={() => addItemEntry("object")}><Icon name="plus" /><span>一般物品</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addItemEntry("crop")}><Icon name="plus" /><span>作物</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addItemEntry("fruitTree")}><Icon name="plus" /><span>果树</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addItemEntry("cooking")}><Icon name="plus" /><span>烹饪配方</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addItemEntry("crafting")}><Icon name="plus" /><span>制作配方</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          <div className="notice compact-note">
+            一般物品写入 Data/Objects；作物写入 Data/Crops，Key 是种子 ID；果树写入 Data/FruitTrees，Key 是树苗 ID；烹饪配方写入 Data/CookingRecipes；制作配方写入 Data/CraftingRecipes。
+          </div>
+          <div className="recipe-split">
+            <ItemStudioGroup
+              title="一般物品与作物"
+              entries={itemEntries.filter(({ entry }) => itemModuleKind(entry) === "object" || itemModuleKind(entry) === "crop" || itemModuleKind(entry) === "fruitTree")}
+              project={project}
+              ruleset={ruleset}
+              itemCatalog={itemCatalog}
+              setProject={setProject}
+              updateEntry={updateEntry}
+              removeEntry={removeEntry}
+            />
+            <ItemStudioGroup
+              title="烹饪配方"
+              entries={itemEntries.filter(({ entry }) => itemModuleKind(entry) === "cooking")}
+              project={project}
+              ruleset={ruleset}
+              itemCatalog={itemCatalog}
+              setProject={setProject}
+              updateEntry={updateEntry}
+              removeEntry={removeEntry}
+            />
+            <ItemStudioGroup
+              title="制作配方"
+              entries={itemEntries.filter(({ entry }) => itemModuleKind(entry) === "crafting")}
+              project={project}
+              ruleset={ruleset}
+              itemCatalog={itemCatalog}
+              setProject={setProject}
+              updateEntry={updateEntry}
+              removeEntry={removeEntry}
+            />
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function ItemStudioGroup({ title, entries, project, ruleset, itemCatalog, setProject, updateEntry, removeEntry }: { title: string; entries: { entry: GameDataEntry; index: number }[]; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void; updateEntry: (index: number, entry: GameDataEntry) => void; removeEntry: (entry: GameDataEntry) => void }) {
+  return (
+    <details className="subsection collapsible-subsection item-studio-group" open>
+      <summary><h3>{title}</h3></summary>
+      <div className="collapsible-subsection-body">
+        {entries.map(({ entry, index }) => (
+          <article className="card compact-card" key={entry.id}>
+            <div className="card-head">
+              <input value={entry.name} onChange={(event) => updateEntry(index, { ...entry, name: event.target.value })} />
+              <button type="button" className="secondary" onClick={() => removeEntry(entry)}>删除</button>
+            </div>
+            <ItemStudioEntryForm
+              project={project}
+              ruleset={ruleset}
+              itemCatalog={itemCatalog}
+              entry={entry}
+              onChange={(next) => updateEntry(index, next)}
+              setProject={setProject}
+            />
+          </article>
+        ))}
+        {!entries.length && <div className="empty compact-empty">暂无条目，请从左侧添加。</div>}
+      </div>
+    </details>
+  );
+}
+
+function ItemStudioEntryForm({ project, ruleset, itemCatalog, entry, onChange, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+  const module = itemModuleKind(entry);
+  if (module === "crop") return <CropEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={onChange} />;
+  if (module === "fruitTree") return <FruitTreeEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={onChange} setProject={setProject} />;
+  if (module === "cooking" || module === "crafting") return <RecipeEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} recipeKind={module} onChange={onChange} />;
+  return <ObjectEntryForm project={project} ruleset={ruleset} entry={entry} onChange={onChange} setProject={setProject} />;
+}
+
+function ObjectEntryForm({ project, ruleset, entry, onChange, setProject }: { project: Project; ruleset: Ruleset; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const objectId = entry.key || "ExampleObject";
+  const textureTarget = itemTextureTarget(project, objectId);
+  const displayNameKey = i18nKeyFromRef(value.DisplayName) || itemI18nKey(project, "Object", objectId, "Name");
+  const descriptionKey = i18nKeyFromRef(value.Description) || itemI18nKey(project, "Object", objectId, "Description");
+  function commitEntry(nextEntry: GameDataEntry, i18nPatch: Record<string, string> = {}) {
+    if (!Object.keys(i18nPatch).length) {
+      onChange(nextEntry);
+      return;
+    }
+    setProject({
+      ...project,
+      game_data: project.game_data.map((item) => item.id === entry.id ? nextEntry : item),
+      i18n: { ...project.i18n, ...i18nPatch }
+    });
+  }
+  function setValueField(key: string, nextValue: unknown) {
+    onChange({ ...entry, target: "Data/Objects", value: { ...value, [key]: nextValue } });
+  }
+  function setLocalizedField(field: "DisplayName" | "Description", key: string, text: string) {
+    commitEntry({ ...entry, target: "Data/Objects", value: { ...value, [field]: i18nRef(key) } }, { [key]: text });
+  }
+  function setKey(key: string) {
+    const normalized = normalizeItemId(key);
+    const oldDisplayKey = itemI18nKey(project, "Object", objectId, "Name");
+    const oldDescriptionKey = itemI18nKey(project, "Object", objectId, "Description");
+    const nextDisplayKey = itemI18nKey(project, "Object", normalized, "Name");
+    const nextDescriptionKey = itemI18nKey(project, "Object", normalized, "Description");
+    const nextValue = {
+      ...value,
+      Name: !value.Name || value.Name === objectId ? normalized : value.Name,
+      DisplayName: i18nKeyFromRef(value.DisplayName) === oldDisplayKey ? i18nRef(nextDisplayKey) : value.DisplayName,
+      Description: i18nKeyFromRef(value.Description) === oldDescriptionKey ? i18nRef(nextDescriptionKey) : value.Description
+    };
+    const i18nPatch: Record<string, string> = {};
+    if (i18nKeyFromRef(value.DisplayName) === oldDisplayKey && project.i18n[oldDisplayKey]) i18nPatch[nextDisplayKey] = project.i18n[oldDisplayKey];
+    if (i18nKeyFromRef(value.Description) === oldDescriptionKey && project.i18n[oldDescriptionKey]) i18nPatch[nextDescriptionKey] = project.i18n[oldDescriptionKey];
+    commitEntry({
+      ...entry,
+      key: normalized,
+      name: entry.name.includes(objectId) ? entry.name.replace(objectId, normalized) : entry.name,
+      target: "Data/Objects",
+      value: nextValue
+    }, i18nPatch);
+  }
+  return (
+    <div className="grid two item-form-grid">
+      <div className="notice compact-note wide-editor">参考 Objects：定义一般物品。Texture 是可选贴图资源；ContextTags 用空格分隔。</div>
+      <Field label="物品 ID（Data/Objects Key）" value={objectId} onChange={setKey} />
+      <Field label="内部名称 Name" value={stringField(value.Name || objectId)} onChange={(next) => setValueField("Name", next)} />
+      <Field label="显示名称 DisplayName（写入 i18n）" value={localizedText(project, value.DisplayName, objectId)} onChange={(next) => setLocalizedField("DisplayName", displayNameKey, next)} />
+      <Field label="描述 Description（写入 i18n）" value={localizedText(project, value.Description, "这是一个新物品。")} onChange={(next) => setLocalizedField("Description", descriptionKey, next)} textarea />
+      <ComboField label="物品类型 Type（Object/Fish/Seeds/Crafting 等）" value={value.Type || "Basic"} options={OBJECT_TYPE_OPTIONS} onChange={(next) => setValueField("Type", next)} />
+      <ComboField label="分类 Category（负数类别，影响礼物/职业/显示）" value={value.Category ?? -2} options={rulesetOptions(ruleset, "object_categories")} onChange={(next) => setValueField("Category", numberOrText(String(next)))} />
+      <Field label="价格 Price（基础售价）" value={stringField(value.Price ?? 100)} onChange={(next) => setValueField("Price", numberOrText(next))} />
+      <ComboField label="可食用值 Edibility（-300 表示不可食用）" value={value.Edibility ?? -300} options={rulesetOptions(ruleset, "edibility")} onChange={(next) => setValueField("Edibility", numberOrText(String(next)))} />
+      <BoolField label="是否饮料 IsDrink" value={Boolean(value.IsDrink)} onChange={(next) => setValueField("IsDrink", next)} />
+      <Field label="贴图资源 Texture" value={stringField(value.Texture)} onChange={(next) => setValueField("Texture", next)} />
+      <Field label="贴图索引 SpriteIndex" value={stringField(value.SpriteIndex ?? 0)} onChange={(next) => setValueField("SpriteIndex", numberOrText(next))} />
+      <Field label="ContextTags（空格分隔）" value={arrayOfStrings(value.ContextTags).join(" ")} onChange={(next) => setValueField("ContextTags", splitSpaceList(next))} />
+      <TargetedAssetImport
+        label="导入物品贴图 PNG"
+        project={project}
+        accept="image/png,image/jpeg,image/webp"
+        storedPath={`assets/Objects/${objectId}/${objectId}.png`}
+        onImported={(nextProject, storedPath) => {
+          const patch = withItemModuleMetadata({
+            id: makeId(),
+            name: `加载物品贴图 ${objectId}`,
+            action: "Load",
+            enabled: true,
+            target: textureTarget,
+            from_file: storedPath,
+            when: {},
+            fields: {},
+            advanced: {}
+          }, "object");
+          const nextEntry = { ...entry, target: "Data/Objects", value: { ...value, Texture: textureTarget } };
+          setProject({
+            ...nextProject,
+            game_data: nextProject.game_data.map((item) => item.id === entry.id ? nextEntry : item),
+            patches: mergeWorkflowPatches(nextProject.patches, [patch])
+          });
+        }}
+      />
+      <JsonField label="Buffs / GeodeDrops / CustomFields 等高级字段" value={publicAdvancedValue(value, ["Name", "DisplayName", "Description", "Type", "Category", "Price", "Edibility", "IsDrink", "Texture", "SpriteIndex", "ContextTags"])} onChange={(next) => onChange({ ...entry, target: "Data/Objects", value: { ...pickObjectFields(value, ["Name", "DisplayName", "Description", "Type", "Category", "Price", "Edibility", "IsDrink", "Texture", "SpriteIndex", "ContextTags"]), ...(next as JsonDict) } })} />
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+      <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
+    </div>
+  );
+}
+
+function CropEntryForm({ project, ruleset, itemCatalog, entry, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const options = projectObjectOptions(project, itemCatalog, "raw");
+  const seasons = Array.isArray(value.Seasons) ? value.Seasons.map(String) : ["Spring"];
+  const days = Array.isArray(value.DaysInPhase) ? value.DaysInPhase.map(Number) : [1, 2, 2, 2];
+  function setValueField(key: string, nextValue: unknown) {
+    onChange({ ...entry, target: "Data/Crops", value: { ...value, [key]: nextValue } });
+  }
+  return (
+    <div className="grid two item-form-grid">
+      <div className="notice compact-note wide-editor">参考 Crop data：Key 是种子物品 ID，HarvestItemId 是收获物品 ID；阶段天数按空格分隔。</div>
+      <ItemSingleSelect label="种子 ID（Data/Crops Key）" options={options} value={entry.key} onChange={(next) => onChange({ ...entry, target: "Data/Crops", key: next })} />
+      <ItemSingleSelect label="收获物 HarvestItemId" options={options} value={stringField(value.HarvestItemId)} onChange={(next) => setValueField("HarvestItemId", next)} />
+      <ItemMultiSelect label="可生长季节 Seasons" options={SEASON_LONG_OPTIONS as ItemOption[]} value={seasons} onChange={(next) => setValueField("Seasons", next)} placeholder="选择 Spring / Summer / Fall / Winter，可多选。" />
+      <Field label="阶段天数 DaysInPhase（空格分隔）" value={days.join(" ")} onChange={(next) => setValueField("DaysInPhase", splitSpaceList(next).map((item) => integerInRange(item, 0, 99, 0)))} />
+      <Field label="再生天数 RegrowDays（-1 不再生）" value={stringField(value.RegrowDays ?? -1)} onChange={(next) => setValueField("RegrowDays", numberOrText(next))} />
+      <Field label="收获最小数量 HarvestMinStack" value={stringField(value.HarvestMinStack ?? 1)} onChange={(next) => setValueField("HarvestMinStack", numberOrText(next))} />
+      <Field label="收获最大数量 HarvestMaxStack" value={stringField(value.HarvestMaxStack ?? 1)} onChange={(next) => setValueField("HarvestMaxStack", numberOrText(next))} />
+      <Field label="额外收获概率 ExtraHarvestChance" value={stringField(value.ExtraHarvestChance ?? 0)} onChange={(next) => setValueField("ExtraHarvestChance", numberOrText(next))} />
+      <Field label="作物贴图 Texture（默认 TileSheets/crops）" value={stringField(value.Texture || "TileSheets/crops")} onChange={(next) => setValueField("Texture", next)} />
+      <Field label="贴图索引 SpriteIndex" value={stringField(value.SpriteIndex ?? 0)} onChange={(next) => setValueField("SpriteIndex", numberOrText(next))} />
+      <ComboField label="收获方式 HarvestMethod" value={value.HarvestMethod || "Grab"} options={CROP_HARVEST_METHOD_OPTIONS} onChange={(next) => setValueField("HarvestMethod", next)} />
+      <BoolField label="需要浇水 NeedsWatering" value={value.NeedsWatering !== false} onChange={(next) => setValueField("NeedsWatering", next)} />
+      <BoolField label="棚架作物 TrellisCrop" value={Boolean(value.TrellisCrop)} onChange={(next) => setValueField("TrellisCrop", next)} />
+      <BoolField label="水田作物 PaddyCrop" value={Boolean(value.PaddyCrop)} onChange={(next) => setValueField("PaddyCrop", next)} />
+      <BoolField label="种子凸起 RaisedSeeds" value={Boolean(value.RaisedSeeds)} onChange={(next) => setValueField("RaisedSeeds", next)} />
+      <JsonField label="TintColors / HarvestSounds / CustomFields 等高级字段" value={publicAdvancedValue(value, ["Seasons", "DaysInPhase", "RegrowDays", "HarvestItemId", "HarvestMinStack", "HarvestMaxStack", "ExtraHarvestChance", "Texture", "SpriteIndex", "HarvestMethod", "NeedsWatering", "TrellisCrop", "PaddyCrop", "RaisedSeeds"])} onChange={(next) => onChange({ ...entry, target: "Data/Crops", value: { ...pickObjectFields(value, ["Seasons", "DaysInPhase", "RegrowDays", "HarvestItemId", "HarvestMinStack", "HarvestMaxStack", "ExtraHarvestChance", "Texture", "SpriteIndex", "HarvestMethod", "NeedsWatering", "TrellisCrop", "PaddyCrop", "RaisedSeeds"]), ...(next as JsonDict) } })} />
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+      <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
+    </div>
+  );
+}
+
+function FruitTreeEntryForm({ project, ruleset, itemCatalog, entry, onChange, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const saplingId = entry.key || modScopedId(project, "ExampleFruitTreeSapling");
+  const seasons = Array.isArray(value.Seasons) ? value.Seasons.map(String) : ["Spring"];
+  const fruits = Array.isArray(value.Fruit) ? value.Fruit.filter(isObject).map(normalizeFruitTreeFruit) : [normalizeFruitTreeFruit({ ItemId: "(O)638" })];
+  const textureTarget = fruitTreeTextureTarget(project, saplingId);
+  const displayNameKey = i18nKeyFromRef(value.DisplayName) || itemI18nKey(project, "FruitTree", saplingId, "Name");
+  function commitEntry(nextEntry: GameDataEntry, i18nPatch: Record<string, string> = {}) {
+    if (!Object.keys(i18nPatch).length) {
+      onChange(nextEntry);
+      return;
+    }
+    setProject({
+      ...project,
+      game_data: project.game_data.map((item) => item.id === entry.id ? nextEntry : item),
+      i18n: { ...project.i18n, ...i18nPatch }
+    });
+  }
+  function setValueField(key: string, nextValue: unknown) {
+    onChange({ ...entry, target: "Data/FruitTrees", value: { ...value, [key]: nextValue } });
+  }
+  function setKey(key: string) {
+    const normalized = normalizeItemId(key);
+    const oldDisplayKey = itemI18nKey(project, "FruitTree", saplingId, "Name");
+    const nextDisplayKey = itemI18nKey(project, "FruitTree", normalized, "Name");
+    const nextValue = {
+      ...value,
+      DisplayName: i18nKeyFromRef(value.DisplayName) === oldDisplayKey ? i18nRef(nextDisplayKey) : value.DisplayName
+    };
+    const i18nPatch: Record<string, string> = {};
+    if (i18nKeyFromRef(value.DisplayName) === oldDisplayKey && project.i18n[oldDisplayKey]) i18nPatch[nextDisplayKey] = project.i18n[oldDisplayKey];
+    commitEntry({
+      ...entry,
+      key: normalized,
+      name: entry.name.includes(saplingId) ? entry.name.replace(saplingId, normalized) : entry.name,
+      target: "Data/FruitTrees",
+      value: nextValue
+    }, i18nPatch);
+  }
+  function updateFruit(index: number, patch: JsonDict) {
+    const nextFruits = [...fruits];
+    nextFruits[index] = normalizeFruitTreeFruit({ ...nextFruits[index], ...patch });
+    setValueField("Fruit", nextFruits);
+  }
+  function removeFruit(index: number) {
+    setValueField("Fruit", fruits.filter((_, fruitIndex) => fruitIndex !== index));
+  }
+  function addFruit() {
+    setValueField("Fruit", [...fruits, normalizeFruitTreeFruit({ Id: `Fruit${fruits.length + 1}`, ItemId: "(O)638" })]);
+  }
+  return (
+    <div className="grid two item-form-grid">
+      <div className="notice compact-note wide-editor">
+        参考 Fruit trees：Key 是树苗物品 ID。树苗本身仍需要在“一般物品”中创建为种子/树苗物品；这里定义成熟果树、结果季节、果实和果树贴图。
+      </div>
+      <Field label="树苗 ID（Data/FruitTrees Key）" value={saplingId} onChange={setKey} />
+      <Field label="果树显示名 DisplayName（写入 i18n）" value={localizedText(project, value.DisplayName, saplingId)} onChange={(next) => commitEntry({ ...entry, target: "Data/FruitTrees", value: { ...value, DisplayName: i18nRef(displayNameKey) } }, { [displayNameKey]: next })} />
+      <ItemMultiSelect label="结果季节 Seasons" options={SEASON_LONG_OPTIONS as ItemOption[]} value={seasons} onChange={(next) => setValueField("Seasons", next)} placeholder="选择 Spring / Summer / Fall / Winter，可多选。" />
+      <Field label="贴图资源 Texture" value={stringField(value.Texture || "TileSheets\\fruitTrees")} onChange={(next) => setValueField("Texture", next)} />
+      <Field label="贴图行 TextureSpriteRow" value={stringField(value.TextureSpriteRow ?? 0)} onChange={(next) => setValueField("TextureSpriteRow", numberOrText(next))} />
+      <TargetedAssetImport
+        label="导入果树贴图 PNG"
+        project={project}
+        accept="image/png,image/jpeg,image/webp"
+        storedPath={`assets/FruitTrees/${saplingId}/FruitTrees.png`}
+        onImported={(nextProject, storedPath) => {
+          const patch = withItemModuleMetadata({
+            id: makeId(),
+            name: `加载果树贴图 ${saplingId}`,
+            action: "Load",
+            enabled: true,
+            target: textureTarget,
+            from_file: storedPath,
+            when: {},
+            fields: {},
+            advanced: {}
+          }, "fruitTree");
+          const nextEntry = { ...entry, target: "Data/FruitTrees", value: { ...value, Texture: textureTarget } };
+          setProject({
+            ...nextProject,
+            game_data: nextProject.game_data.map((item) => item.id === entry.id ? nextEntry : item),
+            patches: mergeWorkflowPatches(nextProject.patches, [patch])
+          });
+        }}
+      />
+      <div className="structured-editor wide-editor">
+        <div className="structured-editor-head">
+          <div>
+            <strong>果实 Fruit</strong>
+            <span>每条会写成 ItemSpawnFields。固定果实用 ItemId；随机果实用 RandomItemId。</span>
+          </div>
+          <button type="button" className="secondary" onClick={addFruit}><Icon name="plus" />添加果实规则</button>
+        </div>
+        {fruits.map((fruit, index) => (
+          <FruitTreeFruitRow key={`${fruit.Id || "Fruit"}-${index}`} project={project} ruleset={ruleset} itemCatalog={itemCatalog} fruit={fruit} index={index} onChange={(patch) => updateFruit(index, patch)} onRemove={() => removeFruit(index)} />
+        ))}
+        {!fruits.length && <div className="empty compact-empty">暂无果实规则。</div>}
+      </div>
+      <JsonField label="PlantableLocationRules / CustomFields 等高级字段" value={publicAdvancedValue(value, ["PlantableLocationRules", "DisplayName", "Seasons", "Fruit", "Texture", "TextureSpriteRow", "CustomFields"])} onChange={(next) => onChange({ ...entry, target: "Data/FruitTrees", value: { ...pickObjectFields(value, ["PlantableLocationRules", "DisplayName", "Seasons", "Fruit", "Texture", "TextureSpriteRow", "CustomFields"]), ...(next as JsonDict) } })} />
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+      <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
+    </div>
+  );
+}
+
+function FruitTreeFruitRow({ project, ruleset, itemCatalog, fruit, index, onChange, onRemove }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; fruit: JsonDict; index: number; onChange: (patch: JsonDict) => void; onRemove: () => void }) {
+  const options = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
+  const randomItems = arrayOfStrings(fruit.RandomItemId);
+  const isRandom = randomItems.length > 0;
+  return (
+    <div className="compact-card">
+      <div className="card-head">
+        <strong>果实规则 {index + 1}</strong>
+        <button type="button" className="secondary" onClick={onRemove}>删除</button>
+      </div>
+      <div className="grid two">
+        <Field label="规则 ID Id" value={stringField(fruit.Id || "Default")} onChange={(next) => onChange({ Id: next })} />
+        <ConditionField label="条件 Condition" value={fruit.Condition ?? null} onChange={(next) => onChange({ Condition: next })} />
+        <ComboField label="专属季节 Season（可留空）" value={fruit.Season ?? ""} options={[{ label: "留空 / 跟随 Seasons", value: "" }, ...SEASON_LONG_OPTIONS]} onChange={(next) => onChange({ Season: String(next) || null })} />
+        <Field label="概率 Chance" value={stringField(fruit.Chance ?? 1)} onChange={(next) => onChange({ Chance: Number(next) || 0 })} />
+        {!isRandom && <ItemSingleSelect label="固定果实 ItemId" options={options} value={stringField(fruit.ItemId || "")} onChange={(next) => onChange({ ItemId: next, RandomItemId: null })} />}
+        <ItemMultiSelect label="随机果实 RandomItemId" options={options} value={randomItems} onChange={(next) => onChange({ RandomItemId: next.length ? next : null, ItemId: next.length ? null : fruit.ItemId })} placeholder="添加任意候选后，此规则会改为随机果实。" />
+        <Field label="最小数量 MinStack" value={stringField(fruit.MinStack ?? -1)} onChange={(next) => onChange({ MinStack: numberOrText(next) })} />
+        <Field label="最大数量 MaxStack" value={stringField(fruit.MaxStack ?? -1)} onChange={(next) => onChange({ MaxStack: numberOrText(next) })} />
+        <Field label="品质 Quality（-1 默认）" value={stringField(fruit.Quality ?? -1)} onChange={(next) => onChange({ Quality: numberOrText(next) })} />
+        <BoolField label="是否配方 IsRecipe" value={Boolean(fruit.IsRecipe)} onChange={(next) => onChange({ IsRecipe: next })} />
+      </div>
+    </div>
+  );
+}
+
+function RecipeEntryForm({ project, ruleset, itemCatalog, entry, recipeKind, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; recipeKind: "cooking" | "crafting"; onChange: (entry: GameDataEntry) => void }) {
+  const meta = recipeMetaFromEntry(entry, recipeKind);
+  const allOptions = itemSelectionOptions(project, ruleset, itemCatalog, "gift");
+  const productOptions = projectObjectOptions(project, itemCatalog, "raw");
+  const target = recipeKind === "cooking" ? "Data/CookingRecipes" : "Data/CraftingRecipes";
+  function updateMeta(patch: Partial<ReturnType<typeof recipeMetaFromEntry>>) {
+    const nextMeta = { ...meta, ...patch };
+    onChange({
+      ...entry,
+      target,
+      key: nextMeta.recipeName,
+      value: recipeString(nextMeta, recipeKind),
+      advanced: withItemModuleAdvanced(entry.advanced, recipeKind, { recipe: nextMeta })
+    });
+  }
+  return (
+    <div className="grid two item-form-grid">
+      <div className="notice compact-note wide-editor">
+        {recipeKind === "cooking"
+          ? "烹饪配方格式：ingredients / unused pair / yield / unlock / display name。"
+          : "制作配方格式：ingredients / Home 或 Field / yield / big craftable? / unlock / display name。"}
+      </div>
+      <Field label="配方 Key（通常是产物英文名）" value={meta.recipeName} onChange={(recipeName) => updateMeta({ recipeName })} />
+      <ItemSingleSelect label="产物 Yield" options={productOptions} value={meta.yieldItemId} onChange={(yieldItemId) => updateMeta({ yieldItemId })} />
+      <Field label="产物数量 Yield Count" value={String(meta.yieldCount)} onChange={(yieldCount) => updateMeta({ yieldCount: integerInRange(yieldCount, 1, 999, 1) })} />
+      {recipeKind === "cooking" ? (
+        <Field label="Unused pair（Wiki 标明未使用，但必须存在）" value={meta.unusedPair} onChange={(unusedPair) => updateMeta({ unusedPair })} />
+      ) : (
+        <>
+          <ComboField label="可制作位置（未使用字段）" value={meta.craftingLocation} options={CRAFTING_LOCATION_OPTIONS} onChange={(craftingLocation) => updateMeta({ craftingLocation: String(craftingLocation) })} />
+          <BoolField label="产物是 Big Craftable" value={meta.bigCraftable} onChange={(bigCraftable) => updateMeta({ bigCraftable })} />
+        </>
+      )}
+      <ComboField label="解锁条件类型" value={meta.unlockKind} options={RECIPE_UNLOCK_KIND_OPTIONS} onChange={(unlockKind) => updateMeta({ unlockKind: String(unlockKind) })} />
+      {meta.unlockKind === "friendship" && <Field label="NPC 与心数（例如 Emily 3）" value={`${meta.unlockNpc} ${meta.unlockLevel}`} onChange={(next) => { const parts = splitSpaceList(next); updateMeta({ unlockNpc: parts[0] || "", unlockLevel: integerInRange(parts[1] || "0", 0, 14, 0) }); }} />}
+      {meta.unlockKind === "skill" && (
+        <>
+          <ComboField label="技能 Skill" value={meta.unlockSkill} options={SKILL_OPTIONS} onChange={(unlockSkill) => updateMeta({ unlockSkill: String(unlockSkill) })} />
+          <Field label="等级 Level" value={String(meta.unlockLevel)} onChange={(unlockLevel) => updateMeta({ unlockLevel: integerInRange(unlockLevel, 0, 10, 0) })} />
+        </>
+      )}
+      {meta.unlockKind === "custom" && <Field label="自定义解锁条件" value={meta.unlockRaw} onChange={(unlockRaw) => updateMeta({ unlockRaw })} />}
+      <Field label="显示名 Display name（可选）" value={meta.displayName} onChange={(displayName) => updateMeta({ displayName })} />
+      <RecipeIngredientEditor label="构成物品 Ingredients" options={allOptions} value={meta.ingredients} onChange={(ingredients) => updateMeta({ ingredients })} />
+      <div className="field wide-editor"><span>最终配方字符串</span><code>{recipeString(meta, recipeKind)}</code></div>
+      <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
+      <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
+    </div>
+  );
+}
+
+function RecipeIngredientEditor({ label, options, value, onChange }: { label: string; options: ItemOption[]; value: RecipeIngredientRow[]; onChange: (value: RecipeIngredientRow[]) => void }) {
+  function updateRow(index: number, patch: Partial<RecipeIngredientRow>) {
+    onChange(replaceAt(value, index, { ...value[index], ...patch }));
+  }
+  return (
+    <div className="structured-editor wide-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>{label}</strong>
+          <span>Wiki 使用“物品 ID 数量”成对写入；负数类别也可选。</span>
+        </div>
+        <button type="button" className="secondary" onClick={() => onChange([...value, { id: makeId(), itemId: "388", count: 1 }])}><Icon name="plus" />添加材料</button>
+      </div>
+      {value.map((row, index) => (
+        <div className="recipe-row" key={row.id}>
+          <ItemSingleSelect label="物品 / 类别" options={options} value={row.itemId} onChange={(itemId) => updateRow(index, { itemId })} />
+          <Field label="数量" value={String(row.count)} onChange={(count) => updateRow(index, { count: integerInRange(count, 1, 999, 1) })} />
+          <button type="button" className="secondary" onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}>删除</button>
+        </div>
+      ))}
+      {!value.length && <div className="empty compact-empty">暂无材料。</div>}
+    </div>
+  );
+}
+
+function WorkspaceManager({ project, projectPath, openPath, exportPath, issues, pendingProjectOpen, setProjectPath, setOpenPath, setExportPath, updateProject, openProject, previewProjectFile, confirmPendingProjectOpen, cancelPendingProjectOpen, saveProject, validate, exportPack }: { project: Project; projectPath: string; openPath: string; exportPath: string; issues: ValidationIssue[]; pendingProjectOpen: PendingProjectOpen | null; setProjectPath: (value: string) => void; setOpenPath: (value: string) => void; setExportPath: (value: string) => void; updateProject: (project: Project) => void; openProject: () => void; previewProjectFile: (file: File) => void; confirmPendingProjectOpen: () => void; cancelPendingProjectOpen: () => void; saveProject: () => void; validate: () => void; exportPack: () => void }) {
+  function handleProjectFile(file: File | undefined) {
+    if (!file) return;
+    previewProjectFile(file);
+  }
+
   return (
     <div className="workspace-grid">
       <Section title="工程总览">
@@ -505,6 +1026,21 @@ function WorkspaceManager({ project, projectPath, openPath, exportPath, issues, 
             <button onClick={saveProject}><Icon name="save" />保存</button>
           </div>
         </div>
+        <div
+          className="project-drop-zone"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            handleProjectFile(event.dataTransfer.files?.[0]);
+          }}
+        >
+          <div>
+            <strong>拖入 .cpgen 工程文件</strong>
+            <span>或选择文件后先预览，再确认打开。</span>
+          </div>
+          <label className="file-button"><Icon name="upload" />选择工程文件<input type="file" accept=".cpgen,application/zip" onChange={(event) => handleProjectFile(event.currentTarget.files?.[0])} /></label>
+        </div>
+        {pendingProjectOpen && <ProjectOpenPreview pending={pendingProjectOpen} onConfirm={confirmPendingProjectOpen} onCancel={cancelPendingProjectOpen} />}
         <Stats project={project} issues={issues} />
       </Section>
       <Section title="校验与导出">
@@ -564,10 +1100,34 @@ function CollapsibleSubsection({ title, children, highlight = false, defaultOpen
 }
 
 function Field({ label, value, onChange, textarea = false }: { label: string; value: string; onChange: (value: string) => void; textarea?: boolean }) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(value);
+  }, [value, focused]);
+
+  function updateDraft(next: string) {
+    setDraft(next);
+    onChange(next);
+  }
+
+  function finishEditing() {
+    setFocused(false);
+    setDraft(value);
+  }
+
+  const inputProps = {
+    value: draft,
+    onFocus: () => setFocused(true),
+    onBlur: finishEditing,
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateDraft(event.target.value)
+  };
+
   return (
     <label className="field">
       <span>{label}</span>
-      {textarea ? <textarea value={value} onChange={(event) => onChange(event.target.value)} /> : <input value={value} onChange={(event) => onChange(event.target.value)} />}
+      {textarea ? <textarea {...inputProps} /> : <input {...inputProps} />}
     </label>
   );
 }
@@ -1382,7 +1942,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
 function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
   const [addPanelOpen, setAddPanelOpen] = useState(true);
-  const [drafts, setDrafts] = useState<{ id: string; kind: "custom" | "edit" | "warp" }[]>([{ id: makeId(), kind: "custom" }]);
+  const [drafts, setDrafts] = useState<MapDraft[]>([{ id: makeId(), kind: "custom", generated: [] }]);
   const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
 
   useEffect(() => {
@@ -1393,12 +1953,27 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
     return () => { cancelled = true; };
   }, []);
 
-  function addDraft(kind: "custom" | "edit" | "warp") {
-    setDrafts([...drafts, { id: makeId(), kind }]);
+  function addDraft(kind: MapDraftKind) {
+    setDrafts([...drafts, { id: makeId(), kind, generated: [] }]);
   }
 
   function removeDraft(id: string) {
+    const draft = drafts.find((item) => item.id === id);
     setDrafts(drafts.filter((draft) => draft.id !== id));
+    if (!draft) return;
+    const generatedRefs = draft.generated.length ? draft.generated : draft.kind === "custom" ? [
+      { target: "Data/Locations", key: "Custom_ExampleCave" },
+      { action: "Load" as const, target: "Maps/Custom_ExampleCave" }
+    ] : [];
+    setProject({
+      ...project,
+      game_data: project.game_data.filter((entry) => !isMapDraftOwned(entry.advanced, id) && !generatedRefs.some((ref) => mapRefMatchesEntry(ref, entry))),
+      patches: project.patches.filter((patch) => !isMapDraftOwned(patch.advanced, id) && !generatedRefs.some((ref) => mapRefMatchesPatch(ref, patch)))
+    });
+  }
+
+  function recordGenerated(id: string, refs: MapGeneratedRef[]) {
+    setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, generated: refs } : draft));
   }
 
   return (
@@ -1423,9 +1998,9 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
                 <strong>{index + 1}. {draft.kind === "custom" ? "自定义新地图" : draft.kind === "edit" ? "修改原有地图" : "添加传送点"}</strong>
                 <button type="button" className="secondary" onClick={() => removeDraft(draft.id)}>删除</button>
               </div>
-              {draft.kind === "custom" && <CustomMapDraftForm project={project} setProject={setProject} />}
-              {draft.kind === "edit" && <EditMapDraftForm project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} />}
-              {draft.kind === "warp" && <MapWarpDraftForm project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} />}
+              {draft.kind === "custom" && <CustomMapDraftForm draftId={draft.id} project={project} setProject={setProject} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
+              {draft.kind === "edit" && <EditMapDraftForm draftId={draft.id} project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
+              {draft.kind === "warp" && <MapWarpDraftForm draftId={draft.id} project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
             </article>
           ))}
           {!drafts.length && <div className="empty compact-empty">暂无地图操作。请从左侧添加。</div>}
@@ -1435,7 +2010,41 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
   );
 }
 
-function CustomMapDraftForm({ project, setProject }: { project: Project; setProject: (project: Project) => void }) {
+function isMapDraftOwned(advanced: JsonDict | undefined, draftId: string) {
+  const studio = isObject(advanced?.StardewCPStudio) ? advanced?.StardewCPStudio as JsonDict : {};
+  const mapDraft = isObject(studio.mapDraft) ? studio.mapDraft as JsonDict : {};
+  return mapDraft.draftId === draftId;
+}
+
+function mapDraftId(advanced: JsonDict | undefined) {
+  const studio = isObject(advanced?.StardewCPStudio) ? advanced?.StardewCPStudio as JsonDict : {};
+  const mapDraft = isObject(studio.mapDraft) ? studio.mapDraft as JsonDict : {};
+  return typeof mapDraft.draftId === "string" ? mapDraft.draftId : "";
+}
+
+function mapRefMatchesEntry(ref: MapGeneratedRef, entry: GameDataEntry) {
+  return ref.target === entry.target && (ref.key === undefined || ref.key === entry.key);
+}
+
+function mapRefMatchesPatch(ref: MapGeneratedRef, patch: Patch) {
+  return ref.action === patch.action && ref.target === patch.target && (ref.from_file === undefined || (ref.from_file ?? null) === (patch.from_file ?? null));
+}
+
+function withMapDraftAdvanced<T extends { advanced: JsonDict }>(item: T, draftId: string, kind: MapDraftKind): T {
+  const studio = isObject(item.advanced.StardewCPStudio) ? item.advanced.StardewCPStudio as JsonDict : {};
+  return {
+    ...item,
+    advanced: {
+      ...item.advanced,
+      StardewCPStudio: {
+        ...studio,
+        mapDraft: { draftId, kind }
+      }
+    }
+  };
+}
+
+function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { draftId: string; project: Project; setProject: (project: Project) => void; onGenerated: (refs: MapGeneratedRef[]) => void }) {
   const [mapKeyRaw, setMapKeyRaw] = useState("ExampleCave");
   const [displayName, setDisplayName] = useState("Example Cave");
   const [mapFile, setMapFile] = useState("");
@@ -1471,11 +2080,12 @@ function CustomMapDraftForm({ project, setProject }: { project: Project; setProj
         ...locationEntry.advanced,
         StardewCPStudio: {
           ...(isObject(locationEntry.advanced.StardewCPStudio) ? locationEntry.advanced.StardewCPStudio as JsonDict : {}),
-          map: { key: mapKey, previewFile: nextPreviewFile }
+          map: { key: mapKey, previewFile: nextPreviewFile },
+          mapDraft: { draftId, kind: "custom" }
         }
       }
     };
-    const loadPatch: Patch = {
+    const loadPatch: Patch = withMapDraftAdvanced({
       id: makeId(),
       name: `加载地图 ${mapKey}`,
       action: "Load",
@@ -1485,12 +2095,16 @@ function CustomMapDraftForm({ project, setProject }: { project: Project; setProj
       when: {},
       fields: {},
       advanced: {}
-    };
+    }, draftId, "custom");
     setProject({
       ...nextProject,
       game_data: mergeWorkflowEntries(nextProject.game_data, [locationEntryWithMeta]),
       patches: mergeWorkflowPatches(nextProject.patches, [loadPatch])
     });
+    onGenerated([
+      { target: "Data/Locations", key: mapKey },
+      { action: "Load", target: `Maps/${mapKey}`, from_file: nextMapFile }
+    ]);
     setStatus(`已生成 ${mapKey} 的 Data/Locations 与 Load Maps/${mapKey}。`);
   }
 
@@ -1519,7 +2133,7 @@ function CustomMapDraftForm({ project, setProject }: { project: Project; setProj
   );
 }
 
-function EditMapDraftForm({ project, ruleset, setProject, mapResources }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[] }) {
+function EditMapDraftForm({ draftId, project, ruleset, setProject, mapResources, onGenerated }: { draftId: string; project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[]; onGenerated: (refs: MapGeneratedRef[]) => void }) {
   const [sourceMapFile, setSourceMapFile] = useState("");
   const [sourcePreviewFile, setSourcePreviewFile] = useState("");
   const [editTarget, setEditTarget] = useState("Maps/Town");
@@ -1536,7 +2150,7 @@ function EditMapDraftForm({ project, ruleset, setProject, mapResources }: { proj
       setStatus("请先导入用于覆盖的 tmx/tbin 地图文件。");
       return;
     }
-    const patch: Patch = {
+    const patch: Patch = withMapDraftAdvanced({
       id: makeId(),
       name: `地图区域替换 ${editTarget}`,
       action: "EditMap",
@@ -1550,8 +2164,9 @@ function EditMapDraftForm({ project, ruleset, setProject, mapResources }: { proj
         PatchMode: patchMode
       },
       advanced: {}
-    };
+    }, draftId, "edit");
     setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    onGenerated([{ action: "EditMap", target: editTarget, from_file: sourceMapFile }]);
     setStatus(`已生成 EditMap 区域替换：${editTarget}`);
   }
 
@@ -1575,7 +2190,7 @@ function EditMapDraftForm({ project, ruleset, setProject, mapResources }: { proj
   );
 }
 
-function MapWarpDraftForm({ project, ruleset, setProject, mapResources }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[] }) {
+function MapWarpDraftForm({ draftId, project, ruleset, setProject, mapResources, onGenerated }: { draftId: string; project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[]; onGenerated: (refs: MapGeneratedRef[]) => void }) {
   const [warpSourceMap, setWarpSourceMap] = useState("Maps/Town");
   const [warpTargetMap, setWarpTargetMap] = useState("Maps/Farm");
   const [warpFrom, setWarpFrom] = useState<MapPoint>({ X: 0, Y: 0 });
@@ -1588,7 +2203,7 @@ function MapWarpDraftForm({ project, ruleset, setProject, mapResources }: { proj
 
   function addWarpPatch() {
     const warp = `${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`;
-    const patch: Patch = {
+    const patch: Patch = withMapDraftAdvanced({
       id: makeId(),
       name: `${warpKind === "AddNpcWarps" ? "NPC" : "玩家"}传送 ${warpSourceMap}`,
       action: "EditMap",
@@ -1598,8 +2213,9 @@ function MapWarpDraftForm({ project, ruleset, setProject, mapResources }: { proj
       when: {},
       fields: { [warpKind]: [warp] },
       advanced: {}
-    };
+    }, draftId, "warp");
     setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
+    onGenerated([{ action: "EditMap", target: warpSourceMap, from_file: null }]);
     setStatus(`已生成 ${warpKind}: ${warp}`);
   }
 
@@ -2490,17 +3106,26 @@ function scheduleLocationOptions(project: Project, maps: MapResourceEntry[]): Ru
 }
 
 function MapPreviewPicker({ title, image, selected, onPick }: { title: string; image: MapPreviewImage | null; selected: MapPoint; onPick: (point: MapPoint) => void }) {
+  const [locked, setLocked] = useState(true);
   if (!image) return <div className="notice compact-note">{title}：请先导入预览图，之后可点击图片选择 16x16 tile 坐标。</div>;
   const imageUrl = "id" in image ? `/api/assets/${image.id}` : image.url;
   const imageLabel = "stored_path" in image ? image.stored_path : image.label;
   return (
     <div className="map-visual-picker">
-      <div className="schedule-map-meta">{title}：当前 {selected.X} {selected.Y}；{imageLabel}</div>
+      <div className="map-picker-head">
+        <div className="schedule-map-meta">{title}：当前 {selected.X} {selected.Y}；{imageLabel}</div>
+        <button type="button" className={`secondary compact-toggle ${locked ? "" : "active"}`} onClick={() => setLocked(!locked)}>
+          {locked ? "解锁取点" : "锁定取点"}
+        </button>
+      </div>
+      {locked && <div className="notice compact-note">已锁定，点击地图不会修改坐标。</div>}
       <div className="schedule-map-scroll">
         <img
+          className={locked ? "map-pick-locked" : "map-pick-unlocked"}
           src={imageUrl}
           alt={title}
           onClick={(event) => {
+            if (locked) return;
             const rect = event.currentTarget.getBoundingClientRect();
             const naturalWidth = event.currentTarget.naturalWidth || rect.width;
             const naturalHeight = event.currentTarget.naturalHeight || rect.height;
@@ -3373,6 +3998,38 @@ function ItemMultiSelect({ label, options, value, onChange, placeholder }: { lab
         {!selected.length && <small>暂无选择。</small>}
       </div>
     </div>
+  );
+}
+
+function ItemSingleSelect({ label, options, value, onChange }: { label: string; options: ItemOption[]; value: string; onChange: (value: string) => void }) {
+  const matched = options.some((option) => String(option.value) === value);
+  const [custom, setCustom] = useState(!matched && value !== "");
+  useEffect(() => {
+    setCustom(!options.some((option) => String(option.value) === value) && value !== "");
+  }, [value, options]);
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <div className="combo-field">
+        <select value={custom ? "__custom__" : value} onChange={(event) => {
+          if (event.target.value === "__custom__") {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          onChange(event.target.value);
+        }}>
+          <option value="">选择一个物品...</option>
+          {groupedItemOptions(options).map((group) => (
+            <optgroup label={group.label} key={group.key}>
+              {group.options.map((option) => <option key={`${option.source || "option"}-${option.value}`} value={String(option.value)}>{option.label}</option>)}
+            </optgroup>
+          ))}
+          <option value="__custom__">自定义...</option>
+        </select>
+        {custom && <input value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入自定义物品 ID" />}
+      </div>
+    </label>
   );
 }
 
@@ -5897,8 +6554,26 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return response.json();
 }
 
+function errorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  try {
+    const parsed = JSON.parse(message);
+    return typeof parsed.detail === "string" ? parsed.detail : message;
+  } catch {
+    return message;
+  }
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+async function openUploadedProject(file: File): Promise<Project> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/projects/open-upload", { method: "POST", body: form });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -6072,6 +6747,54 @@ const MOVIE_RESPONSE_POINTS = [
   { key: "BeforeMovie", label: "观影前 BeforeMovie" },
   { key: "DuringMovie", label: "观影中 DuringMovie" },
   { key: "AfterMovie", label: "观影后 AfterMovie" }
+];
+
+const OBJECT_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "基础物品 Basic", value: "Basic" },
+  { label: "鱼 Fish", value: "Fish" },
+  { label: "种子 Seeds", value: "Seeds" },
+  { label: "烹饪 Cooking", value: "Cooking" },
+  { label: "制作材料 Crafting", value: "Crafting" },
+  { label: "矿物 Minerals", value: "Minerals" },
+  { label: "戒指 Ring", value: "Ring" },
+  { label: "鞋 Boots", value: "Boots" },
+  { label: "武器 Weapon", value: "Weapon" },
+  { label: "饰品 Trinket", value: "Trinket" }
+];
+
+const SEASON_LONG_OPTIONS: RulesetOption[] = [
+  { label: "春 Spring", value: "Spring" },
+  { label: "夏 Summer", value: "Summer" },
+  { label: "秋 Fall", value: "Fall" },
+  { label: "冬 Winter", value: "Winter" }
+];
+
+const CROP_HARVEST_METHOD_OPTIONS: RulesetOption[] = [
+  { label: "直接采摘 Grab", value: "Grab" },
+  { label: "镰刀 Scythe", value: "Scythe" },
+  { label: "巨大作物 GiantCrop", value: "GiantCrop" }
+];
+
+const CRAFTING_LOCATION_OPTIONS: RulesetOption[] = [
+  { label: "家中 Home", value: "Home" },
+  { label: "户外 Field", value: "Field" }
+];
+
+const RECIPE_UNLOCK_KIND_OPTIONS: RulesetOption[] = [
+  { label: "默认掌握 default", value: "default" },
+  { label: "不自动解锁 none", value: "none" },
+  { label: "NPC 好感 f <NPC> <hearts>", value: "friendship" },
+  { label: "技能等级 s <skill> <level>", value: "skill" },
+  { label: "自定义", value: "custom" }
+];
+
+const SKILL_OPTIONS: RulesetOption[] = [
+  { label: "耕种 Farming", value: "Farming" },
+  { label: "采矿 Mining", value: "Mining" },
+  { label: "钓鱼 Fishing", value: "Fishing" },
+  { label: "采集 Foraging", value: "Foraging" },
+  { label: "战斗 Combat", value: "Combat" },
+  { label: "幸运 Luck", value: "Luck" }
 ];
 
 const STORY_NODE_OPTIONS: RulesetOption[] = [
@@ -6692,7 +7415,12 @@ function mergedEntryId(project: Project, nextEntry: GameDataEntry) {
 function mergeWorkflowPatches(existing: Patch[], nextPatches: Patch[]) {
   let merged = [...existing];
   for (const next of nextPatches) {
-    const index = merged.findIndex((patch) => patch.action === next.action && patch.target === next.target && patch.from_file === next.from_file);
+    const nextDraftId = mapDraftId(next.advanced);
+    const index = merged.findIndex((patch) => {
+      const patchDraftId = mapDraftId(patch.advanced);
+      if (nextDraftId || patchDraftId) return nextDraftId !== "" && nextDraftId === patchDraftId;
+      return patch.action === next.action && patch.target === next.target && patch.from_file === next.from_file;
+    });
     merged = index >= 0 ? replaceAt(merged, index, { ...next, id: merged[index].id, enabled: merged[index].enabled }) : [...merged, next];
   }
   return merged;
@@ -6886,6 +7614,330 @@ function numberOrText(value: string) {
 
 function compactObject(value: JsonDict) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function normalizeItemId(value: string) {
+  return value.trim().replace(/\s+/g, "_") || "ExampleObject";
+}
+
+function modScopedId(project: Project, suffix: string) {
+  const prefix = sanitizeI18nPart(project.manifest.UniqueID || "Custom");
+  const cleanSuffix = normalizeItemId(suffix).replace(/^[.]+/, "");
+  return `${prefix}.${cleanSuffix}`;
+}
+
+function itemModuleKind(entry: GameDataEntry): ItemModuleKind {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const itemModule = isObject(studio.itemModule) ? studio.itemModule as JsonDict : {};
+  if (itemModule.kind === "crop" || itemModule.kind === "fruitTree" || itemModule.kind === "cooking" || itemModule.kind === "crafting") return itemModule.kind;
+  if (entry.target === "Data/Crops") return "crop";
+  if (entry.target === "Data/FruitTrees") return "fruitTree";
+  if (entry.target === "Data/CookingRecipes") return "cooking";
+  if (entry.target === "Data/CraftingRecipes") return "crafting";
+  return "object";
+}
+
+function isItemStudioEntry(entry: GameDataEntry) {
+  const target = entry.target || "";
+  return entry.kind === "item" || target === "Data/Objects" || target === "Data/Crops" || target === "Data/FruitTrees" || target === "Data/CookingRecipes" || target === "Data/CraftingRecipes";
+}
+
+function withItemModuleAdvanced(advanced: JsonDict = {}, kind: ItemModuleKind, extra: JsonDict = {}) {
+  const studio = isObject(advanced.StardewCPStudio) ? advanced.StardewCPStudio as JsonDict : {};
+  const existing = isObject(studio.itemModule) ? studio.itemModule as JsonDict : {};
+  return {
+    ...advanced,
+    StardewCPStudio: {
+      ...studio,
+      itemModule: {
+        ...existing,
+        kind,
+        ...extra
+      }
+    }
+  };
+}
+
+function withItemModuleMetadata<T extends { advanced: JsonDict }>(item: T, kind: ItemModuleKind): T {
+  return { ...item, advanced: withItemModuleAdvanced(item.advanced, kind) };
+}
+
+function defaultItemStudioEntry(project: Project, kind: ItemModuleKind): GameDataEntry {
+  const objectId = modScopedId(project, "ExampleObject");
+  const seedId = modScopedId(project, "ExampleSeeds");
+  const cropId = modScopedId(project, "ExampleCrop");
+  const fruitTreeSaplingId = modScopedId(project, "ExampleFruitTreeSapling");
+  if (kind === "crop") {
+    return {
+      id: makeId(),
+      kind: "item",
+      name: "作物条目",
+      target: "Data/Crops",
+      key: seedId,
+      value: {
+        Seasons: ["Spring"],
+        DaysInPhase: [1, 2, 2, 2],
+        RegrowDays: -1,
+        HarvestItemId: cropId,
+        HarvestMinStack: 1,
+        HarvestMaxStack: 1,
+        ExtraHarvestChance: 0,
+        Texture: "TileSheets/crops",
+        SpriteIndex: 0,
+        HarvestMethod: "Grab",
+        NeedsWatering: true,
+        TrellisCrop: false,
+        PaddyCrop: false,
+        RaisedSeeds: false
+      },
+      when: {},
+      advanced: withItemModuleAdvanced({}, "crop"),
+      editMode: "form"
+    };
+  }
+  if (kind === "fruitTree") {
+    return {
+      id: makeId(),
+      kind: "item",
+      name: "果树条目",
+      target: "Data/FruitTrees",
+      key: fruitTreeSaplingId,
+      value: {
+        PlantableLocationRules: null,
+        DisplayName: i18nRef(itemI18nKey(project, "FruitTree", fruitTreeSaplingId, "Name")),
+        Seasons: ["Spring"],
+        Fruit: [normalizeFruitTreeFruit({ Id: "Default", ItemId: "(O)638" })],
+        Texture: "TileSheets\\fruitTrees",
+        TextureSpriteRow: 0,
+        CustomFields: null
+      },
+      when: {},
+      advanced: withItemModuleAdvanced({}, "fruitTree"),
+      editMode: "form"
+    };
+  }
+  if (kind === "cooking" || kind === "crafting") {
+    const meta = defaultRecipeMeta(kind);
+    return {
+      id: makeId(),
+      kind: "item",
+      name: kind === "cooking" ? "烹饪配方条目" : "制作配方条目",
+      target: kind === "cooking" ? "Data/CookingRecipes" : "Data/CraftingRecipes",
+      key: meta.recipeName,
+      value: recipeString(meta, kind),
+      when: {},
+      advanced: withItemModuleAdvanced({}, kind, { recipe: meta }),
+      editMode: "form"
+    };
+  }
+  return {
+    id: makeId(),
+    kind: "item",
+    name: "一般物品条目",
+    target: "Data/Objects",
+    key: objectId,
+    value: {
+      Name: objectId,
+      DisplayName: i18nRef(itemI18nKey(project, "Object", objectId, "Name")),
+      Description: i18nRef(itemI18nKey(project, "Object", objectId, "Description")),
+      Type: "Basic",
+      Category: -2,
+      Price: 100,
+      Edibility: -300,
+      IsDrink: false,
+      Texture: "",
+      SpriteIndex: 0,
+      ContextTags: []
+    },
+    when: {},
+    advanced: withItemModuleAdvanced({}, "object"),
+    editMode: "form"
+  };
+}
+
+function itemTextureTarget(project: Project, objectId: string) {
+  return `Mods/${project.manifest.UniqueID || "Author.Mod"}/Objects/${objectId}`;
+}
+
+function fruitTreeTextureTarget(project: Project, saplingId: string) {
+  return `Mods/${project.manifest.UniqueID || "Author.Mod"}/FruitTrees/${saplingId}`;
+}
+
+function itemI18nKey(project: Project, namespace: "Object" | "FruitTree", itemId: string, field: "Name" | "Description") {
+  return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.${namespace}.${sanitizeI18nPart(itemId)}.${field}`;
+}
+
+function i18nKeyFromRef(value: unknown) {
+  const match = stringField(value).match(/^\{\{i18n:([^}]+)\}\}$/);
+  return match?.[1] || "";
+}
+
+function localizedText(project: Project, value: unknown, fallback = "") {
+  const key = i18nKeyFromRef(value);
+  if (key) return project.i18n[key] ?? "";
+  return stringField(value || fallback);
+}
+
+function defaultItemStudioI18n(project: Project, entry: GameDataEntry, kind: ItemModuleKind) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const i18n: Record<string, string> = {};
+  if (kind === "object") {
+    const nameKey = i18nKeyFromRef(value.DisplayName) || itemI18nKey(project, "Object", entry.key, "Name");
+    const descriptionKey = i18nKeyFromRef(value.Description) || itemI18nKey(project, "Object", entry.key, "Description");
+    i18n[nameKey] = localizedText(project, value.DisplayName, "示例物品");
+    i18n[descriptionKey] = localizedText(project, value.Description, "这是一个新物品。");
+  }
+  if (kind === "fruitTree") {
+    const nameKey = i18nKeyFromRef(value.DisplayName) || itemI18nKey(project, "FruitTree", entry.key, "Name");
+    i18n[nameKey] = localizedText(project, value.DisplayName, "示例果树");
+  }
+  return i18n;
+}
+
+function normalizeFruitTreeFruit(value: JsonDict): JsonDict {
+  const randomItems = arrayOfStrings(value.RandomItemId);
+  const hasRandom = randomItems.length > 0;
+  const itemId = hasRandom ? null : setNullableText(stringField(value.ItemId ?? "(O)638"));
+  const merged = {
+    Season: null,
+    Chance: 1,
+    ...createWinterStarGift(stringField(value.Id || "Default"), itemId, hasRandom ? randomItems : null),
+    MinStack: -1,
+    MaxStack: -1,
+    ...value
+  };
+  return {
+    ...merged,
+    Season: merged.Season === undefined || merged.Season === "" ? null : merged.Season,
+    Chance: Number(merged.Chance ?? 1),
+    ItemId: itemId,
+    RandomItemId: hasRandom ? randomItems : null,
+    Condition: merged.Condition === undefined ? null : merged.Condition,
+    MaxItems: merged.MaxItems === undefined ? null : merged.MaxItems,
+    MinStack: merged.MinStack === undefined ? -1 : merged.MinStack,
+    MaxStack: merged.MaxStack === undefined ? -1 : merged.MaxStack,
+    Quality: merged.Quality === undefined ? -1 : merged.Quality,
+    ObjectInternalName: merged.ObjectInternalName === undefined ? null : merged.ObjectInternalName,
+    ObjectDisplayName: merged.ObjectDisplayName === undefined ? null : merged.ObjectDisplayName,
+    ToolUpgradeLevel: merged.ToolUpgradeLevel === undefined ? -1 : merged.ToolUpgradeLevel,
+    IsRecipe: Boolean(merged.IsRecipe),
+    StackModifiers: merged.StackModifiers === undefined ? null : merged.StackModifiers,
+    StackModifierMode: merged.StackModifierMode || "Stack",
+    QualityModifiers: merged.QualityModifiers === undefined ? null : merged.QualityModifiers,
+    QualityModifierMode: merged.QualityModifierMode || "Stack",
+    ModData: merged.ModData === undefined ? null : merged.ModData,
+    PerItemCondition: merged.PerItemCondition === undefined ? null : merged.PerItemCondition
+  };
+}
+
+function pickObjectFields(value: JsonDict, keys: string[]) {
+  return Object.fromEntries(keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]));
+}
+
+function publicAdvancedValue(value: JsonDict, knownKeys: string[]) {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !knownKeys.includes(key)));
+}
+
+function defaultRecipeMeta(kind: "cooking" | "crafting") {
+  return {
+    recipeName: kind === "cooking" ? "Example Meal" : "Example Craft",
+    ingredients: [{ id: makeId(), itemId: "388", count: 1 }] as RecipeIngredientRow[],
+    unusedPair: "1 1",
+    craftingLocation: "Home",
+    yieldItemId: "388",
+    yieldCount: 1,
+    bigCraftable: false,
+    unlockKind: "default",
+    unlockNpc: "Emily",
+    unlockSkill: "Farming",
+    unlockLevel: 1,
+    unlockRaw: "default",
+    displayName: ""
+  };
+}
+
+function recipeMetaFromEntry(entry: GameDataEntry, kind: "cooking" | "crafting") {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const module = isObject(studio.itemModule) ? studio.itemModule as JsonDict : {};
+  if (isObject(module.recipe)) return normalizeRecipeMeta(module.recipe as JsonDict, entry, kind);
+  return parseRecipeString(entry, kind);
+}
+
+function normalizeRecipeMeta(value: JsonDict, entry: GameDataEntry, kind: "cooking" | "crafting") {
+  const fallback = defaultRecipeMeta(kind);
+  return {
+    ...fallback,
+    ...value,
+    recipeName: stringField(value.recipeName || entry.key || fallback.recipeName),
+    ingredients: Array.isArray(value.ingredients) ? value.ingredients.filter(isObject).map((row) => ({
+      id: stringField(row.id || makeId()),
+      itemId: stringField(row.itemId || "388"),
+      count: Number(row.count) || 1
+    })) : fallback.ingredients,
+    yieldCount: Number(value.yieldCount) || 1,
+    unlockLevel: Number(value.unlockLevel) || 0,
+    bigCraftable: Boolean(value.bigCraftable)
+  };
+}
+
+function parseRecipeString(entry: GameDataEntry, kind: "cooking" | "crafting") {
+  const fallback = defaultRecipeMeta(kind);
+  if (typeof entry.value !== "string") return { ...fallback, recipeName: entry.key || fallback.recipeName };
+  const parts = entry.value.split("/");
+  const ingredients = parseIngredientPairs(parts[0]);
+  if (kind === "cooking") {
+    return recipeMetaWithUnlock({
+      ...fallback,
+      recipeName: entry.key || fallback.recipeName,
+      ingredients,
+      unusedPair: parts[1] || fallback.unusedPair,
+      yieldItemId: splitSpaceList(parts[2] || "")[0] || fallback.yieldItemId,
+      yieldCount: integerInRange(splitSpaceList(parts[2] || "")[1] || "1", 1, 999, 1),
+      displayName: parts[4] || ""
+    }, parts[3] || "none");
+  }
+  return recipeMetaWithUnlock({
+    ...fallback,
+    recipeName: entry.key || fallback.recipeName,
+    ingredients,
+    craftingLocation: parts[1] || "Home",
+    yieldItemId: splitSpaceList(parts[2] || "")[0] || fallback.yieldItemId,
+    yieldCount: integerInRange(splitSpaceList(parts[2] || "")[1] || "1", 1, 999, 1),
+    bigCraftable: parts[3] === "true",
+    displayName: parts[5] || ""
+  }, parts[4] || "none");
+}
+
+function parseIngredientPairs(value: string): RecipeIngredientRow[] {
+  const parts = splitSpaceList(value);
+  const rows: RecipeIngredientRow[] = [];
+  for (let index = 0; index < parts.length; index += 2) {
+    rows.push({ id: makeId(), itemId: parts[index] || "388", count: integerInRange(parts[index + 1] || "1", 1, 999, 1) });
+  }
+  return rows.length ? rows : [{ id: makeId(), itemId: "388", count: 1 }];
+}
+
+function recipeMetaWithUnlock<T extends ReturnType<typeof defaultRecipeMeta>>(meta: T, unlock: string): T {
+  const parts = splitSpaceList(unlock);
+  if (unlock === "default" || unlock === "none") return { ...meta, unlockKind: unlock, unlockRaw: unlock };
+  if (parts[0] === "f") return { ...meta, unlockKind: "friendship", unlockNpc: parts[1] || "", unlockLevel: integerInRange(parts[2] || "0", 0, 14, 0), unlockRaw: unlock };
+  if (parts[0] === "s") return { ...meta, unlockKind: "skill", unlockSkill: parts[1] || "Farming", unlockLevel: integerInRange(parts[2] || "0", 0, 10, 0), unlockRaw: unlock };
+  return { ...meta, unlockKind: "custom", unlockRaw: unlock };
+}
+
+function recipeUnlockString(meta: ReturnType<typeof defaultRecipeMeta>) {
+  if (meta.unlockKind === "default" || meta.unlockKind === "none") return meta.unlockKind;
+  if (meta.unlockKind === "friendship") return `f ${meta.unlockNpc || "Emily"} ${meta.unlockLevel}`;
+  if (meta.unlockKind === "skill") return `s ${meta.unlockSkill || "Farming"} ${meta.unlockLevel}`;
+  return meta.unlockRaw || "none";
+}
+
+function recipeString(meta: ReturnType<typeof defaultRecipeMeta>, kind: "cooking" | "crafting") {
+  const ingredients = meta.ingredients.map((row) => `${row.itemId} ${row.count}`).join(" ");
+  const yieldPart = `${meta.yieldItemId}${meta.yieldCount === 1 ? "" : ` ${meta.yieldCount}`}`;
+  const unlock = recipeUnlockString(meta);
+  if (kind === "cooking") return `${ingredients}/${meta.unusedPair || "1 1"}/${yieldPart}/${unlock}/${meta.displayName || ""}`;
+  return `${ingredients}/${meta.craftingLocation || "Home"}/${yieldPart}/${meta.bigCraftable ? "true" : "false"}/${unlock}/${meta.displayName || ""}`;
 }
 
 function defaultStoryEventMeta(project: Project): StoryEventMeta {
@@ -7355,7 +8407,7 @@ function itemSelectionOptions(project: Project, ruleset: Ruleset, catalog: ItemC
   for (const entry of project.game_data) {
     if (entry.target !== "Data/Objects" || !entry.key) continue;
     const objectValue = isObject(entry.value) ? entry.value : {};
-    const displayName = stringField(objectValue.DisplayName || objectValue.Name || entry.name || entry.key);
+    const displayName = localizedText(project, objectValue.DisplayName, stringField(objectValue.Name || entry.name || entry.key));
     const itemId = mode === "qualified" && !entry.key.startsWith("(") ? `(O)${entry.key}` : entry.key;
     add(itemId, `${itemId} - ${displayName}（项目）`, "project");
   }
@@ -7366,6 +8418,29 @@ function itemSelectionOptions(project: Project, ruleset: Ruleset, catalog: ItemC
     }
   }
 
+  return options;
+}
+
+function projectObjectOptions(project: Project, catalog: ItemCatalogResponse, mode: "raw" | "qualified" = "raw"): ItemOption[] {
+  const options: ItemOption[] = [];
+  const seen = new Set<string>();
+  const add = (value: string, label: string, source: string) => {
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    options.push({ label, value, source });
+  };
+  for (const item of catalog.items) {
+    const value = mode === "qualified" ? item.qualified_id : item.id;
+    const labelName = item.display_name || item.name || value;
+    add(value, `${labelName} ${value}`, "vanilla");
+  }
+  for (const entry of project.game_data) {
+    if (entry.target !== "Data/Objects" || !entry.key) continue;
+    const value = isObject(entry.value) ? entry.value : {};
+    const displayName = localizedText(project, value.DisplayName, stringField(value.Name || entry.key));
+    const itemId = mode === "qualified" && !entry.key.startsWith("(") ? `(O)${entry.key}` : entry.key;
+    add(itemId, `${displayName} ${itemId}（项目）`, "project");
+  }
   return options;
 }
 
