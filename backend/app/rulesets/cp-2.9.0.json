@@ -94,6 +94,18 @@
       "description": "Event script entries."
     },
     {
+      "kind": "mail",
+      "label": "Mail",
+      "defaultTarget": "Data/Mail",
+      "description": "Mail letters and trigger-action driven mail content."
+    },
+    {
+      "kind": "trigger_action",
+      "label": "Trigger Action",
+      "defaultTarget": "Data/TriggerActions",
+      "description": "Reusable trigger actions for mail, dialogue, and events."
+    },
+    {
       "kind": "custom",
       "label": "Custom",
       "defaultTarget": "Data/Objects",

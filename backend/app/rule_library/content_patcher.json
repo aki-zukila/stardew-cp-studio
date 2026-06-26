@@ -7,8 +7,16 @@
       "action": "Load",
       "label": "Load 加载素材",
       "description": "Replace a target asset with a file from the content pack.",
-      "required_fields": ["Action", "Target", "FromFile"],
-      "optional_fields": ["When", "LogName", "Priority"],
+      "required_fields": [
+        "Action",
+        "Target",
+        "FromFile"
+      ],
+      "optional_fields": [
+        "When",
+        "LogName",
+        "Priority"
+      ],
       "field_hints": {
         "Target": "Game asset name to replace.",
         "FromFile": "File path inside the content pack, usually under assets/."
@@ -18,8 +26,19 @@
       "action": "EditData",
       "label": "EditData 编辑数据",
       "description": "Change data assets with Entries, Fields, MoveEntries, or TextOperations.",
-      "required_fields": ["Action", "Target"],
-      "optional_fields": ["Entries", "Fields", "MoveEntries", "TextOperations", "When", "LogName", "Priority"],
+      "required_fields": [
+        "Action",
+        "Target"
+      ],
+      "optional_fields": [
+        "Entries",
+        "Fields",
+        "MoveEntries",
+        "TextOperations",
+        "When",
+        "LogName",
+        "Priority"
+      ],
       "field_hints": {
         "Entries": "Add or replace entries by key.",
         "Fields": "Patch fields within existing entries.",
@@ -30,8 +49,19 @@
       "action": "EditImage",
       "label": "EditImage 编辑图片",
       "description": "Patch an image asset from a source image file.",
-      "required_fields": ["Action", "Target", "FromFile"],
-      "optional_fields": ["FromArea", "ToArea", "PatchMode", "When", "LogName", "Priority"],
+      "required_fields": [
+        "Action",
+        "Target",
+        "FromFile"
+      ],
+      "optional_fields": [
+        "FromArea",
+        "ToArea",
+        "PatchMode",
+        "When",
+        "LogName",
+        "Priority"
+      ],
       "field_hints": {
         "PatchMode": "Overlay by default; Replace should be used when overwriting a full area."
       }
@@ -40,41 +70,396 @@
       "action": "EditMap",
       "label": "EditMap 编辑地图",
       "description": "Patch a map asset with a map file or map operations.",
-      "required_fields": ["Action", "Target"],
-      "optional_fields": ["FromFile", "FromArea", "ToArea", "MapTiles", "When", "LogName", "Priority"]
+      "required_fields": [
+        "Action",
+        "Target"
+      ],
+      "optional_fields": [
+        "FromFile",
+        "FromArea",
+        "ToArea",
+        "MapTiles",
+        "When",
+        "LogName",
+        "Priority"
+      ]
     },
     {
       "action": "Include",
       "label": "Include 引入补丁",
       "description": "Include patches from another content file.",
-      "required_fields": ["Action", "FromFile"],
-      "optional_fields": ["When", "LogName"]
+      "required_fields": [
+        "Action",
+        "FromFile"
+      ],
+      "optional_fields": [
+        "When",
+        "LogName"
+      ]
     }
   ],
   "tokens": [
-    {"name": "ModId", "kind": "global", "description": "The current content pack unique ID."},
-    {"name": "Season", "kind": "global", "description": "Current season."},
-    {"name": "Day", "kind": "global", "description": "Current day of month."},
-    {"name": "DayOfWeek", "kind": "global", "description": "Current weekday."},
-    {"name": "Weather", "kind": "global", "description": "Current weather."},
-    {"name": "PlayerName", "kind": "global", "description": "Current player name."},
-    {"name": "HasMod", "kind": "condition", "description": "Whether a mod with the given unique ID is installed."},
-    {"name": "Relationship", "kind": "condition", "description": "Relationship conditions for an NPC."},
-    {"name": "i18n", "kind": "translation", "description": "Translation token, usually {{i18n:key}} or with arguments."},
-    {"name": "Target", "kind": "patch", "description": "Patch target token available in some patch contexts."},
-    {"name": "FromFile", "kind": "patch", "description": "Patch source file token available in some patch contexts."}
+    {
+      "name": "ModId",
+      "kind": "global",
+      "description": "The current content pack unique ID."
+    },
+    {
+      "name": "Season",
+      "kind": "global",
+      "description": "Current season."
+    },
+    {
+      "name": "Day",
+      "kind": "global",
+      "description": "Current day of month."
+    },
+    {
+      "name": "DayOfWeek",
+      "kind": "global",
+      "description": "Current weekday."
+    },
+    {
+      "name": "Weather",
+      "kind": "global",
+      "description": "Current weather."
+    },
+    {
+      "name": "PlayerName",
+      "kind": "global",
+      "description": "Current player name."
+    },
+    {
+      "name": "HasMod",
+      "kind": "condition",
+      "description": "Whether a mod with the given unique ID is installed."
+    },
+    {
+      "name": "Relationship",
+      "kind": "condition",
+      "description": "Relationship conditions for an NPC."
+    },
+    {
+      "name": "i18n",
+      "kind": "translation",
+      "description": "Translation token, usually {{i18n:key}} or with arguments."
+    },
+    {
+      "name": "Target",
+      "kind": "patch",
+      "description": "Patch target token available in some patch contexts."
+    },
+    {
+      "name": "FromFile",
+      "kind": "patch",
+      "description": "Patch source file token available in some patch contexts."
+    }
   ],
   "when_conditions": [
-    {"key": "Season", "label": "季节 Season", "valueType": "select", "options": "seasons", "allowCustom": true},
-    {"key": "Day", "label": "日期 Day", "valueType": "number", "allowCustom": true},
-    {"key": "DayOfWeek", "label": "星期 DayOfWeek", "valueType": "select", "options": "days_of_week", "allowCustom": true},
-    {"key": "Weather", "label": "天气 Weather", "valueType": "select", "options": "weather", "allowCustom": true},
-    {"key": "PlayerGender", "label": "玩家性别 PlayerGender", "valueType": "select", "options": "genders", "allowCustom": true},
-    {"key": "PreferredPet", "label": "偏好宠物 PreferredPet", "valueType": "select", "options": "pet_types", "allowCustom": true},
-    {"key": "FarmType", "label": "农场类型 FarmType", "valueType": "select", "options": "farm_types", "allowCustom": true},
-    {"key": "FarmCave", "label": "农场洞穴 FarmCave", "valueType": "select", "options": "farm_caves", "allowCustom": true},
-    {"key": "HasMod", "label": "已安装模组 HasMod", "valueType": "text", "allowCustom": true},
-    {"key": "Relationship", "label": "NPC 关系 Relationship:NPC", "valueType": "relationship", "allowCustom": true}
+    {
+      "key": "Season",
+      "label": "季节 Season",
+      "valueType": "select",
+      "options": "cp_seasons",
+      "allowCustom": true
+    },
+    {
+      "key": "Day",
+      "label": "日期 Day",
+      "valueType": "number",
+      "allowCustom": true
+    },
+    {
+      "key": "DayEvent",
+      "label": "当天节日/婚礼 DayEvent",
+      "valueType": "select",
+      "options": "day_events",
+      "allowCustom": true
+    },
+    {
+      "key": "DayOfWeek",
+      "label": "星期 DayOfWeek",
+      "valueType": "select",
+      "options": "cp_days_of_week",
+      "allowCustom": true
+    },
+    {
+      "key": "DaysPlayed",
+      "label": "游戏总天数 DaysPlayed",
+      "valueType": "number",
+      "allowCustom": true
+    },
+    {
+      "key": "Time",
+      "label": "时间 Time",
+      "valueType": "number",
+      "allowCustom": true
+    },
+    {
+      "key": "Weather",
+      "label": "天气 Weather",
+      "valueType": "select",
+      "options": "weather",
+      "allowCustom": true
+    },
+    {
+      "key": "Year",
+      "label": "年份 Year",
+      "valueType": "number",
+      "allowCustom": true
+    },
+    {
+      "key": "DailyLuck",
+      "label": "每日运气 DailyLuck",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "FarmhouseUpgrade",
+      "label": "农舍等级 FarmhouseUpgrade",
+      "valueType": "number",
+      "allowCustom": true
+    },
+    {
+      "key": "HasActiveQuest",
+      "label": "有进行中任务 HasActiveQuest",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasCaughtFish",
+      "label": "钓到过鱼 HasCaughtFish",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasConversationTopic",
+      "label": "有对话话题 HasConversationTopic",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasCookingRecipe",
+      "label": "已学烹饪配方 HasCookingRecipe",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasCraftingRecipe",
+      "label": "已学制作配方 HasCraftingRecipe",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasDialogueAnswer",
+      "label": "选过问题答案 HasDialogueAnswer",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasFlag",
+      "label": "已有标记/信件 HasFlag",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasProfession",
+      "label": "职业 HasProfession",
+      "valueType": "select",
+      "options": "professions",
+      "allowCustom": true
+    },
+    {
+      "key": "HasReadLetter",
+      "label": "读过信件 HasReadLetter",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasSeenEvent",
+      "label": "看过事件 HasSeenEvent",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasVisitedLocation",
+      "label": "到访地点 HasVisitedLocation",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasWalletItem",
+      "label": "钱包物品 HasWalletItem",
+      "valueType": "select",
+      "options": "wallet_items",
+      "allowCustom": true
+    },
+    {
+      "key": "IsMainPlayer",
+      "label": "是否房主 IsMainPlayer",
+      "valueType": "select",
+      "options": "boolean_values",
+      "allowCustom": false
+    },
+    {
+      "key": "IsOutdoors",
+      "label": "是否户外 IsOutdoors",
+      "valueType": "select",
+      "options": "boolean_values",
+      "allowCustom": false
+    },
+    {
+      "key": "LocationContext",
+      "label": "地点上下文 LocationContext",
+      "valueType": "select",
+      "options": "location_contexts",
+      "allowCustom": true
+    },
+    {
+      "key": "LocationName",
+      "label": "当前位置 LocationName",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "LocationUniqueName",
+      "label": "唯一地点名 LocationUniqueName",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "LocationOwnerId",
+      "label": "地点拥有者 LocationOwnerId",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "PlayerGender",
+      "label": "玩家性别 PlayerGender",
+      "valueType": "select",
+      "options": "player_genders",
+      "allowCustom": true
+    },
+    {
+      "key": "PlayerName",
+      "label": "玩家名 PlayerName",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "PreferredPet",
+      "label": "偏好宠物 PreferredPet",
+      "valueType": "select",
+      "options": "pet_types",
+      "allowCustom": true
+    },
+    {
+      "key": "SkillLevel",
+      "label": "技能等级 SkillLevel:<skill>",
+      "valueType": "number",
+      "parameterLabel": "技能",
+      "parameterOptions": "skill_names",
+      "allowCustom": true
+    },
+    {
+      "key": "ChildNames",
+      "label": "孩子名字 ChildNames",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "ChildGenders",
+      "label": "孩子性别 ChildGenders",
+      "valueType": "select",
+      "options": "player_genders",
+      "allowCustom": true
+    },
+    {
+      "key": "Hearts",
+      "label": "心数 Hearts:<NPC>",
+      "valueType": "number",
+      "parameterLabel": "NPC 内部名",
+      "allowCustom": true
+    },
+    {
+      "key": "Relationship",
+      "label": "NPC 关系 Relationship:<NPC>",
+      "valueType": "select",
+      "options": "relationship_statuses",
+      "parameterLabel": "NPC 内部名",
+      "allowCustom": true
+    },
+    {
+      "key": "Roommate",
+      "label": "室友 Roommate",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "Spouse",
+      "label": "配偶 Spouse",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "FarmCave",
+      "label": "农场洞穴 FarmCave",
+      "valueType": "select",
+      "options": "farm_caves",
+      "allowCustom": true
+    },
+    {
+      "key": "FarmMapAsset",
+      "label": "农场地图资源 FarmMapAsset",
+      "valueType": "select",
+      "options": "farm_map_assets",
+      "allowCustom": true
+    },
+    {
+      "key": "FarmName",
+      "label": "农场名 FarmName",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "FarmType",
+      "label": "农场类型 FarmType",
+      "valueType": "select",
+      "options": "farm_types",
+      "allowCustom": true
+    },
+    {
+      "key": "IsCommunityCenterComplete",
+      "label": "社区中心完成 IsCommunityCenterComplete",
+      "valueType": "select",
+      "options": "boolean_values",
+      "allowCustom": false
+    },
+    {
+      "key": "IsJojaMartComplete",
+      "label": "Joja 路线完成 IsJojaMartComplete",
+      "valueType": "select",
+      "options": "boolean_values",
+      "allowCustom": false
+    },
+    {
+      "key": "HavingChild",
+      "label": "正在怀孕/领养 HavingChild",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "Pregnant",
+      "label": "怀孕 Pregnant",
+      "valueType": "text",
+      "allowCustom": true
+    },
+    {
+      "key": "HasMod",
+      "label": "已安装模组 HasMod",
+      "valueType": "text",
+      "allowCustom": true
+    }
   ],
   "translations": {
     "folder": "i18n",
@@ -89,14 +474,41 @@
   },
   "text_operations": {
     "description": "Content Patcher TextOperations edit delimited or matched text inside data strings.",
-    "common_fields": ["Operation", "Target", "Value", "Delimiter", "Search", "Replace", "Before", "After"],
+    "common_fields": [
+      "Operation",
+      "Target",
+      "Value",
+      "Delimiter",
+      "Search",
+      "Replace",
+      "Before",
+      "After"
+    ],
     "operations": [
-      {"operation": "Append", "description": "Append text to an existing value."},
-      {"operation": "Prepend", "description": "Prepend text to an existing value."},
-      {"operation": "Replace", "description": "Replace matching text."},
-      {"operation": "Remove", "description": "Remove matching text."},
-      {"operation": "ReplaceDelimited", "description": "Replace a delimited field within a string."},
-      {"operation": "RemoveDelimited", "description": "Remove a delimited field from a string."}
+      {
+        "operation": "Append",
+        "description": "Append text to an existing value."
+      },
+      {
+        "operation": "Prepend",
+        "description": "Prepend text to an existing value."
+      },
+      {
+        "operation": "Replace",
+        "description": "Replace matching text."
+      },
+      {
+        "operation": "Remove",
+        "description": "Remove matching text."
+      },
+      {
+        "operation": "ReplaceDelimited",
+        "description": "Replace a delimited field within a string."
+      },
+      {
+        "operation": "RemoveDelimited",
+        "description": "Remove a delimited field from a string."
+      }
     ],
     "guidance": [
       "Use TextOperations for string formats where replacing the whole entry would conflict with other mods.",

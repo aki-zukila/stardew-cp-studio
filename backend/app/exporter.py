@@ -29,10 +29,12 @@ def export_content_pack(
     target.mkdir(parents=True, exist_ok=True)
     (target / "i18n").mkdir(exist_ok=True)
     (target / "assets").mkdir(exist_ok=True)
+    (target / "code").mkdir(exist_ok=True)
 
     dialogue_files = _write_dialogue_files(project, target)
     _write_json(target / "manifest.json", _manifest_json(project.manifest))
-    _write_json(target / "content.json", _content_json(project, dialogue_files))
+    include_files = _write_code_files(project, target, dialogue_files)
+    _write_json(target / "content.json", _root_content_json(include_files))
     _write_json(target / "i18n" / "default.json", project.i18n)
     _write_json(target / "assets" / "blank.json", {})
     _copy_assets(project, target, project_package, asset_sources or {})
@@ -62,6 +64,73 @@ def _manifest_json(manifest: ManifestDraft) -> dict[str, Any]:
     return data
 
 
+def _root_content_json(include_files: list[str]) -> dict[str, Any]:
+    return {
+        "Format": "2.9.0",
+        "Changes": [
+            {
+                "Action": "Include",
+                "FromFile": include_file,
+            }
+            for include_file in include_files
+        ],
+    }
+
+
+def _write_code_files(project: Project, target: Path, dialogue_files: list["DialogueFile"] | None = None) -> list[str]:
+    groups = _code_change_groups(project, dialogue_files or [])
+    include_files: list[str] = []
+    for filename in [
+        "patches.json",
+        "characters.json",
+        "items.json",
+        "dialogue.json",
+        "events.json",
+        "mail.json",
+        "shops.json",
+        "custom.json",
+    ]:
+        changes = groups.get(filename, [])
+        if not changes:
+            continue
+        relative = f"code/{filename}"
+        _write_json(target / relative, {"Changes": changes})
+        include_files.append(relative)
+    return include_files
+
+
+def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {
+        "patches.json": [],
+        "characters.json": [],
+        "items.json": [],
+        "dialogue.json": [],
+        "events.json": [],
+        "mail.json": [],
+        "shops.json": [],
+        "custom.json": [],
+    }
+
+    for patch in project.patches:
+        if patch.enabled:
+            groups["patches.json"].append(_patch_json(patch))
+
+    for patch in _dialogue_bootstrap_patches(project, dialogue_files):
+        if not _has_equivalent_patch(groups["dialogue.json"], patch):
+            groups["dialogue.json"].append(patch)
+
+    for patch in _mail_background_load_patches(project):
+        if not _has_equivalent_patch(groups["mail.json"], patch):
+            groups["mail.json"].append(patch)
+
+    for entry in project.game_data:
+        if _dialogue_entry_info(entry):
+            continue
+        groups[_code_group_for_entry(entry)].append(_game_data_patch_json(entry))
+
+    return groups
+
+
 def _content_json(project: Project, dialogue_files: list["DialogueFile"] | None = None) -> dict[str, Any]:
     changes = []
     for patch in project.patches:
@@ -78,6 +147,23 @@ def _content_json(project: Project, dialogue_files: list["DialogueFile"] | None 
         "Format": "2.9.0",
         "Changes": changes,
     }
+
+
+def _code_group_for_entry(entry: GameDataEntry) -> str:
+    target = entry.target or ""
+    if entry.kind == "npc" or target in {"Data/Characters", "Data/NPCGiftTastes", "Data/MoviesReactions"} or target.startswith("Characters/schedules/"):
+        return "characters.json"
+    if entry.kind == "item" or target.startswith("Data/Objects") or target.startswith("Data/BigCraftables"):
+        return "items.json"
+    if entry.kind == "event" or target.startswith("Data/Events/"):
+        return "events.json"
+    if entry.kind in {"mail", "trigger_action"} or target in {"Data/Mail", "Data/TriggerActions"}:
+        return "mail.json"
+    if entry.kind == "shop" or target.startswith("Data/Shops"):
+        return "shops.json"
+    if "Dialogue" in target or target.startswith("Data/Festivals/") or target == "Data/EngagementDialogue":
+        return "dialogue.json"
+    return "custom.json"
 
 
 def _patch_json(patch: PatchEntry) -> dict[str, Any]:
@@ -108,17 +194,109 @@ def _game_data_patch_json(entry: GameDataEntry) -> dict[str, Any]:
         patch.update(_export_advanced(entry.advanced))
         return patch
 
+    value = _mail_entry_value(entry) if entry.kind == "mail" else entry.value
     patch: dict[str, Any] = {
         "Action": "EditData",
         "Target": entry.target,
         "Entries": {
-            entry.key: entry.value,
+            entry.key: value,
         },
     }
     if entry.when:
         patch["When"] = entry.when
     patch.update(_export_advanced(entry.advanced))
     return patch
+
+
+def _mail_entry_value(entry: GameDataEntry) -> Any:
+    if not isinstance(entry.value, dict):
+        return entry.value
+    body = _mail_body_for_export(str(entry.value.get("Body") or entry.value.get("Text") or entry.value.get("Message") or ""))
+    title = str(entry.value.get("Title") or "")
+    parts: list[str] = []
+    background_asset = str(entry.value.get("BackgroundAssetTarget") or entry.value.get("BackgroundAsset") or "").strip()
+    background_mode = entry.value.get("BackgroundMode")
+    background_type = str(entry.value.get("BackgroundType") or ("custom" if background_asset else "vanilla")).strip()
+    if background_asset:
+        parts.append(f"[letterbg {background_asset} {_int_value(background_mode, 0)}]")
+    elif background_type != "vanilla" and background_mode not in (None, ""):
+        parts.append(f"[letterbg {background_mode}]")
+    elif background_mode not in (None, "", "vanilla"):
+        parts.append(f"[letterbg {background_mode}]")
+    text_color = str(entry.value.get("TextColor") or "").strip()
+    if text_color:
+        parts.append(f"[textcolor {text_color}]")
+    parts.append(body)
+    for attachment in entry.value.get("Attachments") or []:
+        if isinstance(attachment, dict):
+            marker = _mail_attachment_marker(attachment)
+            if marker:
+                parts.append(marker)
+    text = "".join(parts)
+    if title:
+        text = f"{text}[#]{title}"
+    return text
+
+
+def _mail_body_for_export(text: str) -> str:
+    return text.replace("\r\n", "^").replace("\r", "^").replace("\n", "^")
+
+
+def _mail_background_load_patches(project: Project) -> list[dict[str, Any]]:
+    patches: list[dict[str, Any]] = []
+    for entry in project.game_data:
+        if entry.kind != "mail" or not isinstance(entry.value, dict):
+            continue
+        asset = str(entry.value.get("BackgroundAssetTarget") or entry.value.get("BackgroundAsset") or "").strip()
+        source = str(entry.value.get("BackgroundFile") or "").strip()
+        if asset and source:
+            patches.append({
+                "Action": "Load",
+                "Target": asset,
+                "FromFile": source,
+            })
+    return patches
+
+
+def _mail_attachment_marker(attachment: dict[str, Any]) -> str:
+    marker = str(attachment.get("marker") or attachment.get("Marker") or attachment.get("Text") or attachment.get("text") or "").strip()
+    if marker:
+        return marker
+    kind = str(attachment.get("kind") or attachment.get("Type") or "action").strip()
+    if kind == "action":
+        action = str(attachment.get("action") or attachment.get("Action") or "AddMail ExampleMail").strip()
+        return action if action.startswith("%action") else f"%action {action} %%"
+    if kind == "item_id":
+        item_id = str(attachment.get("itemId") or attachment.get("ItemId") or "(O)388").strip()
+        count = _int_value(attachment.get("count") or attachment.get("Count"), 1)
+        return f"%item id {item_id} {count} %%"
+    if kind == "money":
+        minimum = attachment.get("minAmount")
+        maximum = attachment.get("maxAmount")
+        amount = attachment.get("amount")
+        if minimum is not None and maximum is not None and _int_value(maximum, 0) > _int_value(minimum, 0):
+            return f"%item money {_int_value(minimum, 0)} {_int_value(maximum, 1)} %%"
+        return f"%item money {_int_value(amount, 0)} %%"
+    if kind == "conversationTopic":
+        topic = str(attachment.get("topic") or attachment.get("Topic") or "ExampleTopic").strip()
+        days = _int_value(attachment.get("days") or attachment.get("Days"), 1)
+        return f"%item conversationTopic {topic} {days} %%"
+    if kind == "cookingRecipe":
+        recipe = str(attachment.get("recipeId") or attachment.get("RecipeId") or "").strip()
+        return f"%item cookingRecipe {recipe} %%".rstrip()
+    if kind == "craftingRecipe":
+        recipe = str(attachment.get("recipeId") or attachment.get("RecipeId") or "ExampleRecipe").strip()
+        return f"%item craftingRecipe {recipe} %%"
+    if kind == "itemRecovery":
+        recipe = str(attachment.get("recipeId") or attachment.get("RecipeId") or "ExampleQuestItem").strip()
+        return f"%item itemRecovery {recipe} %%"
+    if kind == "quest":
+        quest_id = str(attachment.get("questId") or attachment.get("QuestId") or "0").strip()
+        return f"%item quest {quest_id}{' true' if attachment.get('autoGrant') or attachment.get('AutoGrant') else ''} %%"
+    if kind == "specialOrder":
+        order_id = str(attachment.get("orderId") or attachment.get("OrderId") or "0").strip()
+        return f"%item specialOrder {order_id}{' immediately' if attachment.get('immediate') or attachment.get('Immediately') else ''} %%"
+    return ""
 
 
 def _story_event_entries(entry: GameDataEntry) -> dict[str, Any] | None:

@@ -29,7 +29,7 @@ type Patch = {
 
 type GameDataEntry = {
   id: string;
-  kind: "npc" | "item" | "dialogue" | "shop" | "event" | "custom";
+  kind: "npc" | "item" | "dialogue" | "shop" | "event" | "mail" | "trigger_action" | "custom";
   name: string;
   target: string;
   key: string;
@@ -37,6 +37,24 @@ type GameDataEntry = {
   when: JsonDict;
   advanced: JsonDict;
   editMode?: "form" | "code";
+};
+type MailAttachmentKind = "action" | "item_id" | "money" | "conversationTopic" | "cookingRecipe" | "craftingRecipe" | "itemRecovery" | "quest" | "specialOrder" | "custom";
+type MailAttachmentRow = {
+  kind: MailAttachmentKind;
+  action: string;
+  itemId: string;
+  count: number;
+  amount: number;
+  minAmount: number;
+  maxAmount: number;
+  topic: string;
+  days: number;
+  recipeId: string;
+  questId: string;
+  autoGrant: boolean;
+  orderId: string;
+  immediate: boolean;
+  marker: string;
 };
 
 type Asset = {
@@ -66,7 +84,8 @@ type Project = {
 type ValidationIssue = { level: "error" | "warning"; path: string; message: string };
 type ValidationResult = { errors: ValidationIssue[]; warnings: ValidationIssue[]; can_export: boolean };
 type RulesetOption = { label: string; value: string | number | boolean };
-type WhenConditionSchema = { key: string; label: string; valueType: string; options?: string; allowCustom?: boolean };
+type WhenConditionSchema = { key: string; label: string; valueType: string; options?: string; allowCustom?: boolean; parameterLabel?: string; parameterOptions?: string };
+type TriggerActionCommandKind = "AddMail" | "RemoveMail" | "AddMoney" | "RunTriggerAction" | "custom";
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
 type DialogueKeyBuilderCatalog = { formats?: DialogueFormat[]; field_options?: Record<string, RulesetOption[]> };
@@ -104,6 +123,7 @@ type ImportAssetResponse = { project: Project; asset: Asset };
 type ItemCatalogEntry = { id: string; qualified_id: string; name: string; display_name: string; description?: string; category?: number | null; type?: string; source: string };
 type ItemCatalogResponse = { items: ItemCatalogEntry[]; source_path: string; warning: string };
 type ItemOption = RulesetOption & { source?: string };
+type TriggerActionRow = { kind: TriggerActionCommandKind; player: string; mailId: string; mailType: string; amount: number; targetAction: string; raw: string };
 type FlowTodo = { id: string; label: string; description: string; action: FlowAction; done: boolean };
 type FlowAction = "dialogue" | "giftTaste" | "schedule" | "mail" | "event" | "roommateItem" | "customMap" | "giftTasteForItem" | "shopForItem" | "mailForItem" | "mapLocation" | "mapWarpTodo" | "mapEventTodo";
 type FlowKind = "character" | "item" | "map";
@@ -378,11 +398,10 @@ function App() {
         <nav>
           <TabButton icon={<Icon name="box" />} id="overview" label="工程总览" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="settings" />} id="manifest" label="模组信息" tab={tab} setTab={setTab} />
-          <TabButton icon={<Icon name="flow" />} id="flow" label="流程模式" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="story" />} id="story" label="剧情模块" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="json" />} id="patches" label="CP 补丁" tab={tab} setTab={setTab} />
-          <TabButton icon={<Icon name="data" />} id="data" label="游戏数据" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="assets" />} id="assets" label="素材库" tab={tab} setTab={setTab} />
+          <TabButton icon={<Icon name="data" />} id="data" label="游戏数据" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="rules" />} id="rules" label="规则库" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="ai" />} id="ai" label="AI 设置" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="export" />} id="export" label="校验与导出" tab={tab} setTab={setTab} />
@@ -419,7 +438,6 @@ function App() {
         )}
 
         {tab === "manifest" && <ManifestEditor project={project} setProject={updateProject} />}
-        {tab === "flow" && <FlowMode project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
@@ -1126,10 +1144,10 @@ function PatchCard({ patch, ruleset, onChange, onRemove }: { patch: Patch; rules
       <div className="grid two">
         <Field label="目标 Target" value={patch.target} onChange={(value) => onChange({ ...patch, target: value })} />
         <Field label="来源文件 FromFile" value={patch.from_file || ""} onChange={(value) => onChange({ ...patch, from_file: value || null })} />
-        <JsonField label="条件 When" value={patch.when} onChange={(value) => onChange({ ...patch, when: value as JsonDict })} />
         <JsonField label="动作字段 Entries / Fields / ToArea 等" value={patch.fields} onChange={(value) => onChange({ ...patch, fields: value as JsonDict })} />
         <JsonField label="高级 JSON" value={patch.advanced} onChange={(value) => onChange({ ...patch, advanced: value as JsonDict })} />
       </div>
+      <WhenBuilder ruleset={ruleset} value={patch.when} onChange={(when) => onChange({ ...patch, when })} />
       <PatchAIAssistantPanel patch={patch} onApply={(kind, value) => onChange(applyAISuggestionToPatch(patch, kind, value))} />
     </article>
   );
@@ -1214,7 +1232,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
   return (
     <div className="grid two">
-      {entry.kind !== "dialogue" && (
+      {entry.kind !== "dialogue" && entry.kind !== "mail" && entry.kind !== "trigger_action" && (
         <>
           <Field label="数据目标 Target" value={entry.target} onChange={(target) => onChange({ ...entry, target })} />
           <Field label="条目键 Key" value={entry.key} onChange={(key) => onChange({ ...entry, key })} />
@@ -1237,6 +1255,14 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
       {entry.kind === "dialogue" && (
         <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+      )}
+
+      {entry.kind === "mail" && (
+        <MailEntryForm project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} onChange={onChange} setProject={setProject} />
+      )}
+
+      {entry.kind === "trigger_action" && (
+        <TriggerActionForm entry={entry} ruleset={ruleset} onChange={onChange} />
       )}
 
       {entry.kind === "shop" && (
@@ -1263,6 +1289,471 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
     </div>
   );
+}
+
+function MailEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const normalized = normalizeMailValue(value);
+  const body = mailBodyFromValue(normalized);
+  const backgroundSource = stringField(normalized.BackgroundType || "vanilla");
+  const backgroundIndex = stringField(normalized.BackgroundIndex || normalized.BackgroundMode || 0);
+  const customBackgroundTarget = stringField(normalized.BackgroundAsset || normalized.BackgroundAssetTarget || "");
+  const customBackgroundFile = stringField(normalized.BackgroundFile || "");
+  const attachments = Array.isArray(normalized.Attachments) ? normalized.Attachments.map((attachment) => normalizeMailAttachment(attachment)) : [];
+  const mailKey = stringField(entry.key || normalized.MailId || "ExampleMail");
+  const mailBackgroundTarget = customBackgroundTarget || `Mods/${project.manifest.UniqueID || "Author.Mod"}/MailBackgrounds/${sanitizeI18nPart(mailKey)}/background`;
+
+  function updateMail(patch: JsonDict) {
+    onChange({ ...entry, value: { ...normalized, ...patch } });
+  }
+
+  return (
+    <div className="subsection highlight mail-module">
+      <h3>信件模块</h3>
+      <div className="grid two">
+        <Field label="邮件 ID" value={mailKey} onChange={(key) => onChange({ ...entry, key })} />
+        <ComboField label="背景来源" value={backgroundSource} options={MAIL_BACKGROUND_SOURCE_OPTIONS} onChange={(BackgroundType) => updateMail({ BackgroundType, BackgroundMode: BackgroundType === "vanilla" ? backgroundIndex : normalized.BackgroundMode })} />
+        {backgroundSource === "vanilla" ? (
+          <ComboField label="背景样式" value={backgroundIndex} options={MAIL_BACKGROUND_OPTIONS} onChange={(BackgroundIndex) => updateMail({ BackgroundIndex, BackgroundMode: BackgroundIndex })} />
+        ) : (
+          <>
+            <Field label="背景索引" value={backgroundIndex} onChange={(BackgroundIndex) => updateMail({ BackgroundIndex, BackgroundMode: BackgroundIndex })} />
+            <TargetedAssetImport
+              label="导入自定义信纸图片"
+              project={project}
+              accept="image/png,image/jpeg,image/webp"
+              storedPath={customBackgroundFile || `assets/MailBackgrounds/${sanitizeI18nPart(mailKey)}/background.png`}
+              onImported={(nextProject, storedPath, asset) => {
+                const target = `Mods/${nextProject.manifest.UniqueID || "Author.Mod"}/MailBackgrounds/${sanitizeI18nPart(mailKey)}/background`;
+                updateMail({ BackgroundAsset: target, BackgroundAssetTarget: target, BackgroundFile: storedPath });
+                setProject(nextProject);
+              }}
+            />
+            <div className="field">
+              <span>信纸目标</span>
+              <code>{mailBackgroundTarget}</code>
+            </div>
+          </>
+        )}
+        <ComboField label="文字颜色" value={stringField(normalized.TextColor || '')} options={MAIL_TEXT_COLOR_OPTIONS} onChange={(TextColor) => updateMail({ TextColor })} />
+        <Field label="标题" value={stringField(normalized.Title || '')} onChange={(Title) => updateMail({ Title })} />
+        <DialogueTextTools label="信件正文" project={project} npcName={stringField(normalized.NpcName || 'ExampleNPC')} value={body} onChange={(next) => updateMail({ Body: next })} />
+      </div>
+      <div className="mail-subsection">
+        <h4>附件</h4>
+        <MailAttachmentEditor value={attachments} itemOptions={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} onChange={(next) => updateMail({ Attachments: next })} />
+        <div className="notice compact-note">信件只导出 <code>Data/Mail</code> 正文。发送信件请另建 <code>Data/TriggerActions</code>，例如 <code>AddMail Current {mailKey}</code>，再用 When 限制触发条件。</div>
+      </div>
+    </div>
+  );
+}
+
+function TriggerActionForm({ entry, ruleset, onChange }: { entry: GameDataEntry; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void }) {
+  const value = isObject(entry.value) ? entry.value : {};
+  const actions = Array.isArray(value.Actions) ? value.Actions.map(normalizeTriggerActionRow) : [];
+  const key = entry.key || stringField(value.Id || "ExampleTriggerAction");
+
+  function updateValue(patch: JsonDict) {
+    onChange({
+      ...entry,
+      target: "Data/TriggerActions",
+      key,
+      value: { ...value, ...patch }
+    });
+  }
+
+  return (
+    <div className="subsection highlight mail-module">
+      <h3>触发动作模块</h3>
+      <div className="grid two">
+        <Field label="Entries Key" value={entry.key || key} onChange={(nextKey) => onChange({ ...entry, target: "Data/TriggerActions", key: nextKey, value: { ...value, Id: stringField(value.Id || nextKey) } })} />
+        <Field label="Id" value={stringField(value.Id || key)} onChange={(Id) => updateValue({ Id })} />
+        <ComboField label="Trigger" value={stringField(value.Trigger || "DayStarted")} options={triggerEventOptions(ruleset)} onChange={(Trigger) => updateValue({ Trigger })} />
+        <BoolField label="仅主机 HostOnly" value={Boolean(value.HostOnly)} onChange={(HostOnly) => updateValue({ HostOnly })} />
+      </div>
+      <TriggerActionCommandEditor value={actions} onChange={(next) => updateValue({ Actions: next })} />
+      <div className="notice compact-note">Trigger Action 是独立的 <code>Data/TriggerActions</code> 条目，不会写进信件正文。常用发送信件：<code>AddMail Current LetterId now/tomorrow/received</code>。</div>
+    </div>
+  );
+}
+
+function normalizeMailValue(value: JsonDict) {
+  return {
+    ...value,
+    BackgroundType: stringField(value.BackgroundType || (value.BackgroundAsset || value.BackgroundAssetTarget ? "custom" : "vanilla")),
+    BackgroundIndex: numberOrText(stringField(value.BackgroundIndex ?? value.BackgroundMode ?? 0)),
+    BackgroundAsset: stringField(value.BackgroundAsset || value.BackgroundAssetTarget || ""),
+    BackgroundAssetTarget: stringField(value.BackgroundAssetTarget || value.BackgroundAsset || ""),
+    BackgroundFile: stringField(value.BackgroundFile || ""),
+    TextColor: stringField(value.TextColor || ""),
+    Title: stringField(value.Title || ""),
+    Body: mailBodyFromValue(value),
+    Attachments: Array.isArray(value.Attachments) ? value.Attachments : [],
+    Actions: Array.isArray(value.Actions) ? value.Actions : [],
+    MailId: stringField(value.MailId || "")
+  };
+}
+
+function normalizeMailValueForPatch(value: JsonDict) {
+  return {
+    ...normalizeMailValue(value),
+    BackgroundMode: stringField(value.BackgroundMode || value.BackgroundIndex || 0)
+  };
+}
+
+function mailBodyFromValue(value: JsonDict) {
+  const body = stringField(value.Body || value.Text || value.Message || '');
+  return body;
+}
+
+function mailBodyForExport(text: string) {
+  return text.replace(/\r\n|\r|\n/g, "^");
+}
+
+function normalizeMailAttachment(value: unknown): MailAttachmentRow {
+  const source = isObject(value) ? value : {};
+  return {
+    kind: stringField(source.kind || source.Type || "action") as MailAttachmentKind,
+    action: stringField(source.action || source.Action || source.Marker || source.marker || ""),
+    itemId: stringField(source.itemId || source.ItemId || ""),
+    count: integerInRange(source.count ?? source.Count, 1, 9999, 1),
+    amount: integerInRange(source.amount ?? source.Amount, -9999999, 9999999, 0),
+    minAmount: integerInRange(source.minAmount ?? source.MinAmount, -9999999, 9999999, 0),
+    maxAmount: integerInRange(source.maxAmount ?? source.MaxAmount, -9999999, 9999999, 0),
+    topic: stringField(source.topic || source.Topic || ""),
+    days: integerInRange(source.days ?? source.Days, 0, 999, 1),
+    recipeId: stringField(source.recipeId || source.RecipeId || source.key || ""),
+    questId: stringField(source.questId || source.QuestId || ""),
+    autoGrant: Boolean(source.autoGrant ?? source.AutoGrant),
+    orderId: stringField(source.orderId || source.OrderId || ""),
+    immediate: Boolean(source.immediate ?? source.Immediately),
+    marker: stringField(source.marker || source.Marker || source.text || source.Text || "")
+  };
+}
+
+function mailAttachmentMarker(attachment: MailAttachmentRow) {
+  if (attachment.marker.trim()) return attachment.marker.trim();
+  switch (attachment.kind) {
+    case "action":
+      return `%action ${attachment.action.trim() || "AddMail ExampleMail"} %%`;
+    case "item_id":
+      return `%item id ${attachment.itemId.trim() || "(O)388"} ${Math.max(1, attachment.count || 1)} %%`;
+    case "money":
+      return attachment.maxAmount > attachment.minAmount
+        ? `%item money ${attachment.minAmount || 0} ${attachment.maxAmount || 1} %%`
+        : `%item money ${attachment.amount || 0} %%`;
+    case "conversationTopic":
+      return `%item conversationTopic ${attachment.topic.trim() || "ExampleTopic"} ${Math.max(0, attachment.days || 1)} %%`;
+    case "cookingRecipe":
+      return attachment.recipeId.trim() ? `%item cookingRecipe ${attachment.recipeId.trim()} %%` : `%item cookingRecipe %%`;
+    case "craftingRecipe":
+      return `%item craftingRecipe ${attachment.recipeId.trim() || "ExampleRecipe"} %%`;
+    case "itemRecovery":
+      return `%item itemRecovery ${attachment.recipeId.trim() || "ExampleQuestItem"} %%`;
+    case "quest":
+      return `%item quest ${attachment.questId.trim() || "0"}${attachment.autoGrant ? " true" : ""} %%`;
+    case "specialOrder":
+      return `%item specialOrder ${attachment.orderId.trim() || "0"}${attachment.immediate ? " immediately" : ""} %%`;
+    default:
+      return attachment.marker.trim();
+  }
+}
+
+function mailAttachmentLabel(attachment: MailAttachmentRow) {
+  switch (attachment.kind) {
+    case "action":
+      return "动作";
+    case "item_id":
+      return "物品";
+    case "money":
+      return "金钱";
+    case "conversationTopic":
+      return "对话话题";
+    case "cookingRecipe":
+      return "烹饪配方";
+    case "craftingRecipe":
+      return "制作配方";
+    case "itemRecovery":
+      return "失物找回";
+    case "quest":
+      return "任务";
+    case "specialOrder":
+      return "特殊订单";
+    default:
+      return "自定义";
+  }
+}
+
+function MailAttachmentEditor({ value, itemOptions, onChange }: { value: MailAttachmentRow[]; itemOptions: ItemOption[]; onChange: (value: MailAttachmentRow[]) => void }) {
+  const rows = value;
+
+  function updateRow(index: number, patch: Partial<MailAttachmentRow>) {
+    const next = [...rows];
+    next[index] = normalizeMailAttachment({ ...next[index], ...patch });
+    onChange(next);
+  }
+
+  function addRow() {
+    onChange([...rows, normalizeMailAttachment({ kind: "action" })]);
+  }
+
+  function removeRow(index: number) {
+    onChange(rows.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <div className="structured-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>附件</strong>
+          <span>每条附件会写成一段 Mail marker；支持多条，导出时按顺序拼进正文。</span>
+        </div>
+        <button type="button" className="secondary" onClick={addRow}><Icon name="plus" />添加附件</button>
+      </div>
+      {rows.map((row, index) => (
+        <div className="mail-attachment-row" key={`mail-attachment-${index}`}>
+          <div className="grid two">
+            <ComboField label="类型" value={row.kind} options={MAIL_ATTACHMENT_KIND_OPTIONS} onChange={(kind) => updateRow(index, { kind: kind as MailAttachmentKind })} />
+            <Field label="自定义 marker" value={row.marker} onChange={(marker) => updateRow(index, { marker })} />
+            {row.kind === "action" && <Field label="动作文本" value={row.action} onChange={(action) => updateRow(index, { action })} />}
+            {row.kind === "item_id" && <>
+              <ComboField label="物品 ID" value={row.itemId} options={itemOptions} onChange={(itemId) => updateRow(index, { itemId: String(itemId) })} />
+              <Field label="自定义物品 ID" value={row.itemId} onChange={(itemId) => updateRow(index, { itemId })} />
+              <Field label="数量 Count" value={stringField(row.count)} onChange={(count) => updateRow(index, { count: integerInRange(count, 1, 9999, 1) })} />
+            </>}
+            {row.kind === "money" && <>
+              <Field label="金额 Amount" value={stringField(row.amount)} onChange={(amount) => updateRow(index, { amount: integerInRange(amount, 0, 9999999, 0), minAmount: integerInRange(amount, 0, 9999999, 0), maxAmount: integerInRange(amount, 0, 9999999, 0) })} />
+              <Field label="最小值 Min" value={stringField(row.minAmount)} onChange={(minAmount) => updateRow(index, { minAmount: integerInRange(minAmount, 0, 9999999, 0) })} />
+              <Field label="最大值 Max" value={stringField(row.maxAmount)} onChange={(maxAmount) => updateRow(index, { maxAmount: integerInRange(maxAmount, 0, 9999999, 0) })} />
+            </>}
+            {row.kind === "conversationTopic" && <>
+              <Field label="话题 ID" value={row.topic} onChange={(topic) => updateRow(index, { topic })} />
+              <Field label="持续天数 Days" value={stringField(row.days)} onChange={(days) => updateRow(index, { days: integerInRange(days, 0, 999, 1) })} />
+            </>}
+            {row.kind === "cookingRecipe" && <Field label="配方 ID" value={row.recipeId} onChange={(recipeId) => updateRow(index, { recipeId })} />}
+            {row.kind === "craftingRecipe" && <Field label="配方 ID" value={row.recipeId} onChange={(recipeId) => updateRow(index, { recipeId })} />}
+            {row.kind === "itemRecovery" && <Field label="失物 ID" value={row.recipeId} onChange={(recipeId) => updateRow(index, { recipeId })} />}
+            {row.kind === "quest" && <>
+              <Field label="任务 ID" value={row.questId} onChange={(questId) => updateRow(index, { questId })} />
+              <BoolField label="自动接取" value={row.autoGrant} onChange={(autoGrant) => updateRow(index, { autoGrant })} />
+            </>}
+            {row.kind === "specialOrder" && <>
+              <Field label="订单 ID" value={row.orderId} onChange={(orderId) => updateRow(index, { orderId })} />
+              <BoolField label="立即附加" value={row.immediate} onChange={(immediate) => updateRow(index, { immediate })} />
+            </>}
+            <div className="field">
+              <span>导出结果</span>
+              <code>{mailAttachmentMarker(row)}</code>
+            </div>
+          </div>
+          <div className="button-row">
+            <button type="button" className="secondary" onClick={() => removeRow(index)}>删除附件</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function normalizeTriggerActionRow(value: unknown): TriggerActionRow {
+  if (typeof value === "string") return parseTriggerActionString(value);
+  const source = isObject(value) ? value : {};
+  return {
+    kind: triggerActionKind(source.kind || source.Kind || "AddMail"),
+    player: stringField(source.player || source.Player || "Current"),
+    mailId: stringField(source.mailId || source.MailId || "ExampleMail"),
+    mailType: stringField(source.mailType || source.Type || "tomorrow"),
+    amount: integerInRange(source.amount || source.Amount, -9999999, 9999999, 500),
+    targetAction: stringField(source.targetAction || source.TargetAction || "ExampleTriggerAction"),
+    raw: stringField(source.raw || source.Raw || "")
+  };
+}
+
+function parseTriggerActionString(value: string): TriggerActionRow {
+  const parts = value.trim().split(/\s+/);
+  const kind = triggerActionKind(parts[0] || "custom");
+  if (kind === "AddMail" || kind === "RemoveMail") {
+    return normalizeTriggerActionRow({ kind, player: parts[1] || "Current", mailId: parts[2] || "ExampleMail", mailType: parts[3] || (kind === "AddMail" ? "tomorrow" : "all") });
+  }
+  if (kind === "AddMoney") return normalizeTriggerActionRow({ kind, amount: Number(parts[1] || 500) });
+  if (kind === "RunTriggerAction") return normalizeTriggerActionRow({ kind, targetAction: parts[1] || "ExampleTriggerAction" });
+  return normalizeTriggerActionRow({ kind: "custom", raw: value });
+}
+
+function triggerActionKind(value: unknown): TriggerActionCommandKind {
+  return value === "AddMail" || value === "RemoveMail" || value === "AddMoney" || value === "RunTriggerAction" ? value : "custom";
+}
+
+function triggerActionString(row: TriggerActionRow) {
+  if (row.kind === "AddMail" || row.kind === "RemoveMail") {
+    const defaultType = row.kind === "AddMail" ? "tomorrow" : "all";
+    const type = row.mailType && row.mailType !== defaultType ? ` ${row.mailType}` : "";
+    return `${row.kind} ${row.player || "Current"} ${row.mailId || "ExampleMail"}${type}`;
+  }
+  if (row.kind === "AddMoney") return `AddMoney ${integerInRange(row.amount, -9999999, 9999999, 500)}`;
+  if (row.kind === "RunTriggerAction") return `RunTriggerAction ${row.targetAction || "ExampleTriggerAction"}`;
+  return row.raw.trim();
+}
+
+function TriggerActionCommandEditor({ value, onChange }: { value: TriggerActionRow[]; onChange: (value: string[]) => void }) {
+  const rows = value;
+
+  function updateRows(nextRows: TriggerActionRow[]) {
+    onChange(nextRows.map(triggerActionString).filter(Boolean));
+  }
+
+  function updateRow(index: number, patch: Partial<TriggerActionRow>) {
+    const next = [...rows];
+    next[index] = normalizeTriggerActionRow({ ...next[index], ...patch });
+    updateRows(next);
+  }
+
+  function addRow(kind: TriggerActionCommandKind = "AddMail") {
+    updateRows([...rows, normalizeTriggerActionRow({ kind })]);
+  }
+
+  function removeRow(index: number) {
+    updateRows(rows.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  return (
+    <div className="structured-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>动作列表 Actions</strong>
+          <span>每行导出为 Trigger Action 字符串。</span>
+        </div>
+        <button type="button" className="secondary" onClick={() => addRow("AddMail")}><Icon name="plus" />添加 AddMail</button>
+      </div>
+      {rows.length ? rows.map((row, index) => (
+        <div className="mail-attachment-row" key={`trigger-action-${index}`}>
+          <div className="grid two">
+            <ComboField label="动作类型" value={row.kind} options={TRIGGER_ACTION_KIND_OPTIONS} onChange={(kind) => updateRow(index, { kind: kind as TriggerActionCommandKind })} />
+            {(row.kind === "AddMail" || row.kind === "RemoveMail") && <>
+              <ComboField label="玩家" value={row.player} options={TRIGGER_PLAYER_OPTIONS} onChange={(player) => updateRow(index, { player: String(player) })} />
+              <Field label="邮件 ID" value={row.mailId} onChange={(mailId) => updateRow(index, { mailId })} />
+              <ComboField label="类型 type" value={row.mailType || (row.kind === "AddMail" ? "tomorrow" : "all")} options={TRIGGER_MAIL_TYPE_OPTIONS} onChange={(mailType) => updateRow(index, { mailType: String(mailType) })} />
+            </>}
+            {row.kind === "AddMoney" && <Field label="金额" value={stringField(row.amount)} onChange={(amount) => updateRow(index, { amount: integerInRange(amount, -9999999, 9999999, 500) })} />}
+            {row.kind === "RunTriggerAction" && <Field label="目标 TriggerAction ID" value={row.targetAction} onChange={(targetAction) => updateRow(index, { targetAction })} />}
+            {row.kind === "custom" && <Field label="原始动作" value={row.raw} onChange={(raw) => updateRow(index, { raw })} />}
+            <div className="field">
+              <span>导出结果</span>
+              <code>{triggerActionString(row)}</code>
+            </div>
+          </div>
+          <div className="button-row">
+            <button type="button" className="secondary" onClick={() => removeRow(index)}>删除动作</button>
+          </div>
+        </div>
+      )) : <div className="empty compact-empty">暂无动作。</div>}
+    </div>
+  );
+}
+
+function mailStringFromEntry(entry: GameDataEntry) {
+  const value = normalizeMailValueForPatch(isObject(entry.value) ? entry.value : {});
+  const parts: string[] = [];
+  const backgroundAsset = stringField(value.BackgroundAsset || value.BackgroundAssetTarget || "").trim();
+  const backgroundType = stringField(value.BackgroundType || "vanilla").trim();
+  const backgroundIndex = stringField(value.BackgroundIndex || value.BackgroundMode || "").trim();
+  if (backgroundAsset) {
+    parts.push(`[letterbg ${backgroundAsset} ${backgroundIndex || 0}]`);
+  } else if (backgroundType !== "vanilla" && backgroundIndex) {
+    parts.push(`[letterbg ${backgroundIndex}]`);
+  } else if (backgroundIndex && backgroundIndex !== "0") {
+    parts.push(`[letterbg ${backgroundIndex}]`);
+  }
+  const textColor = stringField(value.TextColor || "").trim();
+  if (textColor) parts.push(`[textcolor ${textColor}]`);
+  const body = mailBodyFromValue(value);
+  if (body) parts.push(mailBodyForExport(body));
+  const attachments = Array.isArray(value.Attachments) ? value.Attachments.map((attachment) => normalizeMailAttachment(attachment)).map(mailAttachmentMarker).filter(Boolean) : [];
+  if (attachments.length) parts.push(attachments.join(""));
+  const title = stringField(value.Title || "").trim();
+  if (title) parts.push(`[#]${title}`);
+  return parts.join("");
+}
+
+const MAIL_BACKGROUND_OPTIONS: RulesetOption[] = [
+  { label: "默认 0", value: 0 },
+  { label: "Sandy 线纸 1", value: 1 },
+  { label: "Wizard 风格 2", value: 2 },
+  { label: "Krobus 风格 3", value: 3 },
+  { label: "JojaMart 风格 4", value: 4 }
+];
+
+const MAIL_BACKGROUND_SOURCE_OPTIONS: RulesetOption[] = [
+  { label: "原版信纸", value: "vanilla" },
+  { label: "自定义信纸", value: "custom" }
+];
+
+const MAIL_ATTACHMENT_KIND_OPTIONS: RulesetOption[] = [
+  { label: "信件附件动作 %action（打开信时执行）", value: "action" },
+  { label: "物品 %item id", value: "item_id" },
+  { label: "金钱 %item money", value: "money" },
+  { label: "对话话题 conversationTopic", value: "conversationTopic" },
+  { label: "烹饪配方 cookingRecipe", value: "cookingRecipe" },
+  { label: "制作配方 craftingRecipe", value: "craftingRecipe" },
+  { label: "失物找回 itemRecovery", value: "itemRecovery" },
+  { label: "任务 quest", value: "quest" },
+  { label: "特殊订单 specialOrder", value: "specialOrder" },
+  { label: "自定义 marker", value: "custom" }
+];
+
+const TRIGGER_ACTION_KIND_OPTIONS: RulesetOption[] = [
+  { label: "AddMail 添加邮件", value: "AddMail" },
+  { label: "RemoveMail 移除邮件", value: "RemoveMail" },
+  { label: "AddMoney 添加金钱", value: "AddMoney" },
+  { label: "RunTriggerAction 调用触发动作", value: "RunTriggerAction" },
+  { label: "自定义", value: "custom" }
+];
+
+const FALLBACK_TRIGGER_EVENT_OPTIONS: RulesetOption[] = [
+  { label: "每天开始 DayStarted", value: "DayStarted" },
+  { label: "一天结束 DayEnding", value: "DayEnding" },
+  { label: "地点进入 LocationEntered", value: "LocationEntered" },
+  { label: "按钮按下 ButtonPressed", value: "ButtonPressed" },
+  { label: "事件命令 EventCommand", value: "EventCommand" },
+  { label: "邮件收到 MailReceived", value: "MailReceived" },
+  { label: "手动 Manual", value: "Manual" }
+];
+
+const TRIGGER_PLAYER_OPTIONS: RulesetOption[] = [
+  { label: "当前玩家 Current", value: "Current" },
+  { label: "所有玩家 All", value: "All" },
+  { label: "主机 Host", value: "Host" }
+];
+
+const TRIGGER_MAIL_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "now 现在进邮箱", value: "now" },
+  { label: "tomorrow 明天进邮箱", value: "tomorrow" },
+  { label: "received 标为已收", value: "received" },
+  { label: "all 全部位置", value: "all" }
+];
+
+const MAIL_TEXT_COLOR_OPTIONS: RulesetOption[] = [
+  { label: "黑色 black", value: "black" },
+  { label: "蓝色 blue", value: "blue" },
+  { label: "青色 cyan", value: "cyan" },
+  { label: "灰色 gray", value: "gray" },
+  { label: "绿色 green", value: "green" },
+  { label: "橙色 orange", value: "orange" },
+  { label: "紫色 purple", value: "purple" },
+  { label: "红色 red", value: "red" },
+  { label: "白色 white", value: "white" }
+];
+
+function heartsToFriendshipPoints(hearts: number) {
+  return Math.max(0, Math.round((Number.isFinite(hearts) ? hearts : 0) * 250));
+}
+
+function friendshipPointsToHearts(points: number) {
+  return Math.max(0, Math.round((Number.isFinite(points) ? points : 0) / 250));
+}
+
+function secondsToTimeValue(seconds: number) {
+  return Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0) * 10));
 }
 
 function CharacterAssetImport({ label, project, npcName, assetKind, currentPath, onImported }: { label: string; project: Project; npcName: string; assetKind: "portrait" | "sprite" | "roommateItem"; currentPath: string; onImported: (project: Project, storedPath: string) => void }) {
@@ -3076,13 +3567,28 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
       {condition.type === "Friendship" && (
         <>
           <Field label="NPC" value={stringField(data.npc)} onChange={(npc) => onChange({ ...condition, data: { ...data, npc } })} />
-          <Field label="友情点" value={stringField(data.points)} onChange={(points) => onChange({ ...condition, data: { ...data, points: integerInRange(points, 0, 5000, 2500) } })} />
+          <ComboField label="心数" value={friendshipPointsToHearts(Number(data.points || 2500))} options={[
+            { label: "1 心", value: 1 },
+            { label: "2 心", value: 2 },
+            { label: "3 心", value: 3 },
+            { label: "4 心", value: 4 },
+            { label: "5 心", value: 5 },
+            { label: "6 心", value: 6 },
+            { label: "7 心", value: 7 },
+            { label: "8 心", value: 8 },
+            { label: "9 心", value: 9 },
+            { label: "10 心", value: 10 },
+            { label: "11 心", value: 11 },
+            { label: "12 心", value: 12 },
+            { label: "13 心", value: 13 },
+            { label: "14 心", value: 14 }
+          ]} onChange={(hearts) => onChange({ ...condition, data: { ...data, points: heartsToFriendshipPoints(Number(hearts)) } })} />
         </>
       )}
       {condition.type === "Time" && (
         <>
-          <Field label="开始时间" value={stringField(data.min)} onChange={(min) => onChange({ ...condition, data: { ...data, min: integerInRange(min, 600, 2600, 600) } })} />
-          <Field label="结束时间" value={stringField(data.max)} onChange={(max) => onChange({ ...condition, data: { ...data, max: integerInRange(max, 600, 2600, 2600) } })} />
+          <Field label="开始秒数" value={stringField(Math.round(Number(data.min || 600) / 10))} onChange={(minSeconds) => onChange({ ...condition, data: { ...data, min: secondsToTimeValue(Number(minSeconds)) } })} />
+          <Field label="结束秒数" value={stringField(Math.round(Number(data.max || 1100) / 10))} onChange={(maxSeconds) => onChange({ ...condition, data: { ...data, max: secondsToTimeValue(Number(maxSeconds)) } })} />
         </>
       )}
       {condition.type === "Season" && <ComboField label="季节" value={data.season || "Spring"} options={rulesetOptions(ruleset, "seasons")} onChange={(season) => onChange({ ...condition, data: { ...data, season } })} />}
@@ -3313,7 +3819,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
           onChange(next, key && text ? { key, text } : undefined);
         }} />
         <Field label="节点标题" value={node.label} onChange={(label) => onChange({ ...node, label })} />
-        {node.kind === "pause" && <Field label="等待毫秒" value={stringField(data.duration)} onChange={(duration) => patchData({ duration: integerInRange(duration, 0, 600000, 500) })} />}
+        {node.kind === "pause" && <Field label="等待秒数" value={stringField(Math.round(Number(data.duration || 500) / 10))} onChange={(duration) => patchData({ duration: secondsToTimeValue(Number(duration)) })} />}
         {node.kind === "speak" && (
           <>
             <Field label="说话角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
@@ -3979,11 +4485,14 @@ function WhenBuilder({ ruleset, value, onChange }: { ruleset: Ruleset; value: Js
   const conditions = whenConditionSchemas(ruleset);
   const [selectedKey, setSelectedKey] = useState(conditions[0]?.key || "Season");
   const selected = conditions.find((condition) => condition.key === selectedKey) || conditions[0];
-  const currentValue = value[selected?.key || ""] ?? defaultWhenValue(ruleset, selected);
+  const [parameterValue, setParameterValue] = useState("");
+  const activeParameterValue = selected ? (parameterValue || defaultWhenParameterValue(ruleset, selected)) : "";
+  const effectiveKey = selected ? whenEffectiveKey(selected, activeParameterValue) : "";
+  const currentValue = value[effectiveKey] ?? defaultWhenValue(ruleset, selected);
 
   function setConditionValue(nextValue: unknown) {
     if (!selected) return;
-    onChange({ ...value, [selected.key]: nextValue });
+    onChange({ ...value, [whenEffectiveKey(selected, activeParameterValue)]: nextValue });
   }
 
   function removeCondition(key: string) {
@@ -3994,9 +4503,15 @@ function WhenBuilder({ ruleset, value, onChange }: { ruleset: Ruleset; value: Js
     <div className="field when-builder">
       <span>条件 When</span>
       <div className="when-add-row">
-        <select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
+        <select value={selectedKey} onChange={(event) => {
+          setSelectedKey(event.target.value);
+          setParameterValue("");
+        }}>
           {conditions.map((condition) => <option key={condition.key} value={condition.key}>{condition.label}</option>)}
         </select>
+        {selected?.parameterLabel && (
+          <WhenParameterInput ruleset={ruleset} schema={selected} value={activeParameterValue} onChange={setParameterValue} />
+        )}
         {selected && <WhenValueInput ruleset={ruleset} schema={selected} value={currentValue} onChange={setConditionValue} />}
       </div>
       <div className="when-chips">
@@ -4010,6 +4525,25 @@ function WhenBuilder({ ruleset, value, onChange }: { ruleset: Ruleset; value: Js
       <JsonField label="When JSON 高级编辑" value={value} onChange={(next) => isObject(next) && onChange(next)} />
     </div>
   );
+}
+
+function whenEffectiveKey(schema: WhenConditionSchema, parameterValue: string) {
+  const parameter = schema.parameterLabel ? (parameterValue.trim() || "Abigail") : "";
+  return parameter ? `${schema.key}:${parameter}` : schema.key;
+}
+
+function defaultWhenParameterValue(ruleset: Ruleset, schema: WhenConditionSchema) {
+  if (!schema.parameterLabel) return "";
+  if (schema.parameterOptions) return String(rulesetOptions(ruleset, schema.parameterOptions)[0]?.value ?? "Abigail");
+  if (schema.key === "SkillLevel") return "Combat";
+  return "Abigail";
+}
+
+function WhenParameterInput({ ruleset, schema, value, onChange }: { ruleset: Ruleset; schema: WhenConditionSchema; value: string; onChange: (value: string) => void }) {
+  if (schema.parameterOptions) {
+    return <ComboField label={schema.parameterLabel || "参数"} value={value} options={rulesetOptions(ruleset, schema.parameterOptions)} onChange={(next) => onChange(String(next))} />;
+  }
+  return <Field label={schema.parameterLabel || "参数"} value={value} onChange={onChange} />;
 }
 
 function WhenValueInput({ ruleset, schema, value, onChange }: { ruleset: Ruleset; schema: WhenConditionSchema; value: unknown; onChange: (value: unknown) => void }) {
@@ -4277,7 +4811,7 @@ const STORY_NODE_OPTIONS: RulesetOption[] = [
   { label: "全局淡入 globalFadeToClear", value: "globalFadeToClear" },
   { label: "淡入淡出 fade", value: "fade" },
   { label: "视角 viewport", value: "viewport" },
-  { label: "邮件 mailReceived", value: "mail" },
+  { label: "邮件 mailReceived / mailToday", value: "mailReceived" },
   { label: "事件已看 eventSeen", value: "eventSeen" },
   { label: "获得物品 addItem", value: "addItem" },
   { label: "移除物品 removeItem", value: "removeItem" },
@@ -4398,6 +4932,8 @@ function gameDataLabel(kind: GameDataEntry["kind"], fallback = "") {
     dialogue: "对话",
     shop: "商店",
     event: "事件",
+    mail: "信件",
+    trigger_action: "触发动作",
     custom: "自定义"
   };
   return labels[kind] || fallback || kind;
@@ -4917,6 +5453,23 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         key: "999999/f ExampleNPC 2500",
         value: "pause 500/speak ExampleNPC \"这是一个示例事件。\"/end"
       };
+    case "mail":
+      return {
+        target: "Data/Mail",
+        key: "ExampleMail",
+        value: "你好，@！^^这是一封示例信件。[#]来自 Stardew CP Studio"
+      };
+    case "trigger_action":
+      return {
+        target: "Data/TriggerActions",
+        key: "ExampleTriggerAction",
+        value: {
+          Id: "ExampleTriggerAction",
+          Trigger: "Manual",
+          Actions: ["AddMail ExampleMail"],
+          HostOnly: false
+        }
+      };
     default:
       return {
         target: "Data/Objects",
@@ -4928,11 +5481,12 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
 
 function gameDataPatchPreview(entry: GameDataEntry) {
   const storyEntries = storyEntriesForPreview(entry);
+  const mailValue = entry.kind === "mail" ? mailStringFromEntry(entry) : null;
   const patch: JsonDict = {
     Action: "EditData",
     Target: entry.target,
     Entries: storyEntries || {
-      [entry.key || "ExampleKey"]: entry.value
+      [entry.key || "ExampleKey"]: entry.kind === "mail" ? mailValue || entry.value : entry.value
     }
   };
   if (Object.keys(entry.when).length) patch.When = entry.when;
@@ -5322,7 +5876,7 @@ function buildStoryCommand(node: StoryEventNode, meta: Pick<StoryEventMeta, "eve
     case "viewport":
       return `viewport ${integerInRange(data.x, -10000, 10000, -1000)} ${integerInRange(data.y, -10000, 10000, -1000)}`;
     case "mail":
-      return `${data.command || "mailReceived"} ${data.mailId || "ExampleMail"}`;
+      return `${data.command === "addMailReceived" ? "mailReceived" : data.command || "mailReceived"} ${data.mailId || "ExampleMail"}`;
     case "eventSeen":
       return `eventSeen ${data.eventId || meta.eventId || "ExampleEvent"}${data.seen === false ? " false" : ""}`;
     case "addItem":
@@ -5836,6 +6390,11 @@ function rulesetOptions(ruleset: Ruleset, key: string): RulesetOption[] {
   const value = ruleset.field_schemas?.[key];
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is RulesetOption => isObject(item) && "label" in item && "value" in item) as RulesetOption[];
+}
+
+function triggerEventOptions(ruleset: Ruleset) {
+  const options = rulesetOptions(ruleset, "trigger_types");
+  return options.length ? options : FALLBACK_TRIGGER_EVENT_OPTIONS;
 }
 
 function whenConditionSchemas(ruleset: Ruleset): WhenConditionSchema[] {

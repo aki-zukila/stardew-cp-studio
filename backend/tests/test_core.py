@@ -63,6 +63,48 @@ class CoreTests(unittest.TestCase):
             content = json.loads((output / "content.json").read_text(encoding="utf-8"))
             self.assertNotIn("StardewCPStudio", json.dumps(content))
 
+    def test_export_mail_newlines_and_trigger_actions_are_separate(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.extend([
+                GameDataEntry(
+                    kind="mail",
+                    target="Data/Mail",
+                    key="LetterFromGodOfDeath",
+                    value={
+                        "Body": "第一行\n第二行",
+                        "Title": "标题",
+                        "Actions": ["AddMail Current WrongPlace"],
+                    },
+                ),
+                GameDataEntry(
+                    kind="trigger_action",
+                    target="Data/TriggerActions",
+                    key="give_LCF_LetterFromGodOfDeath",
+                    value={
+                        "Id": "LCF_LetterFromGodOfDeath",
+                        "Trigger": "DayStarted",
+                        "Actions": ["AddMail Current LetterFromGodOfDeath"],
+                    },
+                    when={"Day": 1},
+                ),
+            ])
+
+            output = export_content_pack(project, temp_dir)
+            mail_file = json.loads((output / "code" / "mail.json").read_text(encoding="utf-8"))
+            mail_patch = next(change for change in mail_file["Changes"] if change.get("Target") == "Data/Mail")
+            trigger_patch = next(change for change in mail_file["Changes"] if change.get("Target") == "Data/TriggerActions")
+
+            self.assertEqual(mail_patch["Entries"]["LetterFromGodOfDeath"], "第一行^第二行[#]标题")
+            self.assertNotIn("WrongPlace", mail_patch["Entries"]["LetterFromGodOfDeath"])
+            self.assertEqual(trigger_patch["Entries"]["give_LCF_LetterFromGodOfDeath"]["Actions"], ["AddMail Current LetterFromGodOfDeath"])
+            self.assertEqual(trigger_patch["When"], {"Day": 1})
+
     def test_export_filters_internal_studio_metadata(self):
         import json
 
@@ -87,10 +129,13 @@ class CoreTests(unittest.TestCase):
 
             output = export_content_pack(project, temp_dir)
             content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            text = json.dumps(content)
+            patches = json.loads((output / "code" / "patches.json").read_text(encoding="utf-8"))
+            characters = json.loads((output / "code" / "characters.json").read_text(encoding="utf-8"))
+            text = json.dumps({**content, **patches, **characters})
 
             self.assertNotIn("StardewCPStudio", text)
-            self.assertEqual(sum(1 for change in content["Changes"] if change.get("PublicField") == "kept"), 2)
+            self.assertEqual(sum(1 for change in patches["Changes"] if change.get("PublicField") == "kept"), 1)
+            self.assertEqual(sum(1 for change in characters["Changes"] if change.get("PublicField") == "kept"), 1)
 
     def test_export_dialogue_uses_sve_style_include_files(self):
         import json
@@ -140,21 +185,21 @@ class CoreTests(unittest.TestCase):
 
             output = export_content_pack(project, temp_dir)
             content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            normal_file = output / "assets" / "CharacterFiles" / "Dialogue" / "Sophia" / "dialogue.json"
-            marriage_file = output / "assets" / "CharacterFiles" / "Dialogue" / "Sophia" / "MarriageDialogue.json"
-            normal = json.loads(normal_file.read_text(encoding="utf-8"))
-            marriage = json.loads(marriage_file.read_text(encoding="utf-8"))
+            dialogue_file = output / "code" / "dialogue.json"
+            dialogue = json.loads(dialogue_file.read_text(encoding="utf-8"))
 
-            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "assets/CharacterFiles/Dialogue/Sophia/dialogue.json" for change in content["Changes"]))
-            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "assets/CharacterFiles/Dialogue/Sophia/MarriageDialogue.json" for change in content["Changes"]))
-            self.assertTrue(any(change["Action"] == "Load" and change["Target"] == "Characters/Dialogue/Sophia" and change["FromFile"] == "assets/blank.json" for change in content["Changes"]))
+            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "code/dialogue.json" for change in content["Changes"]))
+            self.assertTrue(any(change["Action"] == "Load" and change["Target"] == "Characters/Dialogue/Sophia" and change["FromFile"] == "assets/blank.json" for change in dialogue["Changes"]))
+            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "assets/CharacterFiles/Dialogue/Sophia/dialogue.json" for change in dialogue["Changes"]))
+            self.assertTrue(any(change["Action"] == "Include" and change["FromFile"] == "assets/CharacterFiles/Dialogue/Sophia/MarriageDialogue.json" for change in dialogue["Changes"]))
             self.assertFalse(any(change["Action"] == "EditData" and change.get("Target") == "Characters/Dialogue/Sophia" for change in content["Changes"]))
-            self.assertEqual(len(normal["Changes"]), 2)
-            no_when = next(change for change in normal["Changes"] if "When" not in change)
-            with_when = next(change for change in normal["Changes"] if "When" in change)
+            self.assertEqual(len([change for change in dialogue["Changes"] if change.get("Target") == "Characters/Dialogue/Sophia" and change["Action"] == "EditData"]), 0)
+            no_when = next(change for change in json.loads((output / "assets" / "CharacterFiles" / "Dialogue" / "Sophia" / "dialogue.json").read_text(encoding="utf-8"))["Changes"] if "When" not in change)
+            with_when = next(change for change in json.loads((output / "assets" / "CharacterFiles" / "Dialogue" / "Sophia" / "dialogue.json").read_text(encoding="utf-8"))["Changes"] if "When" in change)
             self.assertEqual(no_when["Entries"]["Mon"], "{{i18n:Sophia.CharacterDialogue.Mon}}")
             self.assertEqual(no_when["Entries"]["Mon4"], "{{i18n:Sophia.CharacterDialogue.Mon4}}")
             self.assertEqual(with_when["Entries"]["rainy"], "{{i18n:Sophia.CharacterDialogue.Rain}}")
+            marriage = json.loads((output / "assets" / "CharacterFiles" / "Dialogue" / "Sophia" / "MarriageDialogue.json").read_text(encoding="utf-8"))
             self.assertEqual(marriage["Changes"][0]["Entries"]["Rainy_Day_0"], "{{i18n:Sophia.MarriageDialogue.Rainy_Day_0}}")
             self.assertEqual(marriage["Changes"][0]["Entries"]["Good_9"], "{{i18n:Sophia.MarriageDialogue.Good_9}}")
             self.assertEqual(marriage["Changes"][0]["Entries"]["Rainy_Night_5"], "{{i18n:Sophia.MarriageDialogue.Rainy_Night_5}}")
@@ -190,11 +235,11 @@ class CoreTests(unittest.TestCase):
                     value="{{i18n:Cale.SpecialDialogue.festival.spring13}}",
                     advanced={"StardewCPStudio": {"specialDialogue": {"kind": "festival", "npcName": "Cale"}}},
                 ),
-            ])
+            ]) 
 
             output = export_content_pack(project, temp_dir)
-            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            changes = content["Changes"]
+            dialogue = json.loads((output / "code" / "dialogue.json").read_text(encoding="utf-8"))
+            changes = dialogue["Changes"]
 
             engagement = next(change for change in changes if change.get("Target") == "Data/EngagementDialogue")
             rain = next(change for change in changes if change.get("Target") == "Characters/Dialogue/rain")
@@ -204,7 +249,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(engagement["Entries"]["Cale0"], "{{i18n:Cale.SpecialDialogue.engagement.Cale0}}")
             self.assertEqual(rain["Entries"]["Cale"], "{{i18n:Cale.SpecialDialogue.rain.Cale}}")
             self.assertEqual(festival["Entries"]["Cale"], "{{i18n:Cale.SpecialDialogue.festival.spring13}}")
-            self.assertNotIn("StardewCPStudio", json.dumps(content))
+            self.assertNotIn("StardewCPStudio", json.dumps(dialogue))
 
     def test_export_movie_reactions(self):
         import json
@@ -239,12 +284,12 @@ class CoreTests(unittest.TestCase):
 
             output = export_content_pack(project, temp_dir)
             content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            change = next(change for change in content["Changes"] if change.get("Target") == "Data/MoviesReactions")
+            change = next(change for change in json.loads((output / "code" / "characters.json").read_text(encoding="utf-8"))["Changes"] if change.get("Target") == "Data/MoviesReactions")
 
             self.assertEqual(change["Entries"]["Cale"]["NPCName"], "Cale")
             self.assertEqual(change["Entries"]["Cale"]["Reactions"][0]["Tag"], "spring_movie_0")
             self.assertEqual(change["Entries"]["Cale"]["Reactions"][0]["Response"], "like")
-            self.assertNotIn("StardewCPStudio", json.dumps(content))
+            self.assertNotIn("StardewCPStudio", json.dumps(change))
 
     def test_export_story_event_filters_builder_metadata(self):
         import json
@@ -269,15 +314,14 @@ class CoreTests(unittest.TestCase):
             ))
 
             output = export_content_pack(project, temp_dir)
-            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+            change = next(change for change in json.loads((output / "code" / "events.json").read_text(encoding="utf-8"))["Changes"] if change.get("Target") == "Data/Events/Farm")
 
             self.assertEqual(change["Action"], "EditData")
             self.assertEqual(change["Priority"], "Late")
             self.assertEqual(change["When"], {"HasSeenEvent |contains=5553214": True})
             self.assertIn("Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost", change["Entries"])
             self.assertIn("{{i18n:Author.TestPack.Event1.speak.node1}}", change["Entries"]["Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost"])
-            self.assertNotIn("StardewCPStudio", json.dumps(content))
+            self.assertNotIn("StardewCPStudio", json.dumps(change))
 
     def test_export_story_event_branches_share_edit_data_patch(self):
         import json
@@ -335,15 +379,14 @@ class CoreTests(unittest.TestCase):
             ))
 
             output = export_content_pack(project, temp_dir)
-            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+            change = next(change for change in json.loads((output / "code" / "events.json").read_text(encoding="utf-8"))["Changes"] if change.get("Target") == "Data/Events/Farm")
 
             self.assertEqual(set(change["Entries"]), {"Author.TestPack.Event1/IsHost", "Author.TestPack.Event1_Branch1"})
             self.assertEqual(
                 change["Entries"]["Author.TestPack.Event1_Branch1"],
                 'pause 400/message "{{i18n:Author.TestPack.Event1.branch.message}}"/textAboveHead MorrisTod "{{i18n:Author.TestPack.Event1.branch.bubble}}"/faceDirection farmer 1 true/warp farmer 95 49/playSound doorClose/animate MorrisTod false true 120 0 1 2/showFrame MorrisTod 4/stopAnimation MorrisTod/advancedMove MorrisTod false 0 3 2 0/positionOffset MorrisTod 1 -1 true/shake MorrisTod 1200/jump MorrisTod 8/eventSeen Author.TestPack.Event1 false/addItem (O)388 2 0/removeItem (O)388 1/addObject 64 15 (O)388/removeObject 64 15/removeSprite 64 15/changeLocation Town/changeMapTile Buildings 64 15 123/changePortrait MorrisTod Happy/changeSprite MorrisTod Winter/friendship MorrisTod 250/money -100/end dialogue MorrisTod "{{i18n:Author.TestPack.Event1.branch.end}}"',
             )
-            self.assertNotIn("StardewCPStudio", json.dumps(content))
+            self.assertNotIn("StardewCPStudio", json.dumps(change))
 
     def test_export_story_event_supports_single_argument_fork(self):
         import json
@@ -380,8 +423,7 @@ class CoreTests(unittest.TestCase):
             ))
 
             output = export_content_pack(project, temp_dir)
-            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
-            change = next(change for change in content["Changes"] if change.get("Target") == "Data/Events/Farm")
+            change = next(change for change in json.loads((output / "code" / "events.json").read_text(encoding="utf-8"))["Changes"] if change.get("Target") == "Data/Events/Farm")
 
             self.assertIn('fork 746153081_PurchasedAuroraVineyard', change["Entries"]["746153081/IsHost"])
             self.assertNotIn('fork fork0 746153081_PurchasedAuroraVineyard', change["Entries"]["746153081/IsHost"])

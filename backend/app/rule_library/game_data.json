@@ -2737,32 +2737,32 @@
     ],
     "days_of_week": [
       {
-        "label": "周一 Monday",
-        "value": "Monday"
+        "label": "周一 Mon",
+        "value": "Mon"
       },
       {
-        "label": "周二 Tuesday",
-        "value": "Tuesday"
+        "label": "周二 Tue",
+        "value": "Tue"
       },
       {
-        "label": "周三 Wednesday",
-        "value": "Wednesday"
+        "label": "周三 Wed",
+        "value": "Wed"
       },
       {
-        "label": "周四 Thursday",
-        "value": "Thursday"
+        "label": "周四 Thu",
+        "value": "Thu"
       },
       {
-        "label": "周五 Friday",
-        "value": "Friday"
+        "label": "周五 Fri",
+        "value": "Fri"
       },
       {
-        "label": "周六 Saturday",
-        "value": "Saturday"
+        "label": "周六 Sat",
+        "value": "Sat"
       },
       {
-        "label": "周日 Sunday",
-        "value": "Sunday"
+        "label": "周日 Sun",
+        "value": "Sun"
       }
     ],
     "weather": [
@@ -2775,24 +2775,20 @@
         "value": "Rain"
       },
       {
-        "label": "风 Wind",
-        "value": "Wind"
+        "label": "雷雨 Storm",
+        "value": "Storm"
       },
       {
-        "label": "风暴 Storm",
-        "value": "Storm"
+        "label": "苔雨 GreenRain",
+        "value": "GreenRain"
       },
       {
         "label": "雪 Snow",
         "value": "Snow"
       },
       {
-        "label": "节日 Festival",
-        "value": "Festival"
-      },
-      {
-        "label": "婚礼 Wedding",
-        "value": "Wedding"
+        "label": "风 Wind",
+        "value": "Wind"
       }
     ],
     "genders": [
@@ -3482,24 +3478,16 @@
     ],
     "location_contexts": [
       {
-        "label": "室外 Outdoors",
-        "value": "Outdoors"
+        "label": "默认 Default",
+        "value": "Default"
       },
       {
-        "label": "室内 Indoors",
-        "value": "Indoors"
+        "label": "沙漠 Desert",
+        "value": "Desert"
       },
       {
-        "label": "矿井 Mine",
-        "value": "Mine"
-      },
-      {
-        "label": "农场 Farm",
-        "value": "Farm"
-      },
-      {
-        "label": "小镇 Town",
-        "value": "Town"
+        "label": "姜岛 Island",
+        "value": "Island"
       }
     ],
     "music_contexts": [
@@ -3602,6 +3590,366 @@
       {
         "label": "煤炭 coal",
         "value": "(O)382"
+      }
+    ],
+    "boolean_values": [
+      {
+        "label": "是 true",
+        "value": true
+      },
+      {
+        "label": "否 false",
+        "value": false
+      }
+    ],
+    "player_genders": [
+      {
+        "label": "女性 Female",
+        "value": "Female"
+      },
+      {
+        "label": "男性 Male",
+        "value": "Male"
+      }
+    ],
+    "day_events": [
+      {
+        "label": "婚礼 wedding",
+        "value": "wedding"
+      },
+      {
+        "label": "月光水母之舞 Dance of the Moonlight Jellies",
+        "value": "Dance of the Moonlight Jellies"
+      },
+      {
+        "label": "复活节 Egg Festival",
+        "value": "Egg Festival"
+      },
+      {
+        "label": "冬日星宴 Feast of the Winter Star",
+        "value": "Feast of the Winter Star"
+      },
+      {
+        "label": "冰雪节 Festival of Ice",
+        "value": "Festival of Ice"
+      },
+      {
+        "label": "花舞节 Flower Dance",
+        "value": "Flower Dance"
+      },
+      {
+        "label": "夏威夷宴会 Luau",
+        "value": "Luau"
+      },
+      {
+        "label": "万灵节 Spirit's Eve",
+        "value": "Spirit's Eve"
+      },
+      {
+        "label": "星露谷展览会 Stardew Valley Fair",
+        "value": "Stardew Valley Fair"
+      }
+    ],
+    "relationship_statuses": [
+      {
+        "label": "未见面 Unmet",
+        "value": "Unmet"
+      },
+      {
+        "label": "友好 Friendly",
+        "value": "Friendly"
+      },
+      {
+        "label": "约会 Dating",
+        "value": "Dating"
+      },
+      {
+        "label": "订婚 Engaged",
+        "value": "Engaged"
+      },
+      {
+        "label": "已婚 Married",
+        "value": "Married"
+      },
+      {
+        "label": "离婚 Divorced",
+        "value": "Divorced"
+      }
+    ],
+    "professions": [
+      {
+        "label": "杂技者 Acrobat",
+        "value": "Acrobat"
+      },
+      {
+        "label": "野蛮人 Brute",
+        "value": "Brute"
+      },
+      {
+        "label": "防御者 Defender",
+        "value": "Defender"
+      },
+      {
+        "label": "亡命徒 Desperado",
+        "value": "Desperado"
+      },
+      {
+        "label": "战士 Fighter",
+        "value": "Fighter"
+      },
+      {
+        "label": "侦查 Scout",
+        "value": "Scout"
+      },
+      {
+        "label": "农业学家 Agriculturist",
+        "value": "Agriculturist"
+      },
+      {
+        "label": "工匠 Artisan",
+        "value": "Artisan"
+      },
+      {
+        "label": "鸡舍大师 Coopmaster",
+        "value": "Coopmaster"
+      },
+      {
+        "label": "畜牧人 Rancher",
+        "value": "Rancher"
+      },
+      {
+        "label": "牧羊人 Shepherd",
+        "value": "Shepherd"
+      },
+      {
+        "label": "农耕人 Tiller",
+        "value": "Tiller"
+      },
+      {
+        "label": "垂钓者 Angler",
+        "value": "Angler"
+      },
+      {
+        "label": "渔夫 Fisher",
+        "value": "Fisher"
+      },
+      {
+        "label": "水手 Mariner",
+        "value": "Mariner"
+      },
+      {
+        "label": "海盗 Pirate",
+        "value": "Pirate"
+      },
+      {
+        "label": "诱饵大师 Luremaster",
+        "value": "Luremaster"
+      },
+      {
+        "label": "捕猎者 Trapper",
+        "value": "Trapper"
+      },
+      {
+        "label": "植物学家 Botanist",
+        "value": "Botanist"
+      },
+      {
+        "label": "护林人 Forester",
+        "value": "Forester"
+      },
+      {
+        "label": "收集者 Gatherer",
+        "value": "Gatherer"
+      },
+      {
+        "label": "伐木工人 Lumberjack",
+        "value": "Lumberjack"
+      },
+      {
+        "label": "萃取者 Tapper",
+        "value": "Tapper"
+      },
+      {
+        "label": "追踪者 Tracker",
+        "value": "Tracker"
+      },
+      {
+        "label": "铁匠 Blacksmith",
+        "value": "Blacksmith"
+      },
+      {
+        "label": "挖掘者 Excavator",
+        "value": "Excavator"
+      },
+      {
+        "label": "宝石专家 Gemologist",
+        "value": "Gemologist"
+      },
+      {
+        "label": "地质学家 Geologist",
+        "value": "Geologist"
+      },
+      {
+        "label": "矿工 Miner",
+        "value": "Miner"
+      },
+      {
+        "label": "勘探者 Prospector",
+        "value": "Prospector"
+      }
+    ],
+    "wallet_items": [
+      {
+        "label": "矮人语教程 DwarvishTranslationGuide",
+        "value": "DwarvishTranslationGuide"
+      },
+      {
+        "label": "生锈钥匙 RustyKey",
+        "value": "RustyKey"
+      },
+      {
+        "label": "会员卡 ClubCard",
+        "value": "ClubCard"
+      },
+      {
+        "label": "小镇钥匙 KeyToTheTown",
+        "value": "KeyToTheTown"
+      },
+      {
+        "label": "特殊魅力 SpecialCharm",
+        "value": "SpecialCharm"
+      },
+      {
+        "label": "头骨钥匙 SkullKey",
+        "value": "SkullKey"
+      },
+      {
+        "label": "放大镜 MagnifyingGlass",
+        "value": "MagnifyingGlass"
+      },
+      {
+        "label": "黑暗护身符 DarkTalisman",
+        "value": "DarkTalisman"
+      },
+      {
+        "label": "魔法墨水 MagicInk",
+        "value": "MagicInk"
+      },
+      {
+        "label": "熊的知识 BearsKnowledge",
+        "value": "BearsKnowledge"
+      },
+      {
+        "label": "青葱技术 SpringOnionMastery",
+        "value": "SpringOnionMastery"
+      }
+    ],
+    "skill_names": [
+      {
+        "label": "战斗 Combat",
+        "value": "Combat"
+      },
+      {
+        "label": "耕种 Farming",
+        "value": "Farming"
+      },
+      {
+        "label": "钓鱼 Fishing",
+        "value": "Fishing"
+      },
+      {
+        "label": "采集 Foraging",
+        "value": "Foraging"
+      },
+      {
+        "label": "幸运 Luck",
+        "value": "Luck"
+      },
+      {
+        "label": "挖矿 Mining",
+        "value": "Mining"
+      }
+    ],
+    "farm_map_assets": [
+      {
+        "label": "标准农场 Farm",
+        "value": "Farm"
+      },
+      {
+        "label": "沙滩农场 Farm_Island",
+        "value": "Farm_Island"
+      },
+      {
+        "label": "森林农场 Farm_Foraging",
+        "value": "Farm_Foraging"
+      },
+      {
+        "label": "四角农场 Farm_FourCorners",
+        "value": "Farm_FourCorners"
+      },
+      {
+        "label": "山顶农场 Farm_Mining",
+        "value": "Farm_Mining"
+      },
+      {
+        "label": "草原农场 Farm_Ranching",
+        "value": "Farm_Ranching"
+      },
+      {
+        "label": "河边农场 Farm_Fishing",
+        "value": "Farm_Fishing"
+      },
+      {
+        "label": "荒野农场 Farm_Combat",
+        "value": "Farm_Combat"
+      }
+    ],
+    "cp_seasons": [
+      {
+        "label": "春 Spring",
+        "value": "Spring"
+      },
+      {
+        "label": "夏 Summer",
+        "value": "Summer"
+      },
+      {
+        "label": "秋 Fall",
+        "value": "Fall"
+      },
+      {
+        "label": "冬 Winter",
+        "value": "Winter"
+      }
+    ],
+    "cp_days_of_week": [
+      {
+        "label": "周一 Monday",
+        "value": "Monday"
+      },
+      {
+        "label": "周二 Tuesday",
+        "value": "Tuesday"
+      },
+      {
+        "label": "周三 Wednesday",
+        "value": "Wednesday"
+      },
+      {
+        "label": "周四 Thursday",
+        "value": "Thursday"
+      },
+      {
+        "label": "周五 Friday",
+        "value": "Friday"
+      },
+      {
+        "label": "周六 Saturday",
+        "value": "Saturday"
+      },
+      {
+        "label": "周日 Sunday",
+        "value": "Sunday"
       }
     ]
   },
