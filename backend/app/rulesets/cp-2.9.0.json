@@ -112,6 +112,24 @@
       "description": "Reusable trigger actions for mail, dialogue, and events."
     },
     {
+      "kind": "quest",
+      "label": "Quest",
+      "defaultTarget": "Data/Quests",
+      "description": "Quest entries."
+    },
+    {
+      "kind": "secret_note",
+      "label": "Secret Note",
+      "defaultTarget": "Data/SecretNotes",
+      "description": "Secret note entries with i18n-backed text."
+    },
+    {
+      "kind": "special_order",
+      "label": "Special Order",
+      "defaultTarget": "Data/SpecialOrders",
+      "description": "Special order board entries, objectives, rewards, and order text."
+    },
+    {
       "kind": "custom",
       "label": "Custom",
       "defaultTarget": "Data/Objects",

@@ -32,6 +32,7 @@ def export_content_pack(
     (target / "code").mkdir(exist_ok=True)
 
     export_i18n = dict(project.i18n)
+    _normalize_secret_note_i18n(project, export_i18n)
     dialogue_files = _write_dialogue_files(project, target)
     schedule_files = _write_schedule_files(project, target, export_i18n)
     _write_json(target / "manifest.json", _manifest_json(project.manifest))
@@ -90,6 +91,8 @@ def _write_code_files(project: Project, target: Path, dialogue_files: list["Dial
         "events.json",
         "mail.json",
         "quests.json",
+        "special_orders.json",
+        "Other/SecretNotes.json",
         "shops.json",
         "custom.json",
     ]:
@@ -111,6 +114,8 @@ def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], 
         "events.json": [],
         "mail.json": [],
         "quests.json": [],
+        "special_orders.json": [],
+        "Other/SecretNotes.json": [],
         "shops.json": [],
         "custom.json": [],
     }
@@ -137,6 +142,9 @@ def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], 
         if _schedule_entry_info(entry) and not entry.when:
             continue
         groups[_code_group_for_entry(entry)].append(_game_data_patch_json(entry))
+        special_order_strings = _special_order_strings_patch(entry)
+        if special_order_strings:
+            groups["special_orders.json"].append(special_order_strings)
 
     return groups
 
@@ -171,6 +179,10 @@ def _code_group_for_entry(entry: GameDataEntry) -> str:
         return "mail.json"
     if entry.kind == "quest" or target == "Data/Quests":
         return "quests.json"
+    if entry.kind == "special_order" or target == "Data/SpecialOrders" or target == "Strings/SpecialOrderStrings":
+        return "special_orders.json"
+    if entry.kind == "secret_note" or target == "Data/SecretNotes":
+        return "Other/SecretNotes.json"
     if entry.kind == "shop" or target.startswith("Data/Shops"):
         return "shops.json"
     if "Dialogue" in target or target.startswith("Data/Festivals/") or target == "Data/EngagementDialogue":
@@ -206,7 +218,7 @@ def _game_data_patch_json(entry: GameDataEntry) -> dict[str, Any]:
         patch.update(_export_advanced(entry.advanced))
         return patch
 
-    value = _mail_entry_value(entry) if entry.kind == "mail" else entry.value
+    value = _game_data_entry_value(entry)
     patch: dict[str, Any] = {
         "Action": "EditData",
         "Target": entry.target,
@@ -218,6 +230,150 @@ def _game_data_patch_json(entry: GameDataEntry) -> dict[str, Any]:
         patch["When"] = entry.when
     patch.update(_export_advanced(entry.advanced))
     return patch
+
+
+def _game_data_entry_value(entry: GameDataEntry) -> Any:
+    if entry.kind == "mail":
+        return _mail_entry_value(entry)
+    special_order = _special_order_entry_value(entry)
+    if special_order is not None:
+        return special_order
+    return entry.value
+
+
+def _special_order_entry_value(entry: GameDataEntry) -> Any | None:
+    if entry.kind != "special_order" and entry.target != "Data/SpecialOrders":
+        return None
+    studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+    meta = studio.get("specialOrder") if isinstance(studio, dict) else None
+    if not isinstance(meta, dict):
+        return entry.value
+    order_id = str(meta.get("orderId") or entry.key or "ExampleOrder")
+    value: dict[str, Any] = {
+        "Name": f"[{_sanitize_string_key(order_id)}_Name]",
+        "Requester": str(meta.get("requester") or "Lewis"),
+        "Duration": str(meta.get("duration") or "TwoWeeks"),
+        "Repeatable": str(bool(meta.get("repeatable"))),
+        "RequiredTags": str(meta.get("requiredTags") or ""),
+        "OrderType": str(meta.get("orderType") or ""),
+        "SpecialRule": str(meta.get("specialRule") or ""),
+        "Text": f"[{_sanitize_string_key(order_id)}_Text]",
+        "ItemToRemoveOnEnd": meta.get("itemToRemoveOnEnd") or None,
+        "MailToRemoveOnEnd": meta.get("mailToRemoveOnEnd") or None,
+        "RandomizedElements": _special_order_randomized_elements(meta.get("randomizedElements")),
+        "Objectives": _special_order_objectives(order_id, meta.get("objectives")),
+        "Rewards": _special_order_rewards(meta.get("rewards")),
+    }
+    condition = str(meta.get("condition") or "").strip()
+    if condition:
+        value["Condition"] = condition
+    custom_fields = meta.get("customFields")
+    if isinstance(custom_fields, dict):
+        value.update(custom_fields)
+    return value
+
+
+def _special_order_objectives(order_id: str, objectives: Any) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    if not isinstance(objectives, list):
+        return result
+    for index, objective in enumerate(objectives, start=1):
+        if not isinstance(objective, dict):
+            continue
+        objective_type = str(objective.get("customType") or objective.get("type") or "Donate")
+        data = objective.get("data") if isinstance(objective.get("data"), dict) else {}
+        result.append({
+            "Type": objective_type,
+            "Text": f"[{_sanitize_string_key(order_id)}_Objective_{index}_Text]",
+            "RequiredCount": str(objective.get("requiredCount") or "1"),
+            "Data": data,
+        })
+    return result
+
+
+def _special_order_rewards(rewards: Any) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    if not isinstance(rewards, list):
+        return result
+    for reward in rewards:
+        if not isinstance(reward, dict):
+            continue
+        reward_type = str(reward.get("customType") or reward.get("type") or "Money")
+        data = reward.get("data") if isinstance(reward.get("data"), dict) else {}
+        result.append({"Type": reward_type, "Data": data})
+    return result
+
+
+def _special_order_randomized_elements(elements: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(elements, list) or not elements:
+        return None
+    result: list[dict[str, Any]] = []
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        values = element.get("values")
+        result.append({
+            "Name": str(element.get("name") or ""),
+            "Values": [
+                {"RequiredTags": str(row.get("requiredTags") or ""), "Value": str(row.get("value") or "")}
+                for row in values
+                if isinstance(row, dict)
+            ] if isinstance(values, list) else [],
+        })
+    return result or None
+
+
+def _normalize_secret_note_i18n(project: Project, export_i18n: dict[str, str]) -> None:
+    for entry in project.game_data:
+        if entry.kind != "secret_note" and entry.target != "Data/SecretNotes":
+            continue
+        studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+        note = studio.get("secretNote") if isinstance(studio, dict) else None
+        key = ""
+        if isinstance(note, dict):
+            key = str(note.get("textKey") or "")
+        if not key and isinstance(entry.value, str):
+            match = re.match(r"^\{\{i18n:([^}]+)\}\}$", entry.value)
+            key = match.group(1) if match else ""
+        if key and key in export_i18n:
+            export_i18n[key] = _mail_body_for_export(export_i18n[key])
+
+
+def _special_order_strings_patch(entry: GameDataEntry) -> dict[str, Any] | None:
+    if entry.kind != "special_order" and entry.target != "Data/SpecialOrders":
+        return None
+    studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+    meta = studio.get("specialOrder") if isinstance(studio, dict) else None
+    if not isinstance(meta, dict):
+        return None
+    order_id = str(meta.get("orderId") or entry.key or "ExampleOrder")
+    entries: dict[str, str] = {}
+    name_key = str(meta.get("nameKey") or "")
+    text_key = str(meta.get("textKey") or "")
+    if name_key:
+        entries[f"{_sanitize_string_key(order_id)}_Name"] = f"{{{{i18n:{name_key}}}}}"
+    if text_key:
+        entries[f"{_sanitize_string_key(order_id)}_Text"] = f"{{{{i18n:{text_key}}}}}"
+    objectives = meta.get("objectives")
+    if isinstance(objectives, list):
+        for index, objective in enumerate(objectives, start=1):
+            if not isinstance(objective, dict):
+                continue
+            objective_key = str(objective.get("textKey") or "")
+            if objective_key:
+                entries[f"{_sanitize_string_key(order_id)}_Objective_{index}_Text"] = f"{{{{i18n:{objective_key}}}}}"
+    if not entries:
+        return None
+    patch: dict[str, Any] = {
+        "Action": "EditData",
+        "Target": "Strings/SpecialOrderStrings",
+        "Entries": entries,
+    }
+    return patch
+
+
+def _sanitize_string_key(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value or "Example")
 
 
 def _mail_entry_value(entry: GameDataEntry) -> Any:
@@ -322,44 +478,82 @@ def _story_event_entries(entry: GameDataEntry) -> dict[str, Any] | None:
         return None
 
     entries: dict[str, Any] = {}
+    actors = story.get("actors")
+    story_actors = actors if isinstance(actors, list) else []
     if entry.key:
         nodes = story.get("nodes")
-        entries[entry.key] = _story_main_script(entry.key, entry.value, nodes if isinstance(nodes, list) else [])
+        entries[entry.key] = _story_main_script(entry.key, entry.value, nodes if isinstance(nodes, list) else [], story_actors)
     for branch in story.get("branches", []) or []:
         if not isinstance(branch, dict):
             continue
         key = branch.get("key")
         nodes = branch.get("nodes")
         if isinstance(key, str) and key:
-            entries[key] = _story_branch_script(key, nodes if isinstance(nodes, list) else [])
+            entries[key] = _story_branch_script(key, nodes if isinstance(nodes, list) else [], story_actors)
     return entries or None
 
 
-def _story_main_script(entry_key: str, fallback: Any, nodes: list[Any]) -> Any:
+def _story_main_script(entry_key: str, fallback: Any, nodes: list[Any], actors: list[Any] | None = None) -> Any:
     if not nodes:
         return fallback
     parts = str(fallback or "").split("/")
     start = parts[:3] if len(parts) >= 3 else ["continue", "-500 -500", "farmer -500 -500 2"]
     event_id = entry_key.split("/", 1)[0] if entry_key else ""
-    commands = [
-        command
-        for node in nodes
-        if isinstance(node, dict)
-        for command in [_story_node_command(node, event_id)]
-        if command
-    ]
+    commands = _story_node_commands(nodes, event_id, actors or [])
     return "/".join([*start, *commands])
 
 
-def _story_branch_script(branch_key: str, nodes: list[Any]) -> str:
-    commands = [
-        command
-        for node in nodes
-        if isinstance(node, dict)
-        for command in [_story_node_command(node, branch_key)]
-        if command
-    ]
-    return "/".join(commands)
+def _story_branch_script(branch_key: str, nodes: list[Any], actors: list[Any] | None = None) -> str:
+    return "/".join(_story_node_commands(nodes, branch_key, actors or []))
+
+
+def _story_actor_positions(actors: list[Any]) -> dict[str, tuple[int, int]]:
+    positions: dict[str, tuple[int, int]] = {}
+    safe_actors = actors or [{"actor": "farmer", "x": -500, "y": -500, "direction": 2}]
+    for actor in safe_actors:
+        if not isinstance(actor, dict):
+            continue
+        name = str(actor.get("actor") or "farmer")
+        positions[name] = (_int_value(actor.get("x"), 0), _int_value(actor.get("y"), 0))
+    return positions
+
+
+def _story_node_commands(nodes: list[Any], event_id: str, actors: list[Any]) -> list[str]:
+    positions = _story_actor_positions(actors)
+    commands: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        kind = node.get("kind")
+        data = node.get("data") if isinstance(node.get("data"), dict) else {}
+        actor = str(data.get("actor") or "farmer")
+        if kind == "move":
+            current = positions.get(actor)
+            has_target = data.get("targetMode") is not False and data.get("targetX") is not None and data.get("targetY") is not None
+            if has_target and current is not None:
+                target_x = _int_value(data.get("targetX"), current[0])
+                target_y = _int_value(data.get("targetY"), current[1])
+                dx = target_x - current[0]
+                dy = target_y - current[1]
+                positions[actor] = (target_x, target_y)
+            else:
+                dx = _int_value(data.get("x"), 0)
+                dy = _int_value(data.get("y"), 1)
+                if current is not None:
+                    positions[actor] = (current[0] + dx, current[1] + dy)
+            suffix = " true" if data.get("continue") else ""
+            commands.append(f"move {actor} {dx} {dy} {_int_value(data.get('direction'), 2)}{suffix}")
+            continue
+        command = _story_node_command(node, event_id)
+        if command:
+            commands.append(command)
+        if kind == "positionOffset":
+            current = positions.get(actor)
+            if current is not None:
+                positions[actor] = (current[0] + _int_value(data.get("x"), 0), current[1] + _int_value(data.get("y"), 0))
+        elif kind == "warp":
+            positions[actor] = (_int_value(data.get("x"), 0), _int_value(data.get("y"), 0))
+    return commands
 
 
 def _story_node_command(node: dict[str, Any], event_id: str) -> str:

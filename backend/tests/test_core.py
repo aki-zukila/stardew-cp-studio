@@ -425,6 +425,136 @@ class CoreTests(unittest.TestCase):
             self.assertIn("{{i18n:Author.TestPack.Event1.speak.node1}}", change["Entries"]["Author.TestPack.Event1/Time 600 1100/Weather sunny/IsHost"])
             self.assertNotIn("StardewCPStudio", json.dumps(change))
 
+    def test_export_story_event_move_target_coordinates(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.game_data.append(GameDataEntry(
+                kind="event",
+                name="Movement Story Event",
+                target="Data/Events/Farm",
+                key="Author.TestPack.EventMove",
+                value="continue/-500 -500/farmer 10 10 2/end",
+                advanced={
+                    "StardewCPStudio": {
+                        "storyEvent": {
+                            "actors": [{"actor": "farmer", "x": 10, "y": 10, "direction": 2}],
+                            "nodes": [
+                                {"kind": "move", "data": {"actor": "farmer", "targetMode": True, "targetX": 12, "targetY": 13, "direction": 2}},
+                                {"kind": "warp", "data": {"actor": "farmer", "x": 20, "y": 20}},
+                                {"kind": "move", "data": {"actor": "farmer", "targetMode": True, "targetX": 18, "targetY": 21, "direction": 3, "continue": True}},
+                            ],
+                        }
+                    }
+                },
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            change = next(change for change in json.loads((output / "code" / "events.json").read_text(encoding="utf-8"))["Changes"] if change.get("Target") == "Data/Events/Farm")
+
+            self.assertEqual(
+                change["Entries"]["Author.TestPack.EventMove"],
+                "continue/-500 -500/farmer 10 10 2/move farmer 2 3 2/warp farmer 20 20/move farmer -2 1 3 true",
+            )
+
+    def test_export_secret_notes_to_other_file_with_i18n_linebreaks(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.i18n = {"Author.TestPack.SecretNote.Cale": "第一行\n第二行"}
+            project.game_data.append(GameDataEntry(
+                kind="secret_note",
+                name="Secret Note",
+                target="Data/SecretNotes",
+                key="CaleNote",
+                value="{{i18n:Author.TestPack.SecretNote.Cale}}",
+                advanced={"StardewCPStudio": {"secretNote": {"noteId": "CaleNote", "textKey": "Author.TestPack.SecretNote.Cale"}}},
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            content = json.loads((output / "content.json").read_text(encoding="utf-8"))
+            notes = json.loads((output / "code" / "Other" / "SecretNotes.json").read_text(encoding="utf-8"))
+            i18n = json.loads((output / "i18n" / "default.json").read_text(encoding="utf-8"))
+
+            self.assertIn("code/Other/SecretNotes.json", [change["FromFile"] for change in content["Changes"]])
+            self.assertEqual(notes["Changes"][0]["Target"], "Data/SecretNotes")
+            self.assertEqual(notes["Changes"][0]["Entries"]["CaleNote"], "{{i18n:Author.TestPack.SecretNote.Cale}}")
+            self.assertEqual(i18n["Author.TestPack.SecretNote.Cale"], "第一行^第二行")
+
+    def test_export_special_order_with_string_entries(self):
+        import json
+
+        with TemporaryDirectory() as temp_dir:
+            project = new_project()
+            project.manifest.Name = "Test Pack"
+            project.manifest.Author = "Author"
+            project.manifest.UniqueID = "Author.TestPack"
+            project.i18n = {
+                "Author.TestPack.SpecialOrder.Andy.Name": "安迪的订单",
+                "Author.TestPack.SpecialOrder.Andy.Text": "帮安迪收集材料。",
+                "Author.TestPack.SpecialOrder.Andy.Objective": "投入木材",
+            }
+            project.game_data.append(GameDataEntry(
+                kind="special_order",
+                name="Andy Order",
+                target="Data/SpecialOrders",
+                key="Andy",
+                value={
+                    "Name": "[Andy_Name]",
+                    "Requester": "Andy",
+                    "Duration": "TwoWeeks",
+                    "Repeatable": "False",
+                    "Text": "[Andy_Text]",
+                    "Objectives": [],
+                    "Rewards": [],
+                },
+                advanced={"StardewCPStudio": {"specialOrder": {
+                    "orderId": "Andy",
+                    "nameKey": "Author.TestPack.SpecialOrder.Andy.Name",
+                    "textKey": "Author.TestPack.SpecialOrder.Andy.Text",
+                    "requester": "Andy",
+                    "duration": "TwoWeeks",
+                    "repeatable": False,
+                    "requiredTags": "event_5000005",
+                    "orderType": "",
+                    "specialRule": "",
+                    "objectives": [
+                        {
+                            "id": "objective-1",
+                            "type": "Donate",
+                            "textKey": "Author.TestPack.SpecialOrder.Andy.Objective",
+                            "requiredCount": "500",
+                            "data": {
+                                "DropBox": "AndyChest",
+                                "DropBoxGameLocation": "Custom_AndyHouse",
+                                "DropBoxIndicatorLocation": "12 5.5",
+                                "AcceptedContextTags": "item_wood",
+                            },
+                        }
+                    ],
+                    "rewards": [{"id": "reward-1", "type": "Money", "data": {"Amount": "5362"}}],
+                }}},
+            ))
+
+            output = export_content_pack(project, temp_dir)
+            orders = json.loads((output / "code" / "special_orders.json").read_text(encoding="utf-8"))["Changes"]
+            order_patch = next(change for change in orders if change["Target"] == "Data/SpecialOrders")
+            string_patch = next(change for change in orders if change["Target"] == "Strings/SpecialOrderStrings")
+
+            self.assertEqual(order_patch["Entries"]["Andy"]["Requester"], "Andy")
+            self.assertEqual(order_patch["Entries"]["Andy"]["Objectives"][0]["Text"], "[Andy_Objective_1_Text]")
+            self.assertEqual(order_patch["Entries"]["Andy"]["Rewards"][0]["Data"]["Amount"], "5362")
+            self.assertEqual(string_patch["Entries"]["Andy_Name"], "{{i18n:Author.TestPack.SpecialOrder.Andy.Name}}")
+            self.assertEqual(string_patch["Entries"]["Andy_Objective_1_Text"], "{{i18n:Author.TestPack.SpecialOrder.Andy.Objective}}")
+
     def test_export_story_event_branches_share_edit_data_patch(self):
         import json
 

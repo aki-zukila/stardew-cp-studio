@@ -56,7 +56,7 @@ class PatchEntry(BaseModel):
     advanced: JsonDict = Field(default_factory=dict)
 
 
-GameDataKind = Literal["npc", "item", "dialogue", "schedule", "animation", "shop", "event", "mail", "trigger_action", "quest", "custom"]
+GameDataKind = Literal["npc", "item", "dialogue", "schedule", "animation", "shop", "event", "mail", "trigger_action", "quest", "secret_note", "special_order", "custom"]
 
 
 class GameDataEntry(BaseModel):

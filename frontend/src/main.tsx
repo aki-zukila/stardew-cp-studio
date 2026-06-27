@@ -29,7 +29,7 @@ type Patch = {
 
 type GameDataEntry = {
   id: string;
-  kind: "npc" | "item" | "dialogue" | "schedule" | "animation" | "shop" | "event" | "mail" | "trigger_action" | "quest" | "custom";
+  kind: "npc" | "item" | "dialogue" | "schedule" | "animation" | "shop" | "event" | "mail" | "trigger_action" | "quest" | "secret_note" | "special_order" | "custom";
   name: string;
   target: string;
   key: string;
@@ -103,6 +103,34 @@ type QuestMeta = {
   rewardDescription: string;
   cancellable: boolean;
   rawValue: string;
+};
+type SecretNoteMeta = {
+  noteId: string;
+  textKey: string;
+};
+type SpecialOrderObjectiveType = "Collect" | "Deliver" | "Fish" | "Gift" | "JKScore" | "ReachMineFloor" | "Ship" | "Donate" | "Slay" | "custom";
+type SpecialOrderRewardType = "Money" | "Gems" | "Mail" | "Friendship" | "ResetEvent" | "Object" | "custom";
+type SpecialOrderObjective = { id: string; type: SpecialOrderObjectiveType; textKey: string; requiredCount: string; data: JsonDict; customType?: string };
+type SpecialOrderReward = { id: string; type: SpecialOrderRewardType; data: JsonDict; customType?: string };
+type SpecialOrderRandomValue = { id: string; requiredTags: string; value: string };
+type SpecialOrderRandomElement = { id: string; name: string; values: SpecialOrderRandomValue[] };
+type SpecialOrderMeta = {
+  orderId: string;
+  nameKey: string;
+  textKey: string;
+  requester: string;
+  duration: string;
+  repeatable: boolean;
+  requiredTags: string;
+  condition: string;
+  orderType: string;
+  specialRule: string;
+  itemToRemoveOnEnd: string;
+  mailToRemoveOnEnd: string;
+  objectives: SpecialOrderObjective[];
+  rewards: SpecialOrderReward[];
+  randomizedElements: SpecialOrderRandomElement[];
+  customFields: JsonDict;
 };
 type DialogueFormatField = { name: string; type: string; options?: string; min?: number; max?: number };
 type DialogueFormat = { id: string; scope: "normal" | "marriage" | string; category: string; label: string; template: string; fields: DialogueFormatField[]; warning?: string };
@@ -510,7 +538,7 @@ function App() {
         {tab === "maps" && <MapStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "shops" && <ShopStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "quests" && <QuestStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
-        {tab === "special-orders" && <PlaceholderModule title="特殊订单" description="这里将制作 Special Orders 的目标、奖励、期限、文本与触发逻辑。" />}
+        {tab === "special-orders" && <SpecialOrderStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "assets" && <AssetManager project={project} setProject={updateProject} />}
         {tab === "rules" && <RuleLibraryView />}
         {tab === "workspace" && (
@@ -689,7 +717,7 @@ function ItemStudioGroup({ title, entries, project, ruleset, itemCatalog, setPro
 
 function ItemStudioEntryForm({ project, ruleset, itemCatalog, entry, onChange, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
   const module = itemModuleKind(entry);
-  if (module === "crop") return <CropEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={onChange} />;
+  if (module === "crop") return <CropEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={onChange} setProject={setProject} />;
   if (module === "fruitTree") return <FruitTreeEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} onChange={onChange} setProject={setProject} />;
   if (module === "cooking" || module === "crafting") return <RecipeEntryForm project={project} ruleset={ruleset} itemCatalog={itemCatalog} entry={entry} recipeKind={module} onChange={onChange} />;
   return <ObjectEntryForm project={project} ruleset={ruleset} entry={entry} onChange={onChange} setProject={setProject} />;
@@ -788,9 +816,11 @@ function ObjectEntryForm({ project, ruleset, entry, onChange, setProject }: { pr
   );
 }
 
-function CropEntryForm({ project, ruleset, itemCatalog, entry, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+function CropEntryForm({ project, ruleset, itemCatalog, entry, onChange, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void; setProject: (project: Project) => void }) {
   const value = isObject(entry.value) ? entry.value : {};
   const options = projectObjectOptions(project, itemCatalog, "raw");
+  const seedId = entry.key || modScopedId(project, "ExampleCropSeeds");
+  const textureTarget = cropTextureTarget(project, seedId);
   const seasons = Array.isArray(value.Seasons) ? value.Seasons.map(String) : ["Spring"];
   const days = Array.isArray(value.DaysInPhase) ? value.DaysInPhase.map(Number) : [1, 2, 2, 2];
   function setValueField(key: string, nextValue: unknown) {
@@ -809,6 +839,31 @@ function CropEntryForm({ project, ruleset, itemCatalog, entry, onChange }: { pro
       <Field label="额外收获概率 ExtraHarvestChance" value={stringField(value.ExtraHarvestChance ?? 0)} onChange={(next) => setValueField("ExtraHarvestChance", numberOrText(next))} />
       <Field label="作物贴图 Texture（默认 TileSheets/crops）" value={stringField(value.Texture || "TileSheets/crops")} onChange={(next) => setValueField("Texture", next)} />
       <Field label="贴图索引 SpriteIndex" value={stringField(value.SpriteIndex ?? 0)} onChange={(next) => setValueField("SpriteIndex", numberOrText(next))} />
+      <TargetedAssetImport
+        label="导入作物贴图 PNG"
+        project={project}
+        accept="image/png,image/jpeg,image/webp"
+        storedPath={`assets/Crops/${seedId}/Crops.png`}
+        onImported={(nextProject, storedPath) => {
+          const patch = withItemModuleMetadata({
+            id: makeId(),
+            name: `加载作物贴图 ${seedId}`,
+            action: "Load",
+            enabled: true,
+            target: textureTarget,
+            from_file: storedPath,
+            when: {},
+            fields: {},
+            advanced: {}
+          }, "crop");
+          const nextEntry = { ...entry, target: "Data/Crops", value: { ...value, Texture: textureTarget } };
+          setProject({
+            ...nextProject,
+            game_data: nextProject.game_data.map((item) => item.id === entry.id ? nextEntry : item),
+            patches: mergeWorkflowPatches(nextProject.patches, [patch])
+          });
+        }}
+      />
       <ComboField label="收获方式 HarvestMethod" value={value.HarvestMethod || "Grab"} options={CROP_HARVEST_METHOD_OPTIONS} onChange={(next) => setValueField("HarvestMethod", next)} />
       <BoolField label="需要浇水 NeedsWatering" value={value.NeedsWatering !== false} onChange={(next) => setValueField("NeedsWatering", next)} />
       <BoolField label="棚架作物 TrellisCrop" value={Boolean(value.TrellisCrop)} onChange={(next) => setValueField("TrellisCrop", next)} />
@@ -1833,6 +1888,14 @@ function GameDataEditor({ project, ruleset, itemCatalog, setProject }: { project
       entry = { ...entry, value: { ...(isObject(entry.value) ? entry.value : {}), DisplayName: i18nRef(nameKey), Description: i18nRef(descriptionKey) } };
       i18nPatch = { [nameKey]: "示例物品", [descriptionKey]: "这是一个由 Stardew CP Studio 生成的示例物品。" };
     }
+    if (kind === "secret_note") {
+      entry = defaultSecretNoteEntry(project);
+      i18nPatch = { [secretNoteMetaFromEntry(project, entry).textKey]: "这是一张秘密纸条。\n第二行文本。" };
+    }
+    if (kind === "special_order") {
+      entry = defaultSpecialOrderEntry(project);
+      i18nPatch = defaultSpecialOrderI18n(project, specialOrderMetaFromEntry(project, entry));
+    }
     setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, ...i18nPatch } });
   }
 
@@ -1913,7 +1976,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
 
   return (
     <div className="grid two">
-      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "mail" && entry.kind !== "trigger_action" && entry.kind !== "quest" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "mail" && entry.kind !== "trigger_action" && entry.kind !== "quest" && entry.kind !== "secret_note" && entry.kind !== "special_order" && (
         <>
           <Field label="数据目标 Target" value={entry.target} onChange={(target) => onChange({ ...entry, target })} />
           <Field label="条目键 Key" value={entry.key} onChange={(key) => onChange({ ...entry, key })} />
@@ -1958,6 +2021,14 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
         <QuestEntryForm project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
       )}
 
+      {entry.kind === "secret_note" && (
+        <SecretNoteEntryForm project={project} entry={entry} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
+      )}
+
+      {entry.kind === "special_order" && (
+        <SpecialOrderEntryForm project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
+      )}
+
       {entry.kind === "event" && (
         <StoryEventForm project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
       )}
@@ -1967,7 +2038,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       <WhenBuilder ruleset={ruleset} value={entry.when} onChange={(when) => onChange({ ...entry, when })} />
-      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "quest" && (
+      {entry.kind !== "dialogue" && entry.kind !== "schedule" && entry.kind !== "animation" && entry.kind !== "quest" && entry.kind !== "secret_note" && entry.kind !== "special_order" && (
         <JsonField label="高级 JSON（仅公开字段）" value={publicAdvanced(entry.advanced)} onChange={(advanced) => onChange({ ...entry, advanced: mergePublicAdvanced(entry.advanced, advanced as JsonDict) })} />
       )}
     </div>
@@ -2037,9 +2108,52 @@ function QuestStudio({ project, ruleset, itemCatalog, setProject }: { project: P
   );
 }
 
+function SpecialOrderStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const entries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => isSpecialOrderEntry(entry));
+
+  function addOrder() {
+    const entry = defaultSpecialOrderEntry(project);
+    setProject({
+      ...project,
+      game_data: [...project.game_data, entry],
+      i18n: { ...project.i18n, ...defaultSpecialOrderI18n(project, specialOrderMetaFromEntry(project, entry)) }
+    });
+  }
+
+  return (
+    <Section title="特殊订单">
+      <div className="toolbar">
+        <button type="button" onClick={addOrder}><Icon name="plus" />新增特殊订单</button>
+      </div>
+      <div className="stack">
+        {entries.map(({ entry, index }) => (
+          <article className="card" key={entry.id}>
+            <div className="card-head">
+              <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
+              <button type="button" onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+            </div>
+            <SpecialOrderEntryForm
+              project={project}
+              entry={entry}
+              ruleset={ruleset}
+              itemCatalog={itemCatalog}
+              i18n={project.i18n}
+              onI18nChange={(i18n) => setProject({ ...project, i18n })}
+              onEntryAndI18nChange={(next, i18n) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next), i18n })}
+              onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })}
+            />
+          </article>
+        ))}
+        {!entries.length && <div className="empty">暂无特殊订单。点击“新增特殊订单”创建。</div>}
+      </div>
+    </Section>
+  );
+}
+
 function QuestEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nChange, onEntryAndI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
   const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
-  const [coordLocked, setCoordLocked] = useState(true);
   const meta = questMetaFromEntry(project, entry);
   const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
   const quests = questOptions(project);
@@ -2142,8 +2256,6 @@ function QuestEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18
               buildingOptions={buildingTypeOptions(ruleset)}
               monsterOptions={monsterNameOptions(ruleset)}
               preview={lostPreview}
-              coordLocked={coordLocked}
-              setCoordLocked={setCoordLocked}
               onChange={updateRequirement}
             />
             <div className="field">
@@ -2187,7 +2299,141 @@ function QuestEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18
   );
 }
 
-function QuestRequirementEditor({ type, requirement, itemOptions, mapOptions, npcOptions, questOptions, buildingOptions, monsterOptions, preview, coordLocked, setCoordLocked, onChange }: {
+function SecretNoteEntryForm({ project, entry, i18n = {}, onI18nChange, onEntryAndI18nChange, onChange }: { project: Project; entry: GameDataEntry; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+  const meta = secretNoteMetaFromEntry(project, entry);
+  const text = i18n[meta.textKey] ?? secretNoteTextFromValue(entry.value);
+
+  function commit(nextMeta: SecretNoteMeta, textPatch?: Record<string, string>) {
+    const nextEntry = secretNoteEntryFromMeta(entry, nextMeta);
+    if (textPatch) {
+      const nextI18n = { ...i18n, ...textPatch };
+      if (onEntryAndI18nChange) onEntryAndI18nChange(nextEntry, nextI18n);
+      else {
+        onChange(nextEntry);
+        onI18nChange?.(nextI18n);
+      }
+      return;
+    }
+    onChange(nextEntry);
+  }
+
+  return (
+    <div className="subsection highlight">
+      <h3>秘密纸条</h3>
+      <div className="grid two">
+        <Field label="纸条 Key（可非数字）" value={meta.noteId} onChange={(noteId) => commit({ ...meta, noteId })} />
+        <Field label="i18n Key" value={meta.textKey} onChange={(textKey) => commit({ ...meta, textKey }, { [textKey]: text })} />
+        <DialogueTextTools label="纸条正文" project={project} npcName="ExampleNPC" value={text} onChange={(next) => commit(meta, { [meta.textKey]: next })} />
+        <div className="field">
+          <span>导出值</span>
+          <code>{i18nRef(meta.textKey)}</code>
+        </div>
+      </div>
+      <div className="notice compact-note">导出到 <code>code/Other/SecretNotes.json</code>；正文保存在 i18n，文本换行会在最终 i18n 文本中保留，游戏读取时可按纸条格式使用 <code>^</code> 表示换行。</div>
+    </div>
+  );
+}
+
+function SpecialOrderEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nChange, onEntryAndI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+  const meta = specialOrderMetaFromEntry(project, entry);
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
+  const mapOptions = mapLocationOptions(project);
+  const npcs = npcOptions(project);
+
+  function commit(nextMeta: SpecialOrderMeta, i18nPatch: Record<string, string> = {}) {
+    const nextEntry = specialOrderEntryFromMeta(project, entry, nextMeta);
+    if (Object.keys(i18nPatch).length) {
+      const nextI18n = { ...i18n, ...i18nPatch };
+      if (onEntryAndI18nChange) onEntryAndI18nChange(nextEntry, nextI18n);
+      else {
+        onChange(nextEntry);
+        onI18nChange?.(nextI18n);
+      }
+      return;
+    }
+    onChange(nextEntry);
+  }
+
+  function updateMeta(patch: Partial<SpecialOrderMeta>, i18nPatch: Record<string, string> = {}) {
+    commit({ ...meta, ...patch }, i18nPatch);
+  }
+
+  function updateObjective(index: number, objective: SpecialOrderObjective, i18nPatch: Record<string, string> = {}) {
+    commit({ ...meta, objectives: replaceAt(meta.objectives, index, objective) }, i18nPatch);
+  }
+
+  function updateReward(index: number, reward: SpecialOrderReward) {
+    commit({ ...meta, rewards: replaceAt(meta.rewards, index, reward) });
+  }
+
+  const stringEntries = specialOrderStringEntries(project, meta);
+
+  return (
+    <div className="subsection highlight">
+      <h3>特别订单</h3>
+      <div className="grid two">
+        <Field label="订单 ID" value={meta.orderId} onChange={(orderId) => updateMeta(specialOrderRekey(project, meta, orderId))} />
+        <ComboField label="请求者 Requester" value={meta.requester} options={npcs} onChange={(requester) => updateMeta({ requester: String(requester) })} />
+        <ComboField label="期限 Duration" value={meta.duration} options={SPECIAL_ORDER_DURATION_OPTIONS} onChange={(duration) => updateMeta({ duration: String(duration) })} />
+        <BoolField label="可重复 Repeatable" value={meta.repeatable} onChange={(repeatable) => updateMeta({ repeatable })} />
+        <Field label="RequiredTags" value={meta.requiredTags} onChange={(requiredTags) => updateMeta({ requiredTags })} />
+        <Field label="Condition / GSQ" value={meta.condition} onChange={(condition) => updateMeta({ condition })} />
+        <ComboField label="OrderType" value={meta.orderType} options={SPECIAL_ORDER_TYPE_OPTIONS} onChange={(orderType) => updateMeta({ orderType: String(orderType) })} />
+        <ComboField label="SpecialRule" value={meta.specialRule} options={SPECIAL_ORDER_RULE_OPTIONS} onChange={(specialRule) => updateMeta({ specialRule: String(specialRule) })} />
+        <Field label="结束时移除物品 ItemToRemoveOnEnd" value={meta.itemToRemoveOnEnd} onChange={(itemToRemoveOnEnd) => updateMeta({ itemToRemoveOnEnd })} />
+        <Field label="结束时移除邮件 MailToRemoveOnEnd" value={meta.mailToRemoveOnEnd} onChange={(mailToRemoveOnEnd) => updateMeta({ mailToRemoveOnEnd })} />
+        <Field label="标题 Name" value={i18n[meta.nameKey] ?? ""} onChange={(text) => updateMeta({}, { [meta.nameKey]: text })} />
+        <Field label="正文 Text" value={i18n[meta.textKey] ?? ""} textarea onChange={(text) => updateMeta({}, { [meta.textKey]: text })} />
+      </div>
+
+      <CollapsibleSubsection title={`目标 Objectives（${meta.objectives.length}）`} defaultOpen>
+        <div className="stack">
+          {meta.objectives.map((objective, index) => (
+            <SpecialOrderObjectiveEditor
+              key={objective.id}
+              objective={objective}
+              index={index}
+              project={project}
+              itemOptions={itemOptions}
+              mapOptions={mapOptions}
+              i18n={i18n}
+              onChange={(next, patch) => updateObjective(index, next, patch)}
+              onRemove={() => updateMeta({ objectives: meta.objectives.filter((item) => item.id !== objective.id) })}
+            />
+          ))}
+          <button type="button" className="secondary" onClick={() => updateMeta({ objectives: [...meta.objectives, defaultSpecialOrderObjective(project, meta.orderId, meta.objectives.length)] })}><Icon name="plus" />添加目标</button>
+        </div>
+      </CollapsibleSubsection>
+
+      <CollapsibleSubsection title={`奖励 Rewards（${meta.rewards.length}）`} defaultOpen>
+        <div className="stack">
+          {meta.rewards.map((reward, index) => (
+            <SpecialOrderRewardEditor
+              key={reward.id}
+              reward={reward}
+              itemOptions={itemOptions}
+              onChange={(next) => updateReward(index, next)}
+              onRemove={() => updateMeta({ rewards: meta.rewards.filter((item) => item.id !== reward.id) })}
+            />
+          ))}
+          <button type="button" className="secondary" onClick={() => updateMeta({ rewards: [...meta.rewards, defaultSpecialOrderReward("Money")] })}><Icon name="plus" />添加奖励</button>
+        </div>
+      </CollapsibleSubsection>
+
+      <CollapsibleSubsection title="随机元素 RandomizedElements">
+        <SpecialOrderRandomizedEditor value={meta.randomizedElements} onChange={(randomizedElements) => updateMeta({ randomizedElements })} />
+      </CollapsibleSubsection>
+
+      <CollapsibleSubsection title="高级字段">
+        <JsonField label="额外字段 CustomFields" value={meta.customFields} onChange={(customFields) => updateMeta({ customFields: isObject(customFields) ? customFields as JsonDict : {} })} />
+        <JsonField label="Data/SpecialOrders 预览" value={{ [meta.orderId]: specialOrderValueFromMeta(meta) }} onChange={() => undefined} />
+        <JsonField label="Strings/SpecialOrderStrings 预览" value={stringEntries} onChange={() => undefined} />
+      </CollapsibleSubsection>
+    </div>
+  );
+}
+
+function QuestRequirementEditor({ type, requirement, itemOptions, mapOptions, npcOptions, questOptions, buildingOptions, monsterOptions, preview, onChange }: {
   type: QuestType;
   requirement: JsonDict;
   itemOptions: ItemOption[];
@@ -2197,8 +2443,6 @@ function QuestRequirementEditor({ type, requirement, itemOptions, mapOptions, np
   buildingOptions: RulesetOption[];
   monsterOptions: RulesetOption[];
   preview: MapPreviewImage | null;
-  coordLocked: boolean;
-  setCoordLocked: (value: boolean) => void;
   onChange: (patch: JsonDict) => void;
 }) {
   if (type === "Basic") {
@@ -2244,12 +2488,11 @@ function QuestRequirementEditor({ type, requirement, itemOptions, mapOptions, np
         <ComboField label="失主 NPC" value={stringField(requirement.npc || "Robin")} options={npcOptions} onChange={(npc) => onChange({ npc })} />
         <ItemSingleSelect label="遗失物品 Object" options={itemOptions} value={stringField(requirement.itemId || "(O)788")} onChange={(itemId) => onChange({ itemId })} />
         <ComboField label="地点 Location" value={stringField(requirement.location || "Forest")} options={mapOptions} onChange={(location) => onChange({ location })} />
-        <BoolField label="锁定地图点击" value={coordLocked} onChange={setCoordLocked} />
         <Field label="X" value={String(point.X)} onChange={(x) => onChange({ x: integerInRange(x, 0, 999, 0) })} />
         <Field label="Y" value={String(point.Y)} onChange={(y) => onChange({ y: integerInRange(y, 0, 999, 0) })} />
       </div>
       <div className="notice compact-note">坐标建议通过下方地图点击选择；X/Y 输入框只用于没有预览图或需要精确微调时。</div>
-      {preview && <MapPreviewPicker title={coordLocked ? "坐标预览（已锁定）" : "点击选择遗失物坐标"} image={preview} selected={point} onPick={(next) => !coordLocked && onChange({ x: next.X, y: next.Y })} />}
+      {preview && <MapPreviewPicker title="遗失物坐标" image={preview} selected={point} onPick={(next) => onChange({ x: next.X, y: next.Y })} />}
     </div>;
   }
   if (type === "SecretLostItem") {
@@ -2428,6 +2671,118 @@ function ShopStudio({ project, ruleset, itemCatalog, setProject }: { project: Pr
   );
 }
 
+function SpecialOrderObjectiveEditor({ objective, index, project, itemOptions, mapOptions, i18n, onChange, onRemove }: { objective: SpecialOrderObjective; index: number; project: Project; itemOptions: ItemOption[]; mapOptions: RulesetOption[]; i18n: Record<string, string>; onChange: (objective: SpecialOrderObjective, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
+  const data = objective.data || {};
+  const objectiveText = i18n[objective.textKey] ?? "";
+  const patchData = (patch: JsonDict) => onChange({ ...objective, data: { ...data, ...patch } });
+  return (
+    <div className="structured-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>目标 {index + 1}</strong>
+          <span>{objective.type === "custom" ? objective.customType || "custom" : objective.type}</span>
+        </div>
+        <button type="button" className="secondary" onClick={onRemove}>删除目标</button>
+      </div>
+      <div className="grid two">
+        <ComboField label="目标类型 Type" value={objective.type} options={SPECIAL_ORDER_OBJECTIVE_OPTIONS} onChange={(type) => onChange({ ...objective, type: type as SpecialOrderObjectiveType })} />
+        {objective.type === "custom" && <Field label="自定义 Type" value={objective.customType || ""} onChange={(customType) => onChange({ ...objective, customType })} />}
+        <Field label="RequiredCount" value={objective.requiredCount} onChange={(requiredCount) => onChange({ ...objective, requiredCount })} />
+        <Field label="目标文本" value={objectiveText} onChange={(text) => onChange(objective, { [objective.textKey]: text })} />
+        {objective.type === "Collect" && <>
+          <Field label="物品查询 ItemName" value={stringField(data.ItemName || data.AcceptedContextTags || "item_wood")} onChange={(ItemName) => patchData({ ItemName })} />
+          <Field label="目标物品描述" value={stringField(data.Description || "")} onChange={(Description) => patchData({ Description })} />
+        </>}
+        {objective.type === "Donate" && <>
+          <Field label="收集箱 DropBox" value={stringField(data.DropBox || "DropBox")} onChange={(DropBox) => patchData({ DropBox })} />
+          <ComboField label="收集箱地点" value={stringField(data.DropBoxGameLocation || "Town")} options={mapOptions} onChange={(DropBoxGameLocation) => patchData({ DropBoxGameLocation: String(DropBoxGameLocation) })} />
+          <Field label="指示坐标 X Y" value={stringField(data.DropBoxIndicatorLocation || "0 0")} onChange={(DropBoxIndicatorLocation) => patchData({ DropBoxIndicatorLocation })} />
+          <Field label="接受 Context Tags" value={stringField(data.AcceptedContextTags || "item_wood")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />
+        </>}
+        {objective.type === "Deliver" && <>
+          <ComboField label="交付物品" value={stringField(data.ItemId || "(O)388")} options={itemOptions} onChange={(ItemId) => patchData({ ItemId: String(ItemId) })} />
+          <Field label="接受者 NPC" value={stringField(data.TargetName || "Lewis")} onChange={(TargetName) => patchData({ TargetName })} />
+        </>}
+        {objective.type === "Fish" && <>
+          <Field label="鱼类 Context Tags" value={stringField(data.AcceptedContextTags || "category_fish")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />
+          <Field label="地点限制" value={stringField(data.Location || "")} onChange={(Location) => patchData({ Location })} />
+        </>}
+        {objective.type === "Gift" && <>
+          <Field label="NPC" value={stringField(data.NpcName || "")} onChange={(NpcName) => patchData({ NpcName })} />
+          <Field label="礼物 Context Tags" value={stringField(data.AcceptedContextTags || "")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />
+        </>}
+        {objective.type === "Ship" && <Field label="出货 Context Tags" value={stringField(data.AcceptedContextTags || "item_wood")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />}
+        {objective.type === "Slay" && <Field label="怪物名称/Tag" value={stringField(data.TargetName || "Green_Slime")} onChange={(TargetName) => patchData({ TargetName })} />}
+        {objective.type === "ReachMineFloor" && <Field label="矿井层数" value={stringField(data.MineLevel || objective.requiredCount)} onChange={(MineLevel) => patchData({ MineLevel })} />}
+        <JsonField label="目标 Data 高级 JSON" value={data} onChange={(next) => onChange({ ...objective, data: isObject(next) ? next as JsonDict : {} })} />
+      </div>
+    </div>
+  );
+}
+
+function SpecialOrderRewardEditor({ reward, itemOptions, onChange, onRemove }: { reward: SpecialOrderReward; itemOptions: ItemOption[]; onChange: (reward: SpecialOrderReward) => void; onRemove: () => void }) {
+  const data = reward.data || {};
+  const patchData = (patch: JsonDict) => onChange({ ...reward, data: { ...data, ...patch } });
+  return (
+    <div className="structured-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>奖励</strong>
+          <span>{reward.type === "custom" ? reward.customType || "custom" : reward.type}</span>
+        </div>
+        <button type="button" className="secondary" onClick={onRemove}>删除奖励</button>
+      </div>
+      <div className="grid two">
+        <ComboField label="奖励类型 Type" value={reward.type} options={SPECIAL_ORDER_REWARD_OPTIONS} onChange={(type) => onChange({ ...reward, type: type as SpecialOrderRewardType })} />
+        {reward.type === "custom" && <Field label="自定义 Type" value={reward.customType || ""} onChange={(customType) => onChange({ ...reward, customType })} />}
+        {reward.type === "Money" && <Field label="金额 Amount" value={stringField(data.Amount || "1000")} onChange={(Amount) => patchData({ Amount })} />}
+        {reward.type === "Gems" && <Field label="齐钻 Amount" value={stringField(data.Amount || "10")} onChange={(Amount) => patchData({ Amount })} />}
+        {reward.type === "Mail" && <Field label="MailReceived" value={stringField(data.MailReceived || "ExampleMail")} onChange={(MailReceived) => patchData({ MailReceived })} />}
+        {reward.type === "Friendship" && <>
+          <Field label="NPC" value={stringField(data.NpcName || "")} onChange={(NpcName) => patchData({ NpcName })} />
+          <Field label="友情点 Amount" value={stringField(data.Amount || "")} onChange={(Amount) => patchData({ Amount })} />
+        </>}
+        {reward.type === "ResetEvent" && <Field label="事件 ID EventID" value={stringField(data.EventID || "")} onChange={(EventID) => patchData({ EventID })} />}
+        {reward.type === "Object" && <>
+          <ComboField label="物品 ID" value={stringField(data.ItemId || "(O)388")} options={itemOptions} onChange={(ItemId) => patchData({ ItemId: String(ItemId) })} />
+          <Field label="数量 Amount" value={stringField(data.Amount || "1")} onChange={(Amount) => patchData({ Amount })} />
+        </>}
+        <JsonField label="奖励 Data 高级 JSON" value={data} onChange={(next) => onChange({ ...reward, data: isObject(next) ? next as JsonDict : {} })} />
+      </div>
+    </div>
+  );
+}
+
+function SpecialOrderRandomizedEditor({ value, onChange }: { value: SpecialOrderRandomElement[]; onChange: (value: SpecialOrderRandomElement[]) => void }) {
+  function updateElement(index: number, element: SpecialOrderRandomElement) {
+    onChange(replaceAt(value, index, element));
+  }
+  return (
+    <div className="stack">
+      {value.map((element, index) => (
+        <div className="structured-editor" key={element.id}>
+          <div className="structured-editor-head">
+            <strong>随机元素</strong>
+            <button type="button" className="secondary" onClick={() => onChange(value.filter((item) => item.id !== element.id))}>删除</button>
+          </div>
+          <div className="grid two">
+            <Field label="Name" value={element.name} onChange={(name) => updateElement(index, { ...element, name })} />
+          </div>
+          {element.values.map((row, rowIndex) => (
+            <div className="story-row" key={row.id}>
+              <Field label="RequiredTags" value={row.requiredTags} onChange={(requiredTags) => updateElement(index, { ...element, values: replaceAt(element.values, rowIndex, { ...row, requiredTags }) })} />
+              <Field label="Value" value={row.value} onChange={(nextValue) => updateElement(index, { ...element, values: replaceAt(element.values, rowIndex, { ...row, value: nextValue }) })} />
+              <button type="button" className="secondary" onClick={() => updateElement(index, { ...element, values: element.values.filter((item) => item.id !== row.id) })}>删除值</button>
+            </div>
+          ))}
+          <button type="button" className="secondary" onClick={() => updateElement(index, { ...element, values: [...element.values, { id: makeId(), requiredTags: "", value: "" }] })}>添加值</button>
+        </div>
+      ))}
+      <button type="button" className="secondary" onClick={() => onChange([...value, { id: makeId(), name: "RandomItem", values: [{ id: makeId(), requiredTags: "", value: "" }] }])}><Icon name="plus" />添加随机元素</button>
+    </div>
+  );
+}
+
 function NewShopForm({ project, ruleset, itemCatalog, entry, onChange }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
   const value = isObject(entry.value) ? entry.value : {};
   const owners = Array.isArray(value.Owners) ? value.Owners.filter(isObject) : [];
@@ -2493,7 +2848,6 @@ function EditShopItemsForm({ project, ruleset, itemCatalog, entry, onChange }: {
 }
 
 function OpenShopMapPatchForm({ project, ruleset, mapResources, patch, onChange }: { project: Project; ruleset: Ruleset; mapResources: MapResourceEntry[]; patch: Patch; onChange: (patch: Patch) => void }) {
-  const [coordLocked, setCoordLocked] = useState(true);
   const meta = shopOpenMetaFromPatch(patch);
   const preview = previewForMapTarget(project, meta.mapTarget, mapResources);
   const updateMeta = (next: Partial<ShopOpenMeta>) => {
@@ -2508,11 +2862,10 @@ function OpenShopMapPatchForm({ project, ruleset, mapResources, patch, onChange 
         <ComboField label="玩家相对方向" value={meta.direction} options={SHOP_DIRECTION_OPTIONS} onChange={(next) => updateMeta({ direction: String(next) })} />
         <ComboField label="开门时间" value={meta.openTime} options={SHOP_TIME_OPTIONS} onChange={(next) => updateMeta({ openTime: String(next) })} />
         <ComboField label="关门时间" value={meta.closeTime} options={SHOP_TIME_OPTIONS} onChange={(next) => updateMeta({ closeTime: String(next) })} />
-        <BoolField label="锁定地图点击" value={coordLocked} onChange={setCoordLocked} />
         <Field label="X" value={String(meta.position.X)} onChange={(next) => updateMeta({ position: { ...meta.position, X: integerInRange(next, 0, 999, 0) } })} />
         <Field label="Y" value={String(meta.position.Y)} onChange={(next) => updateMeta({ position: { ...meta.position, Y: integerInRange(next, 0, 999, 0) } })} />
       </div>
-      {preview && <MapPreviewPicker title={coordLocked ? "开店点坐标（已锁定）" : "点击选择开店点坐标"} image={preview} selected={meta.position} onPick={(point) => !coordLocked && updateMeta({ position: point })} />}
+      {preview && <MapPreviewPicker title="开店点坐标" image={preview} selected={meta.position} onPick={(point) => updateMeta({ position: point })} />}
       <CollapsibleSubsection title="店主所在区域 owner tile area" defaultOpen={false}>
         <div className="grid two">
           <BoolField label="写入 owner tile area" value={Boolean(meta.ownerArea)} onChange={(next) => updateMeta({ ownerArea: next ? { X: meta.position.X, Y: meta.position.Y, Width: 1, Height: 1 } : null })} />
@@ -2543,7 +2896,7 @@ function ShopItemEditor({ item, itemOptions, onChange, onRemove }: { item: JsonD
         <Field label="库存 AvailableStock" value={stringField(item.AvailableStock)} onChange={(next) => patch({ AvailableStock: next.trim() ? numberOrText(next) : undefined })} />
         <ComboField label="库存限制 AvailableStockLimit" value={item.AvailableStockLimit || ""} options={SHOP_STOCK_LIMIT_OPTIONS} onChange={(next) => patch({ AvailableStockLimit: next || undefined })} />
         <Field label="每次购买数量 Stack" value={stringField(item.Stack)} onChange={(next) => patch({ Stack: next.trim() ? numberOrText(next) : undefined })} />
-        <Field label="交易物品 TradeItemId" value={stringField(item.TradeItemId)} onChange={(next) => patch({ TradeItemId: setNullableText(next) })} />
+        <ItemSingleSelect label="交易物品 TradeItemId" options={itemOptions} value={stringField(item.TradeItemId)} onChange={(next) => patch({ TradeItemId: setNullableText(next) })} />
         <Field label="交易数量 TradeItemAmount" value={stringField(item.TradeItemAmount)} onChange={(next) => patch({ TradeItemAmount: next.trim() ? numberOrText(next) : undefined })} />
         <BoolField label="这是配方 IsRecipe" value={Boolean(item.IsRecipe)} onChange={(next) => patch({ IsRecipe: next })} />
       </div>
@@ -3115,7 +3468,7 @@ function MailEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProj
       </div>
       <div className="mail-subsection">
         <h4>附件</h4>
-        <MailAttachmentEditor value={attachments} itemOptions={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} questOptions={questOptions(project)} onChange={(next) => updateMail({ Attachments: next })} />
+        <MailAttachmentEditor value={attachments} itemOptions={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} questOptions={questOptions(project)} specialOrderOptions={specialOrderOptions(project)} onChange={(next) => updateMail({ Attachments: next })} />
         <div className="notice compact-note">信件只导出 <code>Data/Mail</code> 正文。发送信件请另建 <code>Data/TriggerActions</code>，例如 <code>AddMail Current {mailKey}</code>，再用 When 限制触发条件。</div>
       </div>
     </div>
@@ -3943,7 +4296,7 @@ function mailAttachmentLabel(attachment: MailAttachmentRow) {
   }
 }
 
-function MailAttachmentEditor({ value, itemOptions, questOptions, onChange }: { value: MailAttachmentRow[]; itemOptions: ItemOption[]; questOptions: RulesetOption[]; onChange: (value: MailAttachmentRow[]) => void }) {
+function MailAttachmentEditor({ value, itemOptions, questOptions, specialOrderOptions = [], onChange }: { value: MailAttachmentRow[]; itemOptions: ItemOption[]; questOptions: RulesetOption[]; specialOrderOptions?: RulesetOption[]; onChange: (value: MailAttachmentRow[]) => void }) {
   const rows = value;
 
   function updateRow(index: number, patch: Partial<MailAttachmentRow>) {
@@ -3998,6 +4351,7 @@ function MailAttachmentEditor({ value, itemOptions, questOptions, onChange }: { 
               <BoolField label="自动接取" value={row.autoGrant} onChange={(autoGrant) => updateRow(index, { autoGrant })} />
             </>}
             {row.kind === "specialOrder" && <>
+              <ComboField label="订单 ID" value={row.orderId} options={specialOrderOptions.length ? specialOrderOptions : [{ label: "暂无项目订单", value: row.orderId || "" }]} onChange={(orderId) => updateRow(index, { orderId: String(orderId) })} />
               <Field label="订单 ID" value={row.orderId} onChange={(orderId) => updateRow(index, { orderId })} />
               <BoolField label="立即附加" value={row.immediate} onChange={(immediate) => updateRow(index, { immediate })} />
             </>}
@@ -4607,9 +4961,10 @@ function DialogueTextTools({ label, project, npcName, value, onChange }: { label
 
 function ItemMultiSelect({ label, options, value, onChange, placeholder }: { label: string; options: ItemOption[]; value: string[]; onChange: (value: string[]) => void; placeholder?: string }) {
   const [custom, setCustom] = useState("");
+  const [query, setQuery] = useState("");
   const selected = value.map(String).filter(Boolean);
   const selectedSet = new Set(selected);
-  const grouped = groupedItemOptions(options.filter((option) => !selectedSet.has(String(option.value))));
+  const grouped = groupedItemOptions(filterItemOptions(options.filter((option) => !selectedSet.has(String(option.value))), query));
 
   function addItem(nextValue: unknown) {
     const text = String(nextValue).trim();
@@ -4630,6 +4985,7 @@ function ItemMultiSelect({ label, options, value, onChange, placeholder }: { lab
     <div className="item-multi-select">
       <label className="field">
         <span>{label}</span>
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索中文名 / ID / 来源" />
         <select value="" onChange={(event) => addItem(event.target.value)}>
           <option value="">选择一个项目...</option>
           {grouped.map((group) => (
@@ -4659,6 +5015,8 @@ function ItemMultiSelect({ label, options, value, onChange, placeholder }: { lab
 function ItemSingleSelect({ label, options, value, onChange }: { label: string; options: ItemOption[]; value: string; onChange: (value: string) => void }) {
   const matched = options.some((option) => String(option.value) === value);
   const [custom, setCustom] = useState(!matched && value !== "");
+  const [query, setQuery] = useState("");
+  const filteredOptions = filterItemOptions(options, query);
   useEffect(() => {
     setCustom(!options.some((option) => String(option.value) === value) && value !== "");
   }, [value, options]);
@@ -4666,6 +5024,7 @@ function ItemSingleSelect({ label, options, value, onChange }: { label: string; 
     <label className="field">
       <span>{label}</span>
       <div className="combo-field">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索中文名 / ID / 来源" />
         <select value={custom ? "__custom__" : value} onChange={(event) => {
           if (event.target.value === "__custom__") {
             setCustom(true);
@@ -4675,7 +5034,7 @@ function ItemSingleSelect({ label, options, value, onChange }: { label: string; 
           onChange(event.target.value);
         }}>
           <option value="">选择一个物品...</option>
-          {groupedItemOptions(options).map((group) => (
+          {groupedItemOptions(filteredOptions).map((group) => (
             <optgroup label={group.label} key={group.key}>
               {group.options.map((option) => <option key={`${option.source || "option"}-${option.value}`} value={String(option.value)}>{option.label}</option>)}
             </optgroup>
@@ -4686,6 +5045,19 @@ function ItemSingleSelect({ label, options, value, onChange }: { label: string; 
       </div>
     </label>
   );
+}
+
+function filterItemOptions(options: ItemOption[], query: string) {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return options;
+  return options.filter((option) => {
+    const haystack = [
+      option.label,
+      String(option.value),
+      option.source || ""
+    ].join(" ").toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
 }
 
 function WinterStarGiftsEditor({ value, project, ruleset, itemCatalog, onChange }: { value: unknown; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; onChange: (value: unknown) => void }) {
@@ -6040,11 +6412,21 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
   const meta = storyMetaFromEntry(project, entry);
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
   const [selectedNodeId, setSelectedNodeId] = useState(meta.nodes[0]?.id || "");
+  const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
+  const eventMapPreview = previewForMapTarget(project, meta.location.startsWith("Maps/") ? meta.location : `Maps/${meta.location}`, mapResources.maps);
   const scriptPreview = buildStoryEventScript(meta);
   const keyPreview = buildStoryEventKey(meta);
-  const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch) }));
+  const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch, meta.actors) }));
   const selectedNodeIndex = meta.nodes.findIndex((node) => node.id === selectedNodeId);
   const selectedNode = selectedNodeIndex >= 0 ? meta.nodes[selectedNodeIndex] : meta.nodes[meta.nodes.length - 1];
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<MapResourceResponse>("/api/maps/resources")
+      .then((next) => { if (!cancelled) setMapResources(next); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!meta.nodes.length) {
@@ -6201,6 +6583,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
               index={selectedNodeIndex}
               meta={meta}
               branches={meta.branches}
+              mapPreview={eventMapPreview}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
               onCreateBranch={(currentNode) => {
@@ -6233,6 +6616,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
               key={branch.id}
               branch={branch}
               meta={meta}
+              mapPreview={eventMapPreview}
               i18n={i18n}
               onChange={(nextBranch, i18nPatch) => commitMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) }, i18nPatch)}
               onRemove={() => commitMeta({ ...meta, branches: meta.branches.filter((item) => item.id !== branch.id) })}
@@ -6315,7 +6699,7 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
   );
 }
 
-function StoryBranchEditor({ branch, meta, i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
+function StoryBranchEditor({ branch, meta, mapPreview, i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; mapPreview?: MapPreviewImage | null; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
   const [selectedNodeId, setSelectedNodeId] = useState(branch.nodes[0]?.id || "");
   const selectedNodeIndex = Math.max(0, branch.nodes.findIndex((node) => node.id === selectedNodeId));
@@ -6381,8 +6765,9 @@ function StoryBranchEditor({ branch, meta, i18n, onChange, onRemove }: { branch:
             key={selectedNode.id}
             node={selectedNode}
               index={selectedNodeIndex}
-              meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}` }}
+              meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}`, nodes: branch.nodes }}
               branches={meta.branches}
+              mapPreview={mapPreview}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
               onRemove={() => {
@@ -6495,13 +6880,18 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], selectedNode
   );
 }
 
-function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; mapPreview?: MapPreviewImage | null; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
   const data = node.data || {};
   const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
   const textValue = stringField(i18n[textKey] ?? data.text ?? "");
   const patchData = (patch: JsonDict) => onChange({ ...node, data: { ...data, ...patch } });
   const patchText = (text: string) => onChange({ ...node, data: { ...data, i18nKey: textKey } }, { key: textKey, text });
   const questionAnswers = storyQuestionAnswers(node);
+  const actorName = stringField(data.actor) || "farmer";
+  const actorPosition = storyActorPositionBefore(meta, index, actorName);
+  const moveDelta = node.kind === "move" ? storyMoveDelta(node, storyActorPositionsBeforeNode(meta, index)) : null;
+  const targetX = integerInRange(data.targetX, -10000, 10000, actorPosition ? actorPosition.X + integerInRange(data.x, -999, 999, 0) : integerInRange(data.x, -999, 999, 0));
+  const targetY = integerInRange(data.targetY, -10000, 10000, actorPosition ? actorPosition.Y + integerInRange(data.y, -999, 999, 0) : integerInRange(data.y, -999, 999, 0));
   const patchQuestion = (prompt: string, answers: StoryQuestionAnswer[]) => {
     const text = buildStoryQuestionText(prompt, answers);
     onChange({ ...node, data: { ...data, i18nKey: textKey, answers, text } }, { key: textKey, text });
@@ -6511,7 +6901,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
     <div className="story-node">
       <div className="story-node-head">
         <strong>{index + 1}. {node.label || storyNodeLabel(node.kind)}</strong>
-        <code>{buildStoryCommand(node, meta)}</code>
+        <code>{buildStoryCommandPreview(node, meta, index)}</code>
         <div className="button-row">
           <button type="button" className="secondary" onClick={() => onMove(index, -1)}>上移</button>
           <button type="button" className="secondary" onClick={() => onMove(index, 1)}>下移</button>
@@ -6611,8 +7001,23 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
         {node.kind === "move" && (
           <>
             <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
-            <Field label="X 偏移" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -999, 999, 0) })} />
-            <Field label="Y 偏移" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -999, 999, 0) })} />
+            <BoolField label="按目标坐标计算" value={data.targetMode !== false} onChange={(targetMode) => patchData({ targetMode })} />
+            <div className="notice compact-note">
+              起点：{actorPosition ? `${actorPosition.X} ${actorPosition.Y}` : "未记录，请先在初始角色位置或前置移动/传送节点中设置"}；
+              导出位移：{moveDelta ? `${moveDelta.dx} ${moveDelta.dy}` : `${integerInRange(data.x, -999, 999, 0)} ${integerInRange(data.y, -999, 999, 0)}`}
+            </div>
+            {data.targetMode !== false ? (
+              <>
+                <Field label="目标 X" value={stringField(data.targetX ?? targetX)} onChange={(x) => patchData({ targetMode: true, targetX: integerInRange(x, -10000, 10000, targetX) })} />
+                <Field label="目标 Y" value={stringField(data.targetY ?? targetY)} onChange={(y) => patchData({ targetMode: true, targetY: integerInRange(y, -10000, 10000, targetY) })} />
+                <MapPreviewPicker title="移动目标坐标" image={mapPreview || null} selected={{ X: targetX, Y: targetY }} onPick={(point) => patchData({ targetMode: true, targetX: point.X, targetY: point.Y })} />
+              </>
+            ) : (
+              <>
+                <Field label="X 偏移" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -999, 999, 0) })} />
+                <Field label="Y 偏移" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -999, 999, 0) })} />
+              </>
+            )}
             <ComboField label="结束朝向" value={data.direction ?? 2} options={STORY_DIRECTION_OPTIONS} onChange={(direction) => patchData({ direction: Number(direction) })} />
             <BoolField label="异步 continue" value={Boolean(data.continue)} onChange={(value) => patchData({ continue: value })} />
           </>
@@ -6638,6 +7043,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], i18n, onChange, onC
             <Field label="角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="目标 X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 0) })} />
             <Field label="目标 Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 0) })} />
+            <MapPreviewPicker title="传送目标坐标" image={mapPreview || null} selected={{ X: integerInRange(data.x, -10000, 10000, 0), Y: integerInRange(data.y, -10000, 10000, 0) }} onPick={(point) => patchData({ x: point.X, y: point.Y })} />
           </>
         )}
         {node.kind === "warpFarmers" && (
@@ -7492,8 +7898,14 @@ const FESTIVAL_POSITION_OPTIONS: RulesetOption[] = [
 ];
 
 const FESTIVAL_POSITION_PHASE_OPTIONS: RulesetOption[] = [
+  { label: "入场站位 Set-Up_additionalCharacters_y1（推荐）", value: "Set-Up_additionalCharacters_y1" },
+  { label: "入场站位 Set-Up_additionalCharacters_y2（推荐）", value: "Set-Up_additionalCharacters_y2" },
   { label: "入场/普通站位 Set-Up_additionalCharacters", value: "Set-Up_additionalCharacters" },
+  { label: "主事件站位 MainEvent_additionalCharacters_y1（推荐）", value: "MainEvent_additionalCharacters_y1" },
+  { label: "主事件站位 MainEvent_additionalCharacters_y2（推荐）", value: "MainEvent_additionalCharacters_y2" },
   { label: "主事件站位 MainEvent_additionalCharacters", value: "MainEvent_additionalCharacters" },
+  { label: "主事件站位 Main-Event_additionalCharacters_y1（冰雪节常见，推荐）", value: "Main-Event_additionalCharacters_y1" },
+  { label: "主事件站位 Main-Event_additionalCharacters_y2（冰雪节常见，推荐）", value: "Main-Event_additionalCharacters_y2" },
   { label: "主事件站位 Main-Event_additionalCharacters（冰雪节常见）", value: "Main-Event_additionalCharacters" }
 ];
 
@@ -7506,7 +7918,7 @@ const FESTIVAL_DIRECTION_OPTIONS: RulesetOption[] = [
 
 const FESTIVAL_PREVIEW_CANDIDATES: Record<string, string[]> = {
   spring13: ["spring13", "Town-EggFestival", "EggFestival", "Town"],
-  spring24: ["spring24", "Forest-FlowerDance", "FlowerDance", "Forest"],
+  spring24: ["spring24", "Forest-FlowerFestival", "Forest-FlowerDance", "FlowerDance", "FlowerFestival", "Forest"],
   summer11: ["summer11", "Beach-Luau", "Luau", "Beach"],
   summer28: ["summer28", "Beach-Jellies", "MoonlightJellies", "Beach"],
   fall16: ["fall16", "Town-Fair", "StardewValleyFair", "Town"],
@@ -7785,6 +8197,8 @@ function gameDataLabel(kind: GameDataEntry["kind"], fallback = "") {
     mail: "信件",
     trigger_action: "触发动作",
     quest: "任务",
+    secret_note: "秘密纸条",
+    special_order: "特别订单",
     custom: "自定义"
   };
   return labels[kind] || fallback || kind;
@@ -8348,6 +8762,29 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
         key: "ExampleQuest",
         value: "Basic/{{i18n:Custom.Quest.ExampleQuest.Title}}/{{i18n:Custom.Quest.ExampleQuest.Description}}/{{i18n:Custom.Quest.ExampleQuest.Hint}}/null/-1/0/-1/false/{{i18n:Custom.Quest.ExampleQuest.Reaction}}"
       };
+    case "secret_note":
+      return {
+        target: "Data/SecretNotes",
+        key: "ExampleNote",
+        value: i18nRef("Custom.SecretNote.ExampleNote")
+      };
+    case "special_order":
+      return {
+        target: "Data/SpecialOrders",
+        key: "Author.Mod.ExampleOrder",
+        value: {
+          Name: "[Author_Mod_ExampleOrder_Name]",
+          Requester: "Lewis",
+          Duration: "TwoWeeks",
+          Repeatable: "False",
+          RequiredTags: "",
+          OrderType: "",
+          SpecialRule: "",
+          Text: "[Author_Mod_ExampleOrder_Text]",
+          Objectives: [],
+          Rewards: []
+        }
+      };
     default:
       return {
         target: "Data/Objects",
@@ -8360,6 +8797,7 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
 function gameDataPatchPreview(entry: GameDataEntry) {
   const storyEntries = storyEntriesForPreview(entry);
   const mailValue = entry.kind === "mail" ? mailStringFromEntry(entry) : null;
+  const specialOrderStrings = entry.kind === "special_order" ? specialOrderStringPatchForPreview(entry) : null;
   const patch: JsonDict = {
     Action: "EditData",
     Target: entry.target,
@@ -8368,7 +8806,25 @@ function gameDataPatchPreview(entry: GameDataEntry) {
     }
   };
   if (Object.keys(entry.when).length) patch.When = entry.when;
-  return { ...patch, ...publicAdvanced(entry.advanced) };
+  const patches = [{ ...patch, ...publicAdvanced(entry.advanced) }];
+  if (specialOrderStrings) patches.push(specialOrderStrings);
+  return patches.length === 1 ? patches[0] : { Changes: patches };
+}
+
+function specialOrderStringPatchForPreview(entry: GameDataEntry) {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const meta = isObject(studio.specialOrder) ? studio.specialOrder as Partial<SpecialOrderMeta> : null;
+  if (!meta) return null;
+  const orderId = stringField(meta.orderId || entry.key || "ExampleOrder");
+  const entries: Record<string, string> = {
+    [specialOrderStringKey(orderId, "Name")]: i18nRef(stringField(meta.nameKey || `Custom.SpecialOrder.${orderId}.Name`)),
+    [specialOrderStringKey(orderId, "Text")]: i18nRef(stringField(meta.textKey || `Custom.SpecialOrder.${orderId}.Text`))
+  };
+  const objectives = Array.isArray(meta.objectives) ? meta.objectives : [];
+  objectives.forEach((objective, index) => {
+    if (isObject(objective)) entries[specialOrderStringKey(orderId, `Objective_${index + 1}_Text`)] = i18nRef(stringField(objective.textKey || `Custom.SpecialOrder.${orderId}.Objective_${index + 1}_Text`));
+  });
+  return { Action: "EditData", Target: "Strings/SpecialOrderStrings", Entries: entries };
 }
 
 function storyEntriesForPreview(entry: GameDataEntry) {
@@ -8563,6 +9019,10 @@ function itemTextureTarget(project: Project, objectId: string) {
   return `Mods/${project.manifest.UniqueID || "Author.Mod"}/Objects/${objectId}`;
 }
 
+function cropTextureTarget(project: Project, seedId: string) {
+  return `Mods/${project.manifest.UniqueID || "Author.Mod"}/Crops/${seedId}`;
+}
+
 function fruitTreeTextureTarget(project: Project, saplingId: string) {
   return `Mods/${project.manifest.UniqueID || "Author.Mod"}/FruitTrees/${saplingId}`;
 }
@@ -8577,6 +9037,11 @@ function locationI18nKey(project: Project, locationId: string, field: "Name") {
 
 function i18nKeyFromRef(value: unknown) {
   const match = stringField(value).match(/^\{\{i18n:([^}]+)\}\}$/);
+  return match?.[1] || "";
+}
+
+function i18nKeyFromBracketRef(value: unknown) {
+  const match = stringField(value).match(/^\[([^\]]+)\]$/);
   return match?.[1] || "";
 }
 
@@ -8845,7 +9310,7 @@ function defaultStoryNode(kind: EventNodeKind, meta: Pick<StoryEventMeta, "event
     quickQuestion: { i18nKey, text: "你要怎么回答？#选项一#选项二(break)message \"{{i18n:Example.Answer1}}\"(break)message \"{{i18n:Example.Answer2}}\"" },
     fork: { requirement: "fork0", eventId: `${meta.eventId || "ExampleEvent"}_Branch` },
     questionAnswered: { answerId: "event_answer", answered: true },
-    move: { actor: "farmer", x: 0, y: 1, direction: 2, continue: false },
+    move: { actor: "farmer", targetMode: true, x: 0, y: 1, direction: 2, continue: false },
     advancedMove: { actor: "ExampleNPC", loop: false, path: "0 3 2 0 0 2 -2 0 0 -2 2 0" },
     positionOffset: { actor: "ExampleNPC", x: 0, y: 0, continue: false },
     warp: { actor: "farmer", x: 64, y: 15 },
@@ -8998,18 +9463,108 @@ function buildStoryPrecondition(condition: EventPrecondition) {
   return condition.negated && !text.startsWith("!") ? `!${text}` : text;
 }
 
+function storyActorPositionsFromActors(actors: StoryEventMeta["actors"]) {
+  const positions = new Map<string, MapPoint>();
+  const safeActors = actors.length ? actors : [{ actor: "farmer", x: -500, y: -500, direction: 2 }];
+  for (const actor of safeActors) {
+    const name = actor.actor || "farmer";
+    positions.set(name, { X: integerInRange(actor.x, -10000, 10000, 0), Y: integerInRange(actor.y, -10000, 10000, 0) });
+  }
+  return positions;
+}
+
+function storyActorPositionsBeforeNode(meta: StoryEventMeta, nodeIndex: number) {
+  const positions = storyActorPositionsFromActors(meta.actors);
+  for (const node of meta.nodes.slice(0, Math.max(0, nodeIndex))) {
+    storyApplyPositionNode(positions, node);
+  }
+  return positions;
+}
+
+function storyActorPositionBefore(meta: StoryEventMeta, nodeIndex: number, actorName: string): MapPoint | null {
+  return storyActorPositionsBeforeNode(meta, nodeIndex).get(actorName || "farmer") || null;
+}
+
+function storyMoveDelta(node: StoryEventNode, positions: Map<string, MapPoint>) {
+  const data = node.data || {};
+  const actor = stringField(data.actor) || "farmer";
+  const current = positions.get(actor) || null;
+  const targetMode = data.targetMode !== false && data.targetX !== undefined && data.targetX !== null && data.targetY !== undefined && data.targetY !== null;
+  if (targetMode && current) {
+    const targetX = integerInRange(data.targetX, -10000, 10000, current.X);
+    const targetY = integerInRange(data.targetY, -10000, 10000, current.Y);
+    return { actor, dx: targetX - current.X, dy: targetY - current.Y, target: { X: targetX, Y: targetY } };
+  }
+  return {
+    actor,
+    dx: integerInRange(data.x, -999, 999, 0),
+    dy: integerInRange(data.y, -999, 999, 1),
+    target: current
+      ? { X: current.X + integerInRange(data.x, -999, 999, 0), Y: current.Y + integerInRange(data.y, -999, 999, 1) }
+      : null
+  };
+}
+
+function storyApplyPositionNode(positions: Map<string, MapPoint>, node: StoryEventNode) {
+  const data = node.data || {};
+  const actor = stringField(data.actor) || "farmer";
+  if (node.kind === "move") {
+    const delta = storyMoveDelta(node, positions);
+    if (delta.target) positions.set(actor, delta.target);
+    return;
+  }
+  if (node.kind === "positionOffset") {
+    const current = positions.get(actor);
+    if (current) positions.set(actor, {
+      X: current.X + integerInRange(data.x, -999, 999, 0),
+      Y: current.Y + integerInRange(data.y, -999, 999, 0)
+    });
+    return;
+  }
+  if (node.kind === "warp") {
+    positions.set(actor, {
+      X: integerInRange(data.x, -10000, 10000, 0),
+      Y: integerInRange(data.y, -10000, 10000, 0)
+    });
+  }
+}
+
+function buildStoryCommands(nodes: StoryEventNode[], meta: Pick<StoryEventMeta, "eventId" | "i18nPrefix" | "actors">) {
+  const positions = storyActorPositionsFromActors(meta.actors || []);
+  return nodes.flatMap((node) => {
+    if (node.kind === "move") {
+      const delta = storyMoveDelta(node, positions);
+      const data = node.data || {};
+      const command = `move ${delta.actor} ${delta.dx} ${delta.dy} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
+      storyApplyPositionNode(positions, node);
+      return command ? [command] : [];
+    }
+    const command = buildStoryCommand(node, meta);
+    storyApplyPositionNode(positions, node);
+    return command ? [command] : [];
+  });
+}
+
+function buildStoryCommandPreview(node: StoryEventNode, meta: StoryEventMeta, index: number) {
+  if (node.kind !== "move") return buildStoryCommand(node, meta);
+  const positions = storyActorPositionsBeforeNode(meta, index);
+  const delta = storyMoveDelta(node, positions);
+  const data = node.data || {};
+  return `move ${delta.actor} ${delta.dx} ${delta.dy} ${integerInRange(data.direction, 0, 3, 2)}${data.continue ? " true" : ""}`;
+}
+
 function buildStoryEventScript(meta: StoryEventMeta) {
   const start = [
     meta.music || "continue",
     `${integerInRange(meta.viewportX, -10000, 10000, -1000)} ${integerInRange(meta.viewportY, -10000, 10000, -1000)}`,
     buildStoryActors(meta.actors)
   ];
-  const commands = meta.nodes.map((node) => buildStoryCommand(node, meta)).filter(Boolean);
+  const commands = buildStoryCommands(meta.nodes, meta);
   return [...start, ...commands].join("/");
 }
 
-function buildStoryBranchScript(branch: StoryEventBranch) {
-  return branch.nodes.map((node) => buildStoryCommand(node, { eventId: branch.key, i18nPrefix: branch.key })).filter(Boolean).join("/");
+function buildStoryBranchScript(branch: StoryEventBranch, actors: StoryEventMeta["actors"] = []) {
+  return buildStoryCommands(branch.nodes, { eventId: branch.key, i18nPrefix: branch.key, actors }).join("/");
 }
 
 function buildStoryActors(actors: StoryEventMeta["actors"]) {
@@ -9220,6 +9775,105 @@ const FALLBACK_BUILDING_TYPE_OPTIONS: RulesetOption[] = [
 const FALLBACK_MONSTER_NAME_OPTIONS: RulesetOption[] = [
   "Green_Slime", "Blue_Slime", "Red_Slime", "Purple_Slime", "Dust_Spirit", "Bat", "Frost_Bat", "Lava_Bat", "Rock_Crab", "Lava_Crab", "Iridium_Crab", "Duggy", "Grub", "Fly", "Skeleton", "Ghost", "Shadow_Brute", "Shadow_Shaman", "Squid_Kid", "Serpent", "Mummy", "Pepper_Rex", "Tiger_Slime"
 ].map((value) => ({ label: value.replace(/_/g, " "), value }));
+
+const SPECIAL_ORDER_DURATION_OPTIONS: RulesetOption[] = [
+  { label: "一周 OneWeek", value: "OneWeek" },
+  { label: "两周 TwoWeeks", value: "TwoWeeks" },
+  { label: "一个月 Month", value: "Month" },
+  { label: "无限 None", value: "None" },
+  { label: "自定义", value: "" }
+];
+
+const SPECIAL_ORDER_TYPE_OPTIONS: RulesetOption[] = [
+  { label: "默认", value: "" },
+  { label: "Qi 齐先生", value: "Qi" },
+  { label: "自定义", value: "Custom" }
+];
+
+const SPECIAL_ORDER_RULE_OPTIONS: RulesetOption[] = [
+  { label: "无", value: "" },
+  { label: "QiChallenge 齐挑战", value: "QiChallenge" },
+  { label: "自定义", value: "Custom" }
+];
+
+const SPECIAL_ORDER_OBJECTIVE_OPTIONS: RulesetOption[] = [
+  { label: "Collect 收集", value: "Collect" },
+  { label: "Donate 捐入/投递箱", value: "Donate" },
+  { label: "Deliver 交付", value: "Deliver" },
+  { label: "Fish 钓鱼", value: "Fish" },
+  { label: "Gift 送礼", value: "Gift" },
+  { label: "Ship 出货", value: "Ship" },
+  { label: "Slay 击杀", value: "Slay" },
+  { label: "ReachMineFloor 到达矿层", value: "ReachMineFloor" },
+  { label: "JKScore 祝尼魔赛车分数", value: "JKScore" },
+  { label: "自定义", value: "custom" }
+];
+
+const SPECIAL_ORDER_REWARD_OPTIONS: RulesetOption[] = [
+  { label: "Money 金钱", value: "Money" },
+  { label: "Gems 齐钻", value: "Gems" },
+  { label: "Mail 邮件标记", value: "Mail" },
+  { label: "Friendship 好感", value: "Friendship" },
+  { label: "ResetEvent 重置事件", value: "ResetEvent" },
+  { label: "Object 物品", value: "Object" },
+  { label: "自定义", value: "custom" }
+];
+
+function isSecretNoteEntry(entry: GameDataEntry) {
+  return entry.kind === "secret_note" || entry.target === "Data/SecretNotes";
+}
+
+function secretNoteI18nKey(project: Project, noteId: string) {
+  return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.SecretNote.${sanitizeI18nPart(noteId || "ExampleNote")}`;
+}
+
+function secretNoteTextFromValue(value: unknown) {
+  if (typeof value !== "string") return "";
+  const key = i18nKeyFromRef(value);
+  return key ? "" : value.replace(/\^/g, "\n");
+}
+
+function secretNoteMetaFromEntry(project: Project, entry: GameDataEntry): SecretNoteMeta {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const stored = isObject(studio.secretNote) ? studio.secretNote as JsonDict : {};
+  const noteId = stringField(stored.noteId || entry.key || "ExampleNote");
+  return {
+    noteId,
+    textKey: stringField(stored.textKey || i18nKeyFromRef(entry.value) || secretNoteI18nKey(project, noteId))
+  };
+}
+
+function defaultSecretNoteEntry(project: Project): GameDataEntry {
+  const meta = { noteId: "ExampleNote", textKey: secretNoteI18nKey(project, "ExampleNote") };
+  return secretNoteEntryFromMeta({
+    id: makeId(),
+    kind: "secret_note",
+    name: "秘密纸条",
+    target: "Data/SecretNotes",
+    key: meta.noteId,
+    value: "",
+    when: {},
+    advanced: {},
+    editMode: "form"
+  }, meta);
+}
+
+function secretNoteEntryFromMeta(entry: GameDataEntry, meta: SecretNoteMeta): GameDataEntry {
+  return {
+    ...entry,
+    kind: "secret_note",
+    target: "Data/SecretNotes",
+    key: meta.noteId || "ExampleNote",
+    value: i18nRef(meta.textKey),
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+        secretNote: meta
+      }
+    }
+  };
+}
 
 function isQuestEntry(entry: GameDataEntry) {
   return entry.kind === "quest" || entry.target === "Data/Quests";
@@ -9485,6 +10139,272 @@ function questOptions(project: Project): RulesetOption[] {
 
 function optionalQuestOptions(options: RulesetOption[]) {
   return [{ label: "不移除其他任务", value: "" }, ...options];
+}
+
+function isSpecialOrderEntry(entry: GameDataEntry) {
+  return entry.kind === "special_order" || entry.target === "Data/SpecialOrders";
+}
+
+function specialOrderOptions(project: Project): RulesetOption[] {
+  const values = new Set<string>();
+  for (const entry of project.game_data) {
+    if (isSpecialOrderEntry(entry) && entry.key) values.add(entry.key);
+  }
+  return [...values].sort().map((value) => ({ label: value, value }));
+}
+
+function specialOrderTextKey(project: Project, orderId: string, field: string) {
+  return `${sanitizeI18nPart(project.manifest.UniqueID || "Custom")}.SpecialOrder.${sanitizeI18nPart(orderId || "ExampleOrder")}.${sanitizeI18nPart(field)}`;
+}
+
+function specialOrderStringKey(orderId: string, field: string) {
+  return `${sanitizeI18nPart(orderId || "ExampleOrder")}_${sanitizeI18nPart(field)}`;
+}
+
+function specialOrderStringRef(orderId: string, field: string) {
+  return `[${specialOrderStringKey(orderId, field)}]`;
+}
+
+function defaultSpecialOrderObjective(project: Project, orderId: string, index: number): SpecialOrderObjective {
+  return {
+    id: makeId(),
+    type: "Donate",
+    textKey: specialOrderTextKey(project, orderId, `Objective_${index + 1}_Text`),
+    requiredCount: "10",
+    data: {
+      DropBox: "DropBox",
+      DropBoxGameLocation: "Town",
+      DropBoxIndicatorLocation: "0 0",
+      AcceptedContextTags: "item_wood"
+    }
+  };
+}
+
+function defaultSpecialOrderReward(type: SpecialOrderRewardType): SpecialOrderReward {
+  const defaults: Record<SpecialOrderRewardType, JsonDict> = {
+    Money: { Amount: "1000" },
+    Gems: { Amount: "10" },
+    Mail: { MailReceived: "ExampleMail" },
+    Friendship: {},
+    ResetEvent: { EventID: "" },
+    Object: { ItemId: "(O)388", Amount: "1" },
+    custom: {}
+  };
+  return { id: makeId(), type, data: defaults[type] || {} };
+}
+
+function defaultSpecialOrderMeta(project: Project, orderId = modScopedId(project, "ExampleOrder")): SpecialOrderMeta {
+  const id = normalizeItemId(orderId || modScopedId(project, "ExampleOrder"));
+  return {
+    orderId: id,
+    nameKey: specialOrderTextKey(project, id, "Name"),
+    textKey: specialOrderTextKey(project, id, "Text"),
+    requester: "Lewis",
+    duration: "TwoWeeks",
+    repeatable: false,
+    requiredTags: "",
+    condition: "",
+    orderType: "",
+    specialRule: "",
+    itemToRemoveOnEnd: "",
+    mailToRemoveOnEnd: "",
+    objectives: [defaultSpecialOrderObjective(project, id, 0)],
+    rewards: [defaultSpecialOrderReward("Money")],
+    randomizedElements: [],
+    customFields: {}
+  };
+}
+
+function defaultSpecialOrderEntry(project: Project): GameDataEntry {
+  const meta = defaultSpecialOrderMeta(project);
+  return specialOrderEntryFromMeta(project, {
+    id: makeId(),
+    kind: "special_order",
+    name: "特殊订单",
+    target: "Data/SpecialOrders",
+    key: meta.orderId,
+    value: {},
+    when: {},
+    advanced: {},
+    editMode: "form"
+  }, meta);
+}
+
+function defaultSpecialOrderI18n(project: Project, meta: SpecialOrderMeta) {
+  const entries: Record<string, string> = {
+    [meta.nameKey]: "示例特别订单",
+    [meta.textKey]: "完成这份特别订单。"
+  };
+  meta.objectives.forEach((objective, index) => {
+    entries[objective.textKey] = `完成目标 ${index + 1}`;
+  });
+  return entries;
+}
+
+function specialOrderMetaFromEntry(project: Project, entry: GameDataEntry): SpecialOrderMeta {
+  const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  if (isObject(studio.specialOrder)) return normalizeSpecialOrderMeta(project, studio.specialOrder as Partial<SpecialOrderMeta>);
+  const raw = isObject(entry.value) ? entry.value as JsonDict : {};
+  return normalizeSpecialOrderMeta(project, {
+    orderId: entry.key || modScopedId(project, "ExampleOrder"),
+    requester: stringField(raw.Requester || "Lewis"),
+    duration: stringField(raw.Duration || "TwoWeeks"),
+    repeatable: String(raw.Repeatable).toLowerCase() === "true" || raw.Repeatable === true,
+    requiredTags: stringField(raw.RequiredTags || ""),
+    condition: stringField(raw.Condition || ""),
+    orderType: stringField(raw.OrderType || ""),
+    specialRule: stringField(raw.SpecialRule || ""),
+    itemToRemoveOnEnd: raw.ItemToRemoveOnEnd == null ? "" : stringField(raw.ItemToRemoveOnEnd),
+    mailToRemoveOnEnd: raw.MailToRemoveOnEnd == null ? "" : stringField(raw.MailToRemoveOnEnd),
+    objectives: Array.isArray(raw.Objectives) ? raw.Objectives.map((objective, index) => normalizeSpecialOrderObjective(project, entry.key || "ExampleOrder", objective, index)) : undefined,
+    rewards: Array.isArray(raw.Rewards) ? raw.Rewards.map(normalizeSpecialOrderReward) : undefined,
+    customFields: {}
+  });
+}
+
+function normalizeSpecialOrderMeta(project: Project, value: Partial<SpecialOrderMeta>): SpecialOrderMeta {
+  const orderId = normalizeItemId(stringField(value.orderId || modScopedId(project, "ExampleOrder")));
+  const fallback = defaultSpecialOrderMeta(project, orderId);
+  return {
+    ...fallback,
+    ...value,
+    orderId,
+    nameKey: stringField(value.nameKey || specialOrderTextKey(project, orderId, "Name")),
+    textKey: stringField(value.textKey || specialOrderTextKey(project, orderId, "Text")),
+    requester: stringField(value.requester || fallback.requester),
+    duration: stringField(value.duration || fallback.duration),
+    repeatable: Boolean(value.repeatable),
+    requiredTags: stringField(value.requiredTags || ""),
+    condition: stringField(value.condition || ""),
+    orderType: stringField(value.orderType || ""),
+    specialRule: stringField(value.specialRule || ""),
+    itemToRemoveOnEnd: stringField(value.itemToRemoveOnEnd || ""),
+    mailToRemoveOnEnd: stringField(value.mailToRemoveOnEnd || ""),
+    objectives: Array.isArray(value.objectives) && value.objectives.length ? value.objectives.map((objective, index) => normalizeSpecialOrderObjective(project, orderId, objective, index)) : fallback.objectives,
+    rewards: Array.isArray(value.rewards) && value.rewards.length ? value.rewards.map(normalizeSpecialOrderReward) : fallback.rewards,
+    randomizedElements: Array.isArray(value.randomizedElements) ? value.randomizedElements.map(normalizeSpecialOrderRandomElement).filter((item) => item.name) : [],
+    customFields: isObject(value.customFields) ? value.customFields : {}
+  };
+}
+
+function normalizeSpecialOrderObjective(project: Project, orderId: string, value: unknown, index: number): SpecialOrderObjective {
+  const source = isObject(value) ? value : {};
+  const type = SPECIAL_ORDER_OBJECTIVE_OPTIONS.some((option) => option.value === source.type || option.value === source.Type) ? stringField(source.type || source.Type) as SpecialOrderObjectiveType : "custom";
+  const textKey = i18nKeyFromBracketRef(source.Text) || stringField(source.textKey || specialOrderTextKey(project, orderId, `Objective_${index + 1}_Text`));
+  return {
+    id: stringField(source.id || makeId()),
+    type,
+    customType: type === "custom" ? stringField(source.Type || source.customType || "") : stringField(source.customType || ""),
+    textKey,
+    requiredCount: stringField(source.requiredCount || source.RequiredCount || "1"),
+    data: isObject(source.data) ? source.data as JsonDict : isObject(source.Data) ? source.Data as JsonDict : {}
+  };
+}
+
+function normalizeSpecialOrderReward(value: unknown): SpecialOrderReward {
+  const source = isObject(value) ? value : {};
+  const type = SPECIAL_ORDER_REWARD_OPTIONS.some((option) => option.value === source.type || option.value === source.Type) ? stringField(source.type || source.Type) as SpecialOrderRewardType : "custom";
+  return {
+    id: stringField(source.id || makeId()),
+    type,
+    customType: type === "custom" ? stringField(source.Type || source.customType || "") : stringField(source.customType || ""),
+    data: isObject(source.data) ? source.data as JsonDict : isObject(source.Data) ? source.Data as JsonDict : {}
+  };
+}
+
+function normalizeSpecialOrderRandomElement(value: unknown): SpecialOrderRandomElement {
+  const source = isObject(value) ? value : {};
+  const values = Array.isArray(source.values) ? source.values : Array.isArray(source.Values) ? source.Values : [];
+  return {
+    id: stringField(source.id || makeId()),
+    name: stringField(source.name || source.Name || ""),
+    values: values.map((row) => {
+      const rowSource = isObject(row) ? row : {};
+      return { id: stringField(rowSource.id || makeId()), requiredTags: stringField(rowSource.requiredTags || rowSource.RequiredTags || ""), value: stringField(rowSource.value || rowSource.Value || "") };
+    })
+  };
+}
+
+function specialOrderRekey(project: Project, meta: SpecialOrderMeta, orderId: string): Partial<SpecialOrderMeta> {
+  const nextId = normalizeItemId(orderId || meta.orderId);
+  return {
+    orderId: nextId,
+    nameKey: specialOrderTextKey(project, nextId, "Name"),
+    textKey: specialOrderTextKey(project, nextId, "Text"),
+    objectives: meta.objectives.map((objective, index) => ({ ...objective, textKey: specialOrderTextKey(project, nextId, `Objective_${index + 1}_Text`) }))
+  };
+}
+
+function specialOrderEntryFromMeta(project: Project, entry: GameDataEntry, meta: SpecialOrderMeta): GameDataEntry {
+  const normalized = normalizeSpecialOrderMeta(project, meta);
+  return {
+    ...entry,
+    kind: "special_order",
+    target: "Data/SpecialOrders",
+    key: normalized.orderId,
+    value: specialOrderValueFromMeta(normalized),
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...(isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+        specialOrder: normalized
+      }
+    }
+  };
+}
+
+function specialOrderValueFromMeta(meta: SpecialOrderMeta): JsonDict {
+  const value: JsonDict = {
+    Name: specialOrderStringRef(meta.orderId, "Name"),
+    Requester: meta.requester,
+    Duration: meta.duration,
+    Repeatable: String(Boolean(meta.repeatable)),
+    RequiredTags: meta.requiredTags,
+    OrderType: meta.orderType,
+    SpecialRule: meta.specialRule,
+    Text: specialOrderStringRef(meta.orderId, "Text"),
+    ItemToRemoveOnEnd: meta.itemToRemoveOnEnd || null,
+    MailToRemoveOnEnd: meta.mailToRemoveOnEnd || null,
+    RandomizedElements: meta.randomizedElements.length ? meta.randomizedElements.map(specialOrderRandomElementValue) : null,
+    Objectives: meta.objectives.map((objective, index) => specialOrderObjectiveValue(meta.orderId, objective, index)),
+    Rewards: meta.rewards.map(specialOrderRewardValue)
+  };
+  if (meta.condition) value.Condition = meta.condition;
+  return compactObject({ ...value, ...meta.customFields });
+}
+
+function specialOrderObjectiveValue(orderId: string, objective: SpecialOrderObjective, index: number): JsonDict {
+  return compactObject({
+    Type: objective.type === "custom" ? objective.customType || "Custom" : objective.type,
+    Text: specialOrderStringRef(orderId, `Objective_${index + 1}_Text`),
+    RequiredCount: objective.requiredCount || "1",
+    Data: objective.data || {}
+  });
+}
+
+function specialOrderRewardValue(reward: SpecialOrderReward): JsonDict {
+  return compactObject({
+    Type: reward.type === "custom" ? reward.customType || "Custom" : reward.type,
+    Data: reward.data || {}
+  });
+}
+
+function specialOrderRandomElementValue(element: SpecialOrderRandomElement): JsonDict {
+  return {
+    Name: element.name,
+    Values: element.values.map((value) => compactObject({ RequiredTags: value.requiredTags, Value: value.value }))
+  };
+}
+
+function specialOrderStringEntries(project: Project, meta: SpecialOrderMeta) {
+  const entries: Record<string, string> = {
+    [specialOrderStringKey(meta.orderId, "Name")]: i18nRef(meta.nameKey),
+    [specialOrderStringKey(meta.orderId, "Text")]: i18nRef(meta.textKey)
+  };
+  meta.objectives.forEach((objective, index) => {
+    entries[specialOrderStringKey(meta.orderId, `Objective_${index + 1}_Text`)] = i18nRef(objective.textKey || specialOrderTextKey(project, meta.orderId, `Objective_${index + 1}_Text`));
+  });
+  return entries;
 }
 
 function npcOptions(project: Project): RulesetOption[] {
