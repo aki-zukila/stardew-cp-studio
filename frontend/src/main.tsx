@@ -200,6 +200,7 @@ type DialogueEntryState = {
   npcName: string;
   isMarriage: boolean;
   keyType: DialogueKeyType;
+  textId: string;
   season: string;
   weekday: string;
   day: number;
@@ -607,10 +608,14 @@ function App() {
         </button>
         <nav>
           <TabButton icon={<Icon name="settings" />} id="manifest" label="模组信息" tab={tab} setTab={setTab} />
-          <details className="sidebar-subnav" open={tab === "data" || tab === "items" || tab === "maps" || tab === "shops" || tab === "quests" || tab === "special-orders"}>
+          <details className="sidebar-subnav" open={tab === "data" || tab === "dialogue" || tab === "events" || tab === "schedules" || tab === "mail" || tab === "items" || tab === "maps" || tab === "shops" || tab === "quests" || tab === "special-orders"}>
             <summary><Icon name="data" /><span>游戏数据</span></summary>
             <div>
               <TabButton icon={<Icon name="data" />} id="data" label="角色 / 通用数据" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="dialogue" />} id="dialogue" label="对话模块" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="story" />} id="events" label="剧情事件" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="schedule" />} id="schedules" label="日程模块" tab={tab} setTab={setTab} />
+              <TabButton icon={<Icon name="mail" />} id="mail" label="信件模块" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="item" />} id="items" label="物品添加" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="map" />} id="maps" label="地图添加" tab={tab} setTab={setTab} />
               <TabButton icon={<Icon name="shop" />} id="shops" label="商店功能" tab={tab} setTab={setTab} />
@@ -618,7 +623,6 @@ function App() {
               <TabButton icon={<Icon name="order" />} id="special-orders" label="特殊订单" tab={tab} setTab={setTab} />
             </div>
           </details>
-          <TabButton icon={<Icon name="story" />} id="story" label="剧情模块" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="json" />} id="patches" label="CP 补丁" tab={tab} setTab={setTab} />
           <TabButton icon={<Icon name="assets" />} id="assets" label="素材库" tab={tab} setTab={setTab} />
           <div className="nav-spacer" />
@@ -642,9 +646,12 @@ function App() {
         {status && <div className="status">{status}</div>}
 
         {tab === "manifest" && <ManifestEditor project={project} setProject={updateProject} />}
-        {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
+        {(tab === "events" || tab === "story") && <StoryEventStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
+        {tab === "dialogue" && <DialogueStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
+        {tab === "schedules" && <ScheduleStudio project={project} ruleset={ruleset} setProject={updateProject} />}
+        {tab === "mail" && <MailStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "items" && <ItemStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "maps" && <MapStudio project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "shops" && <ShopStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
@@ -794,6 +801,228 @@ function ItemStudio({ project, ruleset, itemCatalog, setProject }: { project: Pr
               removeEntry={removeEntry}
             />
           </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function DialogueStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const [npcName, setNpcName] = useState("ExampleNPC");
+  const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
+  const entries = project.game_data
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.kind === "dialogue" || specialDialogueMetadata(entry).valid);
+
+  function addDialogue(isMarriage: boolean) {
+    const entry = defaultDialogueEntry(project, normalizedNpc, isMarriage);
+    const key = extractI18nKey(entry.value);
+    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, [key]: defaultDialogueText(isMarriage ? "marriage_key" : "weekday") } });
+  }
+
+  function addSpecial(kind: SpecialDialogueKind) {
+    const entry = createSpecialDialogueEntry(normalizedNpc, normalizedNpc, kind, project.game_data);
+    const key = extractI18nKey(entry.value);
+    setProject({ ...project, game_data: [...project.game_data, entry], i18n: { ...project.i18n, [key]: defaultSpecialDialogueText(kind) } });
+  }
+
+  function updateEntry(index: number, nextEntry: GameDataEntry, nextI18n?: Record<string, string>) {
+    setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry), i18n: nextI18n || project.i18n });
+  }
+
+  function moveEntry(fromIndex: number, toIndex: number) {
+    setProject({ ...project, game_data: moveArrayItem(project.game_data, fromIndex, toIndex) });
+  }
+
+  return (
+    <Section title="对话模块">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加对话"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <Field label="默认 NPC 内部名" value={npcName} onChange={setNpcName} />
+              <button type="button" className="compact-add-button" onClick={() => addDialogue(false)}><Icon name="plus" /><span>普通对话</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addDialogue(true)}><Icon name="plus" /><span>婚后/室友对话</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addSpecial("engagement")}><Icon name="plus" /><span>邀请后对话</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addSpecial("rain")}><Icon name="plus" /><span>特殊雨天对话</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addSpecial("festival")}><Icon name="plus" /><span>节日对话</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          <DialogueStudioGroup
+            title="普通与婚后/室友对话"
+            entries={entries.filter(({ entry }) => entry.kind === "dialogue")}
+            project={project}
+            ruleset={ruleset}
+            itemCatalog={itemCatalog}
+            updateEntry={updateEntry}
+            moveEntry={moveEntry}
+            removeEntry={(entry) => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}
+          />
+          <SpecialDialogueStudioGroup
+            entries={entries.filter(({ entry }) => specialDialogueMetadata(entry).valid)}
+            project={project}
+            updateEntry={updateEntry}
+            moveEntry={moveEntry}
+            removeEntry={(entry) => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}
+          />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function DialogueStudioGroup({ title, entries, project, ruleset, itemCatalog, updateEntry, moveEntry, removeEntry }: { title: string; entries: { entry: GameDataEntry; index: number }[]; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; updateEntry: (index: number, entry: GameDataEntry, i18n?: Record<string, string>) => void; moveEntry: (fromIndex: number, toIndex: number) => void; removeEntry: (entry: GameDataEntry) => void }) {
+  return (
+    <CollapsibleSubsection title={`${title} (${entries.length})`} stateKey="dialogue-studio:normal">
+      {entries.map(({ entry, index }, position) => (
+        <StudioEntryShell
+          key={entry.id}
+          entry={entry}
+          stateKey={`dialogue-studio:entry:${entry.id}`}
+          onNameChange={(name) => updateEntry(index, { ...entry, name })}
+          onMoveUp={position > 0 ? () => moveEntry(index, entries[position - 1].index) : undefined}
+          onMoveDown={position < entries.length - 1 ? () => moveEntry(index, entries[position + 1].index) : undefined}
+          onRemove={() => removeEntry(entry)}
+        >
+          <DialogueEntryFormClean
+            project={project}
+            entry={entry}
+            ruleset={ruleset}
+            itemCatalog={itemCatalog}
+            i18n={project.i18n}
+            onI18nChange={(i18n) => updateEntry(index, entry, i18n)}
+            onEntryAndI18nChange={(next, i18n) => updateEntry(index, next, i18n)}
+            onChange={(next) => updateEntry(index, next)}
+          />
+        </StudioEntryShell>
+      ))}
+      {!entries.length && <div className="empty compact-empty">暂无普通或婚后对话，请从左侧添加。</div>}
+    </CollapsibleSubsection>
+  );
+}
+
+function SpecialDialogueStudioGroup({ entries, project, updateEntry, moveEntry, removeEntry }: { entries: { entry: GameDataEntry; index: number }[]; project: Project; updateEntry: (index: number, entry: GameDataEntry, i18n?: Record<string, string>) => void; moveEntry: (fromIndex: number, toIndex: number) => void; removeEntry: (entry: GameDataEntry) => void }) {
+  return (
+    <CollapsibleSubsection title={`特殊对话 (${entries.length})`} stateKey="dialogue-studio:special">
+      {entries.map(({ entry, index }, position) => (
+        <StudioEntryShell
+          key={entry.id}
+          entry={entry}
+          stateKey={`dialogue-studio:special:${entry.id}`}
+          onNameChange={(name) => updateEntry(index, { ...entry, name })}
+          onMoveUp={position > 0 ? () => moveEntry(index, entries[position - 1].index) : undefined}
+          onMoveDown={position < entries.length - 1 ? () => moveEntry(index, entries[position + 1].index) : undefined}
+          onRemove={() => removeEntry(entry)}
+        >
+          <SpecialDialogueEditor
+            project={project}
+            entry={entry}
+            i18n={project.i18n}
+            onI18nChange={(i18n) => updateEntry(index, entry, i18n)}
+            onChange={(next) => updateEntry(index, next)}
+          />
+        </StudioEntryShell>
+      ))}
+      {!entries.length && <div className="empty compact-empty">暂无特殊对话，请从左侧添加。</div>}
+    </CollapsibleSubsection>
+  );
+}
+
+function ScheduleStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const [npcName, setNpcName] = useState("ExampleNPC");
+  const entries = project.game_data.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.kind === "schedule");
+
+  function addSchedule() {
+    const entry = defaultScheduleEntry(normalizeInternalName(npcName || "ExampleNPC"));
+    setProject({ ...project, game_data: [...project.game_data, entry] });
+  }
+
+  function moveEntry(fromIndex: number, toIndex: number) {
+    setProject({ ...project, game_data: moveArrayItem(project.game_data, fromIndex, toIndex) });
+  }
+
+  return (
+    <Section title="日程模块">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加日程"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <Field label="默认 NPC 内部名" value={npcName} onChange={setNpcName} />
+              <button type="button" className="compact-add-button" onClick={addSchedule}><Icon name="plus" /><span>新增日程条目</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {entries.map(({ entry, index }, position) => (
+            <StudioEntryShell
+              key={entry.id}
+              entry={entry}
+              stateKey={`schedule-studio:entry:${entry.id}`}
+              onNameChange={(name) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name }) })}
+              onMoveUp={position > 0 ? () => moveEntry(index, entries[position - 1].index) : undefined}
+              onMoveDown={position < entries.length - 1 ? () => moveEntry(index, entries[position + 1].index) : undefined}
+              onRemove={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}
+            >
+              <ScheduleEntryForm project={project} entry={entry} ruleset={ruleset} onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })} />
+            </StudioEntryShell>
+          ))}
+          {!entries.length && <div className="empty compact-empty">暂无日程，请从左侧添加。</div>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function MailStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
+  const entries = project.game_data.map((entry, index) => ({ entry, index })).filter(({ entry }) => entry.kind === "mail");
+
+  function addMail() {
+    setProject({ ...project, game_data: [...project.game_data, defaultMailEntry(project)] });
+  }
+
+  function moveEntry(fromIndex: number, toIndex: number) {
+    setProject({ ...project, game_data: moveArrayItem(project.game_data, fromIndex, toIndex) });
+  }
+
+  return (
+    <Section title="信件模块">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加信件"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button type="button" className="compact-add-button" onClick={addMail}><Icon name="plus" /><span>新增信件</span></button>
+            </div>
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          {entries.map(({ entry, index }, position) => (
+            <StudioEntryShell
+              key={entry.id}
+              entry={entry}
+              stateKey={`mail-studio:entry:${entry.id}`}
+              onNameChange={(name) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name }) })}
+              onMoveUp={position > 0 ? () => moveEntry(index, entries[position - 1].index) : undefined}
+              onMoveDown={position < entries.length - 1 ? () => moveEntry(index, entries[position + 1].index) : undefined}
+              onRemove={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}
+            >
+              <MailEntryForm project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} onChange={(next) => setProject({ ...project, game_data: replaceAt(project.game_data, index, next) })} setProject={setProject} />
+            </StudioEntryShell>
+          ))}
+          {!entries.length && <div className="empty compact-empty">暂无信件，请从左侧添加。</div>}
         </div>
       </div>
     </Section>
@@ -1249,10 +1478,12 @@ function Icon({ name }: { name: string }) {
     box: "O",
     check: "V",
     data: "D",
+    dialogue: "T",
     export: "E",
     flow: "F",
     item: "I",
     json: "{}",
+    mail: "@",
     map: "M",
     menu: "≡",
     open: "O",
@@ -1262,6 +1493,7 @@ function Icon({ name }: { name: string }) {
     quest: "Q",
     rules: "R",
     save: "S",
+    schedule: "SC",
     settings: "*",
     shop: "$",
     story: "EV",
@@ -1326,6 +1558,28 @@ function PersistentDetails({ title, children, className = "", defaultOpen = fals
     >
       <summary>{title}</summary>
       {children}
+    </details>
+  );
+}
+
+function StudioEntryShell({ entry, stateKey, children, onNameChange, onMoveUp, onMoveDown, onRemove }: { entry: GameDataEntry; stateKey: string; children: React.ReactNode; onNameChange: (name: string) => void; onMoveUp?: () => void; onMoveDown?: () => void; onRemove: () => void }) {
+  const { project, setProject } = React.useContext(ProjectUiContext);
+  const open = getPersistedDetailsOpen(project, stateKey, true);
+  return (
+    <details
+      className="card compact-card studio-entry-card"
+      open={open}
+      onToggle={(event) => setPersistedDetailsOpen(project, setProject, stateKey, event.currentTarget.open)}
+    >
+      <summary className="card-head studio-entry-head">
+        <input value={entry.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onNameChange(event.target.value)} />
+        <div className="button-row studio-entry-actions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="secondary" disabled={!onMoveUp} onClick={onMoveUp}>上移</button>
+          <button type="button" className="secondary" disabled={!onMoveDown} onClick={onMoveDown}>下移</button>
+          <button type="button" className="secondary" onClick={onRemove}>删除</button>
+        </div>
+      </summary>
+      <div className="studio-entry-body">{children}</div>
     </details>
   );
 }
@@ -2160,7 +2414,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       {entry.kind === "dialogue" && (
-        <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+        <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
       )}
 
       {entry.kind === "schedule" && (
@@ -5689,15 +5943,17 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
 
   function createNpcDialoguePlaceholder(isMarriage: boolean) {
     const displayName = npcDisplayNameText || npcName;
-    const formatId = isMarriage ? "marriage_key" : "weekday";
-    const format = dialogueFormatById(formatId, ruleset);
     const target = isMarriage ? `Characters/Dialogue/MarriageDialogue${npcName}` : `Characters/Dialogue/${npcName}`;
-    const nextKey = isMarriage
-      ? nextDialogueKey(project, target, marriageKeyOptions(npcName).map((item) => String(item.value)))
-      : "Mon";
+    const nextKey = nextDialogueKey(project, target, isMarriage
+      ? marriageKeyOptions(npcName).map((item) => String(item.value))
+      : normalDialogueKeyCandidates());
+    const isWeekdayKey = WEEKDAY_OPTIONS.some((item) => item.value === nextKey);
+    const formatId = isMarriage ? "marriage_key" : (isWeekdayKey ? "weekday" : "normal_custom");
+    const format = dialogueFormatById(formatId, ruleset);
     const fields = normalizeDialogueFields(format, {
       weekday: nextKey,
       key: nextKey,
+      customKey: nextKey,
       scene: "Indoor_Day",
       index: 0,
       npc: npcName
@@ -5706,6 +5962,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
       npcName,
       isMarriage,
       keyType: format.id,
+      textId: "",
       season: String(fields.season || "spring"),
       weekday: String(fields.weekday || "Mon"),
       day: Number(fields.day || 1),
@@ -5718,14 +5975,11 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
       fields
     };
     const key = buildDialogueKeyFromParts(state, npcName, ruleset);
-    const i18nKey = dialogueI18nKeyFromParts(npcName, isMarriage, "", key);
     const entryName = dialogueEntryTitle(displayName, isMarriage ? "婚后/室友对话" : "普通对话", key);
-    const dialogueEntry = withDialogueMetadata(
-      createWorkflowEntry("dialogue", entryName, target, key, i18nRef(i18nKey)),
-      state,
-      format,
-      i18nKey
-    );
+    const baseEntry = createWorkflowEntry("dialogue", entryName, target, key, "");
+    const textId = dialogueTextId(baseEntry);
+    const i18nKey = dialogueI18nKeyFromParts(npcName, isMarriage, "", key, textId);
+    const dialogueEntry = withDialogueMetadata({ ...baseEntry, value: i18nRef(i18nKey) }, { ...state, textId }, format, i18nKey);
     setExpandedNpcEntryId(mergedEntryId(project, dialogueEntry));
     upsertNpcEntries([dialogueEntry], {
       [i18nKey]: project.i18n[i18nKey] || defaultDialogueText(format.id)
@@ -5830,6 +6084,12 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
     const index = project.game_data.findIndex((item) => item.id === nextEntry.id);
     if (index < 0) return;
     setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry) });
+  }
+
+  function updateDialogueEntryAndI18n(nextEntry: GameDataEntry, nextI18n: Record<string, string>) {
+    const index = project.game_data.findIndex((item) => item.id === nextEntry.id);
+    if (index < 0) return;
+    setProject({ ...project, game_data: replaceAt(project.game_data, index, nextEntry), i18n: nextI18n });
   }
 
   function updateNpcModuleEntry(nextEntry: GameDataEntry) {
@@ -6027,7 +6287,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </div>
         <details className="dialogue-section" open>
           <summary>普通对话 <span>{normalDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={normalDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={normalDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onEntryAndI18nChange={updateDialogueEntryAndI18n} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
         <details className="dialogue-section" open={hasExpandedSpecialDialogue || undefined}>
           <summary>特殊对话 <span>{specialDialogueEntries.length} 条</span></summary>
@@ -6035,7 +6295,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </details>
         <details className="dialogue-section" open={hasExpandedMarriageDialogue || undefined}>
           <summary>婚后/室友对话 <span>{marriageDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onEntryAndI18nChange={updateDialogueEntryAndI18n} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
       </CollapsibleSubsection>
 
@@ -6114,17 +6374,17 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   );
 }
 
-function NpcDialogueList({ entries, expandedEntryId, project, ruleset, itemCatalog, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+function NpcDialogueList({ entries, expandedEntryId, project, ruleset, itemCatalog, i18n, onI18nChange, onChange, onEntryAndI18nChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onRemove: (entryId: string) => void }) {
   return (
     <div className="npc-dialogue-list">
       {!entries.length && <div className="empty compact-empty">暂无条目。</div>}
       {entries.map((entry) => (
-        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
+        <details className="npc-dialogue-item" key={entry.id} open={entry.id === expandedEntryId || undefined}>
           <summary className="npc-dialogue-head">
             <strong>{entry.key}</strong>
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
           </summary>
-          <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+          <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onEntryAndI18nChange={onEntryAndI18nChange} onChange={onChange} />
         </details>
       ))}
     </div>
@@ -6136,7 +6396,7 @@ function NpcScheduleList({ entries, expandedEntryId, project, ruleset, onChange,
     <div className="npc-dialogue-list">
       {!entries.length && <div className="empty compact-empty">暂无日程条目。</div>}
       {entries.map((entry) => (
-        <details className="npc-dialogue-item" key={`${entry.id}-${entry.id === expandedEntryId ? "expanded" : "normal"}`} open={entry.id === expandedEntryId || undefined}>
+        <details className="npc-dialogue-item" key={entry.id} open={entry.id === expandedEntryId || undefined}>
           <summary className="npc-dialogue-head">
             <strong>{entry.key}</strong>
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
@@ -6289,18 +6549,26 @@ function DialogueEntryForm({ entry, ruleset, i18n, onI18nChange, onChange }: { e
   const format = dialogueFormatById(state.keyType, ruleset);
   const key = buildDialogueKeyFromParts(state, state.npcName, ruleset);
   const target = state.isMarriage ? `Characters/Dialogue/MarriageDialogue${state.npcName}` : `Characters/Dialogue/${state.npcName}`;
-  const i18nKey = extractI18nKey(entry.value) || dialogueI18nKeyFromParts(state.npcName, state.isMarriage, state.i18nPrefix, key);
-  const text = i18n[i18nKey] || (typeof entry.value === "string" && !entry.value.startsWith("{{i18n:") ? entry.value : "");
+  const textId = state.textId || dialogueTextId(entry);
+  const legacyI18nKey = extractI18nKey(entry.value);
+  const i18nKey = dialogueI18nKeyFromParts(state.npcName, state.isMarriage, state.i18nPrefix, key, textId);
+  const text = i18n[i18nKey] ?? (legacyI18nKey ? i18n[legacyI18nKey] : undefined) ?? (typeof entry.value === "string" && !entry.value.startsWith("{{i18n:") ? entry.value : "");
   const scope = state.isMarriage ? "marriage" : "normal";
+
+  useEffect(() => {
+    setState(dialogueFormStateFromEntry(entry));
+  }, [entry.id]);
 
   function applyState(next: DialogueEntryState, nextText = text) {
     const nextFormat = dialogueFormatById(next.keyType, ruleset);
+    const nextTextId = next.textId || textId;
+    const nextState = { ...next, textId: nextTextId };
     const nextKey = buildDialogueKeyFromParts(next, next.npcName, ruleset);
     const nextTarget = next.isMarriage ? `Characters/Dialogue/MarriageDialogue${next.npcName}` : `Characters/Dialogue/${next.npcName}`;
-    const nextI18nKey = dialogueI18nKeyFromParts(next.npcName, next.isMarriage, next.i18nPrefix, nextKey);
-    setState(next);
-    onChange(withDialogueMetadata({ ...entry, target: nextTarget, key: nextKey, value: i18nRef(nextI18nKey) }, next, nextFormat, nextI18nKey));
-    if (onI18nChange && nextText) onI18nChange({ ...i18n, [nextI18nKey]: nextText });
+    const nextI18nKey = dialogueI18nKeyFromParts(next.npcName, next.isMarriage, next.i18nPrefix, nextKey, nextTextId);
+    setState(nextState);
+    onChange(withDialogueMetadata({ ...entry, target: nextTarget, key: nextKey, value: i18nRef(nextI18nKey) }, nextState, nextFormat, nextI18nKey));
+    if (onI18nChange) onI18nChange({ ...i18n, [nextI18nKey]: nextText });
   }
 
   function updateState(patch: Partial<DialogueEntryState>) {
@@ -6326,7 +6594,7 @@ function DialogueEntryForm({ entry, ruleset, i18n, onI18nChange, onChange }: { e
   function updateText(nextText: string) {
     onI18nChange?.({ ...i18n, [i18nKey]: nextText });
     if (entry.target !== target || entry.key !== key || entry.value !== i18nRef(i18nKey)) {
-      onChange(withDialogueMetadata({ ...entry, target, key, value: i18nRef(i18nKey) }, state, format, i18nKey));
+      onChange(withDialogueMetadata({ ...entry, target, key, value: i18nRef(i18nKey) }, { ...state, textId }, format, i18nKey));
     }
   }
 
@@ -6375,6 +6643,7 @@ function DialogueEntryForm({ entry, ruleset, i18n, onI18nChange, onChange }: { e
 
 function withDialogueMetadata(entry: GameDataEntry, state: DialogueEntryState, format: DialogueFormat, i18nKey: string): GameDataEntry {
   const existingStudio = isObject(entry.advanced.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
+  const textId = state.textId || dialogueTextId(entry);
   return {
     ...entry,
     advanced: {
@@ -6387,6 +6656,7 @@ function withDialogueMetadata(entry: GameDataEntry, state: DialogueEntryState, f
           scope: state.isMarriage ? "marriage" : "normal",
           npcName: state.npcName,
           isMarriage: state.isMarriage,
+          textId,
           fields: normalizeDialogueFields(format, state.fields, state.npcName),
           i18nKey,
           i18nPrefix: state.i18nPrefix
@@ -6396,28 +6666,44 @@ function withDialogueMetadata(entry: GameDataEntry, state: DialogueEntryState, f
   };
 }
 
-function DialogueEntryFormClean({ project, entry, ruleset, itemCatalog, i18n, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+function DialogueEntryFormClean({ project, entry, ruleset, itemCatalog, i18n, onI18nChange, onEntryAndI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onEntryAndI18nChange?: (entry: GameDataEntry, i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
   const [state, setState] = useState(() => dialogueFormStateFromEntry(entry));
   const format = dialogueFormatById(state.keyType, ruleset);
   const normalizedFields = normalizeDialogueFields(format, state.fields, state.npcName);
   const key = buildDialogueKeyFromParts(state, state.npcName, ruleset);
   const target = state.isMarriage ? `Characters/Dialogue/MarriageDialogue${state.npcName}` : `Characters/Dialogue/${state.npcName}`;
-  const i18nKey = extractI18nKey(entry.value) || dialogueI18nKeyFromParts(state.npcName, state.isMarriage, state.i18nPrefix, key);
-  const text = i18n[i18nKey] || (typeof entry.value === "string" && !entry.value.startsWith("{{i18n:") ? entry.value : "");
+  const textId = state.textId || dialogueTextId(entry);
+  const legacyI18nKey = extractI18nKey(entry.value);
+  const i18nKey = dialogueI18nKeyFromParts(state.npcName, state.isMarriage, state.i18nPrefix, key, textId);
+  const text = i18n[i18nKey] ?? (legacyI18nKey ? i18n[legacyI18nKey] : undefined) ?? (typeof entry.value === "string" && !entry.value.startsWith("{{i18n:") ? entry.value : "");
   const scope = state.isMarriage ? "marriage" : "normal";
   const textAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
   const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
 
+  function applyEntryAndI18n(nextEntry: GameDataEntry, nextI18n: Record<string, string>) {
+    if (onEntryAndI18nChange) onEntryAndI18nChange(nextEntry, nextI18n);
+    else {
+      onChange(nextEntry);
+      onI18nChange?.(nextI18n);
+    }
+  }
+
+  useEffect(() => {
+    setState(dialogueFormStateFromEntry(entry));
+  }, [entry.id]);
+
   function applyState(next: DialogueEntryState, nextText = text) {
     const nextFormat = dialogueFormatById(next.keyType, ruleset);
+    const nextTextId = next.textId || textId;
+    const nextState = { ...next, textId: nextTextId };
     const nextKey = buildDialogueKeyFromParts(next, next.npcName, ruleset);
     const nextTarget = next.isMarriage ? `Characters/Dialogue/MarriageDialogue${next.npcName}` : `Characters/Dialogue/${next.npcName}`;
-    const nextI18nKey = dialogueI18nKeyFromParts(next.npcName, next.isMarriage, next.i18nPrefix, nextKey);
+    const nextI18nKey = dialogueI18nKeyFromParts(next.npcName, next.isMarriage, next.i18nPrefix, nextKey, nextTextId);
     const displayName = entry.name.split("：")[0]?.replace(/ 普通对话$| 婚后\/室友对话$/, "") || next.npcName;
     const nextName = dialogueEntryTitle(displayName, next.isMarriage ? "婚后/室友对话" : "普通对话", nextKey);
-    setState(next);
-    onChange(withDialogueMetadata({ ...entry, name: nextName, target: nextTarget, key: nextKey, value: i18nRef(nextI18nKey) }, next, nextFormat, nextI18nKey));
-    if (onI18nChange && nextText) onI18nChange({ ...i18n, [nextI18nKey]: nextText });
+    const nextEntry = withDialogueMetadata({ ...entry, name: nextName, target: nextTarget, key: nextKey, value: i18nRef(nextI18nKey) }, nextState, nextFormat, nextI18nKey);
+    setState(nextState);
+    applyEntryAndI18n(nextEntry, { ...i18n, [nextI18nKey]: nextText });
   }
 
   function updateState(patch: Partial<DialogueEntryState>) {
@@ -6440,11 +6726,14 @@ function DialogueEntryFormClean({ project, entry, ruleset, itemCatalog, i18n, on
   }
 
   function updateText(nextText: string) {
-    onI18nChange?.({ ...i18n, [i18nKey]: nextText });
+    const nextI18n = { ...i18n, [i18nKey]: nextText };
     if (entry.target !== target || entry.key !== key || entry.value !== i18nRef(i18nKey)) {
       const displayName = entry.name.split("：")[0]?.replace(/ 普通对话$| 婚后\/室友对话$/, "") || state.npcName;
-      onChange(withDialogueMetadata({ ...entry, name: dialogueEntryTitle(displayName, state.isMarriage ? "婚后/室友对话" : "普通对话", key), target, key, value: i18nRef(i18nKey) }, state, format, i18nKey));
+      const nextEntry = withDialogueMetadata({ ...entry, name: dialogueEntryTitle(displayName, state.isMarriage ? "婚后/室友对话" : "普通对话", key), target, key, value: i18nRef(i18nKey) }, { ...state, textId }, format, i18nKey);
+      applyEntryAndI18n(nextEntry, nextI18n);
+      return;
     }
+    onI18nChange?.(nextI18n);
   }
 
   function insertToken(token: string) {
@@ -6612,6 +6901,7 @@ function I18nEditor({ project, setProject }: { project: Project; setProject: (pr
 }
 
 function StoryEventStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
+  const [addPanelOpen, setAddPanelOpen] = useState(true);
   const entries = project.game_data
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.kind === "event");
@@ -6634,32 +6924,49 @@ function StoryEventStudio({ project, ruleset, itemCatalog, setProject }: { proje
     });
   }
 
+  function moveEntry(fromIndex: number, toIndex: number) {
+    updateProject({ ...project, game_data: moveArrayItem(project.game_data, fromIndex, toIndex) });
+  }
+
   return (
-    <Section title="剧情模块">
-      <div className="notice">
-        事件写入 <code>Data/Events/&lt;LocationName&gt;</code>。当前版本用节点列表表示流程：顺序就是执行顺序，底部会实时生成可导出的事件 Key 与脚本。
-      </div>
-      <div className="toolbar">
-        <button type="button" onClick={addStoryEvent}><Icon name="plus" />新增剧情</button>
-      </div>
-      <div className="stack">
-        {entries.map(({ entry, index }) => (
-          <article className="card" key={entry.id}>
-            <div className="card-head">
-              <input value={entry.name} onChange={(event) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name: event.target.value }) })} />
-              <button type="button" onClick={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}>删除</button>
+    <Section title="剧情事件">
+      <div className={`game-data-layout ${addPanelOpen ? "" : "add-panel-collapsed"}`}>
+        <aside className="game-data-add-panel">
+          <button type="button" className="secondary game-data-add-toggle" onClick={() => setAddPanelOpen(!addPanelOpen)}>
+            <Icon name="menu" />{addPanelOpen && "添加剧情"}
+          </button>
+          {addPanelOpen && (
+            <div className="game-data-add-list">
+              <button type="button" className="compact-add-button" onClick={addStoryEvent}><Icon name="plus" /><span>新增剧情事件</span></button>
             </div>
-            <StoryEventForm
-              project={project}
+          )}
+        </aside>
+        <div className="stack game-data-stack">
+          <div className="notice compact-note">
+            事件写入 <code>Data/Events/&lt;LocationName&gt;</code>。当前版本用节点列表表示流程：顺序就是执行顺序，底部会实时生成可导出的事件 Key 与脚本。
+          </div>
+          {entries.map(({ entry, index }, position) => (
+            <StudioEntryShell
+              key={entry.id}
               entry={entry}
-              ruleset={ruleset}
-              itemCatalog={itemCatalog}
-              i18n={project.i18n}
-              onChange={(next, i18nPatch) => updateStoryEntry(index, next, i18nPatch)}
-            />
-          </article>
-        ))}
-        {!entries.length && <div className="empty">暂无剧情。点击“新增剧情”创建第一个事件。</div>}
+              stateKey={`event-studio:entry:${entry.id}`}
+              onNameChange={(name) => setProject({ ...project, game_data: replaceAt(project.game_data, index, { ...entry, name }) })}
+              onMoveUp={position > 0 ? () => moveEntry(index, entries[position - 1].index) : undefined}
+              onMoveDown={position < entries.length - 1 ? () => moveEntry(index, entries[position + 1].index) : undefined}
+              onRemove={() => setProject({ ...project, game_data: project.game_data.filter((item) => item.id !== entry.id) })}
+            >
+              <StoryEventForm
+                project={project}
+                entry={entry}
+                ruleset={ruleset}
+                itemCatalog={itemCatalog}
+                i18n={project.i18n}
+                onChange={(next, i18nPatch) => updateStoryEntry(index, next, i18nPatch)}
+              />
+            </StudioEntryShell>
+          ))}
+          {!entries.length && <div className="empty compact-empty">暂无剧情。请从左侧添加。</div>}
+        </div>
       </div>
     </Section>
   );
@@ -8688,11 +8995,11 @@ function createDialogueWorkflowResult(flow: WorkflowState): WorkflowResult {
   const isMarriage = isMarriageDialogueType(flow.dialogueKeyType);
   const key = buildDialogueKey(flow, npcName);
   const target = dialogueTargetForFlow(flow, npcName);
-  const i18nKey = dialogueI18nKey(flow, npcName);
   const state: DialogueEntryState = {
     npcName,
     isMarriage,
     keyType: format.id,
+    textId: "",
     season: flow.dialogueSeason,
     weekday: flow.dialogueWeekday,
     day: flow.dialogueDay,
@@ -8704,8 +9011,11 @@ function createDialogueWorkflowResult(flow: WorkflowState): WorkflowResult {
     i18nPrefix: flow.dialogueI18nPrefix,
     fields: legacyDialogueFields(flow, format, npcName)
   };
+  const baseEntry = createWorkflowEntry("dialogue", `${displayName} 对话：${key}`, target, key, "");
+  const textId = dialogueTextId(baseEntry);
+  const i18nKey = dialogueI18nKeyFromParts(npcName, isMarriage, flow.dialogueI18nPrefix, key, textId);
   const entries = [
-    withDialogueMetadata(createWorkflowEntry("dialogue", `${displayName} ???${key}`, target, key, i18nRef(i18nKey)), state, format, i18nKey)
+    withDialogueMetadata({ ...baseEntry, value: i18nRef(i18nKey) }, { ...state, textId }, format, i18nKey)
   ];
   const patchTargets = [`Characters/Dialogue/${npcName}`];
   if (flow.relationMode === "romance" || flow.relationMode === "roommate" || isMarriage) {
@@ -8845,6 +9155,83 @@ function createWorkflowEntry(kind: GameDataEntry["kind"], name: string, target: 
     advanced: {},
     editMode: "form"
   };
+}
+
+function defaultDialogueEntry(project: Project, npcName: string, isMarriage: boolean): GameDataEntry {
+  const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
+  const target = isMarriage ? `Characters/Dialogue/MarriageDialogue${normalizedNpc}` : `Characters/Dialogue/${normalizedNpc}`;
+  const key = nextDialogueKey(project, target, isMarriage ? marriageKeyOptions(normalizedNpc).map((item) => String(item.value)) : normalDialogueKeyCandidates());
+  const isWeekdayKey = WEEKDAY_OPTIONS.some((item) => item.value === key);
+  const format = dialogueFormatById(isMarriage ? "marriage_key" : (isWeekdayKey ? "weekday" : "normal_custom"));
+  const fields = normalizeDialogueFields(format, { weekday: key, key, customKey: key, scene: "Indoor_Day", npc: normalizedNpc }, normalizedNpc);
+  const state: DialogueEntryState = {
+    npcName: normalizedNpc,
+    isMarriage,
+    keyType: format.id,
+    textId: "",
+    season: String(fields.season || "spring"),
+    weekday: String(fields.weekday || "Mon"),
+    day: Number(fields.day || 1),
+    hearts: Number(fields.hearts || 4),
+    eventId: String(fields.eventId || "100"),
+    itemId: String(fields.itemId || "(O)388"),
+    marriageScene: String(fields.scene || "Indoor_Day"),
+    customKey: String(fields.customKey || (isMarriage ? "CustomMarriageDialogue" : "CustomDialogue")),
+    i18nPrefix: "",
+    fields
+  };
+  const entry = createWorkflowEntry("dialogue", dialogueEntryTitle(normalizedNpc, isMarriage ? "婚后/室友对话" : "普通对话", key), target, key, "");
+  const textId = dialogueTextId(entry);
+  const i18nKey = dialogueI18nKeyFromParts(normalizedNpc, isMarriage, "", key, textId);
+  return withDialogueMetadata({ ...entry, value: i18nRef(i18nKey) }, { ...state, textId }, format, i18nKey);
+}
+
+function defaultScheduleEntry(npcName: string): GameDataEntry {
+  const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
+  const points: SchedulePoint[] = [
+    { ...defaultSchedulePoint(0, "Town"), x: 64, y: 15, direction: 2 },
+    { ...defaultSchedulePoint(1, "Town"), time: "2200", x: 64, y: 15, direction: 2 }
+  ];
+  const meta: ScheduleMeta = {
+    npcName: normalizedNpc,
+    keyType: "season",
+    fields: { season: "spring" },
+    initialCommand: "none",
+    gotoKey: "spring",
+    friendshipNpc: normalizedNpc,
+    friendshipHearts: 6,
+    mailId: "ExampleMail",
+    mailMissingKey: "spring",
+    mailReceivedKey: "spring",
+    points,
+    dialogueEntries: []
+  };
+  const entry = createWorkflowEntry("schedule", `${normalizedNpc} 基础日程`, `Characters/schedules/${normalizedNpc}`, "spring", buildScheduleScript(meta, normalizedNpc, "spring"));
+  return {
+    ...entry,
+    advanced: {
+      ...entry.advanced,
+      StardewCPStudio: {
+        ...(isObject(entry.advanced.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {}),
+        schedule: meta
+      }
+    }
+  };
+}
+
+function defaultMailEntry(project: Project): GameDataEntry {
+  const baseKey = `${sanitizeI18nPart(project.manifest.UniqueID || "Author.Mod")}.Letter`;
+  const used = new Set(project.game_data.filter((entry) => entry.kind === "mail" && entry.target === "Data/Mail").map((entry) => entry.key));
+  const key = nextAvailableKey(baseKey, used);
+  return createWorkflowEntry("mail", `信件：${key}`, "Data/Mail", key, {
+    MailId: key,
+    Body: "你好，@！\n这是一封新信件。",
+    Title: "新信件",
+    BackgroundType: "vanilla",
+    BackgroundIndex: 0,
+    TextColor: "",
+    Attachments: []
+  });
 }
 
 function createDialogueLoadPatch(target: string): Patch {
@@ -11416,6 +11803,15 @@ function nextDialogueKey(project: Project, target: string, candidates: string[])
   return candidates.find((key) => !used.has(key)) || `${candidates[0] || "CustomDialogue"}_${used.size}`;
 }
 
+function nextAvailableKey(baseKey: string, used: Set<string>) {
+  if (!used.has(baseKey)) return baseKey;
+  for (let index = 1; index < 1000; index += 1) {
+    const candidate = `${baseKey}_${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${baseKey}_${makeId().slice(0, 8)}`;
+}
+
 function spouseRoomTarget(project: Project, npcName: string) {
   const uniqueId = project.manifest.UniqueID || "Author.Mod";
   return `Mods/${uniqueId}/Custom_${normalizeInternalName(npcName)}SpouseRoom`;
@@ -11625,6 +12021,7 @@ function dialogueFormStateFromEntry(entry: GameDataEntry): DialogueEntryState {
     npcName,
     isMarriage: Boolean(marriageMatch),
     keyType,
+    textId: dialogueTextId(entry),
     season: String(inferred.fields.season || "spring"),
     weekday: String(inferred.fields.weekday || "Mon"),
     day: Number(inferred.fields.day || 1),
@@ -11641,6 +12038,13 @@ function dialogueFormStateFromEntry(entry: GameDataEntry): DialogueEntryState {
 function dialogueMetadata(entry: GameDataEntry) {
   const namespace = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
   return isObject(namespace.dialogue) ? namespace.dialogue as JsonDict : null;
+}
+
+function dialogueTextId(entry: GameDataEntry) {
+  const stored = dialogueMetadata(entry);
+  const storedTextId = typeof stored?.textId === "string" ? stored.textId : "";
+  const fallback = entry.id || makeId();
+  return sanitizeI18nPart(storedTextId || fallback.slice(0, 8));
 }
 
 function extractI18nKey(value: unknown) {
@@ -11710,10 +12114,26 @@ function integerInRange(value: unknown, min: number, max: number, fallback: numb
   return Math.min(max, Math.max(min, Math.round(numberValue)));
 }
 
-function dialogueI18nKeyFromParts(npcName: string, isMarriage: boolean, prefixOverride: string, key: string) {
+function normalDialogueKeyCandidates() {
+  return [
+    ...WEEKDAY_OPTIONS.map((item) => String(item.value)),
+    "spring",
+    "summer",
+    "fall",
+    "winter",
+    "rain",
+    "Introduction",
+    "Resort",
+    "GreenRain",
+    ...Array.from({ length: 50 }, (_, index) => `CustomDialogue_${index + 1}`)
+  ];
+}
+
+function dialogueI18nKeyFromParts(npcName: string, isMarriage: boolean, prefixOverride: string, key: string, textId = "") {
   const prefix = normalizeI18nPrefix(prefixOverride || npcName);
   const namespace = isMarriage ? "MarriageDialogue" : "CharacterDialogue";
-  return `${prefix}.${namespace}.${sanitizeI18nPart(key)}`;
+  const safeKey = sanitizeI18nPart(key);
+  return textId ? `${prefix}.${namespace}.${safeKey}.${sanitizeI18nPart(textId)}` : `${prefix}.${namespace}.${safeKey}`;
 }
 
 function isMarriageDialogueType(type: DialogueKeyType, ruleset?: Ruleset) {
@@ -11875,6 +12295,14 @@ function makeId() {
 
 function replaceAt<T>(items: T[], index: number, item: T) {
   return items.map((value, itemIndex) => itemIndex === index ? item : value);
+}
+
+function moveArrayItem<T>(items: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return items;
+  const next = [...items];
+  const [item] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, item);
+  return next;
 }
 
 createRoot(document.getElementById("root")!).render(

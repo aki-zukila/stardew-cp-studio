@@ -68,16 +68,21 @@ Windows 日常使用可以直接双击 `run_app.bat`。程序默认使用 `http:
 - 模组信息
 - 游戏数据
   - 角色 / 通用数据
+  - 对话模块
+  - 剧情事件
+  - 日程模块
+  - 信件模块
   - 物品添加
   - 地图添加
   - 商店功能
   - 任务功能
   - 特殊订单
-- 剧情模块
 - CP 补丁
 - 素材库
 - 工程管理
 - 规则库
+
+游戏数据下的独立模块都采用类似“物品添加”的布局：左侧是固定的添加按钮区，不会随右侧内容滚动；右侧是当前工程中的条目列表。对话、剧情事件、日程、信件等条目卡片支持收起/展开、上移、下移和删除。收起状态会保存到 `.cpgen` 工程中；上移/下移会调整底层 `game_data` 顺序，导出时也按这个顺序输出。
 
 ## 模组信息
 
@@ -102,9 +107,13 @@ Windows 日常使用可以直接双击 `run_app.bat`。程序默认使用 `http:
 
 - 添加条目。
 - 删除条目。
+- 收起或展开条目。
+- 调整部分专用页面里的条目顺序。
 - 编辑 Target、Key、Value。
 - 设置 When 条件。
 - 查看当前条目会导出的 `EditData` 预览。
+
+建议：角色基础资料仍优先在“角色 / 通用数据”的角色组块中编辑；对话、剧情、日程、信件数量较多时，优先进入各自独立页面维护，界面会更清爽。
 
 ### 角色基础信息
 
@@ -140,6 +149,8 @@ Windows 日常使用可以直接双击 `run_app.bat`。程序默认使用 `http:
 
 ### 普通对话
 
+普通对话既可以在角色组块里添加，也可以在左侧“游戏数据 > 对话模块”中集中维护。独立对话页左侧可填写默认 NPC 内部名，并提供“普通对话”“婚后/室友对话”“邀请后对话”“特殊雨天对话”“节日对话”五类添加按钮。
+
 普通对话会聚合导出到：
 
 ```text
@@ -164,6 +175,8 @@ Key Builder 会按 Wiki 规则提供结构化选择，例如：
 - 特殊事件
 - 自定义 Key
 
+每条普通对话和婚后/室友对话都会保存独立文本 ID，i18n key 会包含最终 dialogue key 和该文本 ID。这样修改一个条目的正文不会影响其他条目；即使两个条目暂时使用相同最终 Key，也只会在校验中提示导出覆盖风险，不会把正文串在一起。
+
 ### 特殊对话
 
 支持的特殊对话包括：
@@ -182,6 +195,8 @@ Key Builder 会按 Wiki 规则提供结构化选择，例如：
 - `fall27`
 - `winter8`
 - `winter25`
+
+特殊对话同样可以在独立“对话模块”中维护。条目卡片支持收起/展开和排序，适合同时制作多个角色的节日或雨天文本。
 
 ### 婚后 / 室友对话
 
@@ -272,7 +287,7 @@ Data/MoviesReactions
 
 ### 日程
 
-角色组块内可以创建日程条目，也可以在独立日程模块中编辑。
+角色组块内可以创建日程条目，也可以在独立“日程模块”中集中编辑。独立日程页左侧可填写默认 NPC 内部名，并用“新增日程条目”创建该 NPC 的基础日程。
 
 无 `When` 条件的日程会聚合导出到：
 
@@ -293,6 +308,8 @@ assets/CharacterFiles/Schedules/<NPC>/Schedule.json
 - 初始命令：`GOTO`、`NOT friendship`、`MAIL`
 
 时间选择按半小时显示，内部转换为星露谷四位时间。
+
+每个日程条目右侧卡片可收起、重命名、删除、上移或下移。日程点位内部也支持添加、删除和排序；点位地图坐标可通过 `MapResource` 预览图点击选择。
 
 ### 角色动画
 
@@ -644,20 +661,35 @@ Type/Title/Description/Hint/Requirement/Next Quests/Money Reward/Reward Descript
 
 ## 特殊订单
 
-特殊订单页面目前是占位模块，尚未生成正式导出数据。
+特殊订单写入：
 
-计划覆盖：
+```text
+Data/SpecialOrders
+```
 
-- 特殊订单目标。
-- 限时天数。
-- 奖励。
-- 显示文本。
-- 完成条件。
-- 触发逻辑。
+页面支持创建、编辑和删除多个特殊订单，并导出到 `code/Other/SpecialOrders.json`。文本会写入 i18n。
 
-当前如果需要制作特殊订单，请先使用 CP 补丁页面手写对应 `EditData`。
+可编辑：
+
+- 订单 ID
+- 名称 Name
+- 请求人 Requester
+- 时长 Duration
+- 是否可重复 Repeatable
+- RequiredTags
+- OrderType
+- SpecialRule
+- 正文 Text
+- 结束时移除的物品或邮件标记
+- 随机元素 RandomizedElements
+- 目标 Objectives
+- 奖励 Rewards
+
+目标和奖励提供常用字段表单，同时保留高级 JSON，便于补充 Wiki 中较少见的字段。
 
 ## 信件
+
+信件既可以从通用数据添加，也可以在独立“信件模块”中维护。独立信件页左侧固定“新增信件”按钮，右侧每封信都可以收起、重命名、上移、下移或删除。
 
 信件写入：
 
@@ -700,9 +732,25 @@ Data/Mail
 }
 ```
 
-## 剧情模块
+发送信件不写在信件正文尾部。请单独创建 Trigger Action，并在其中使用：
 
-剧情模块用于制作 `Data/Events/<Location>`。
+```text
+AddMail <player> <mail ID> [now|tomorrow|received|all]
+```
+
+常用写法：
+
+```text
+AddMail Current ExampleLetter
+AddMail Current ExampleLetter now
+AddMail Current ExampleLetter received
+```
+
+Trigger Action 可配合 When 条件限制触发日期、天气、季节、好感等。
+
+## 剧情事件
+
+剧情事件页面用于制作 `Data/Events/<Location>`。左侧固定“新增剧情事件”按钮，右侧事件卡片支持收起、重命名、删除、上移和下移。
 
 功能包括：
 
@@ -718,6 +766,29 @@ Data/Mail
 - 发信标记相关节点：`mail`、`mailToday`、`mailReceived`
 
 流程模式目前隐藏，后续继续扩展。
+
+## 秘密纸条
+
+秘密纸条写入：
+
+```text
+Data/SecretNotes
+```
+
+并归档导出到：
+
+```text
+code/Other/SecretNotes.json
+```
+
+支持：
+
+- 非数字 Key。
+- 正文写入 i18n。
+- 使用类似信件的文本格式。
+- 换行可按秘密纸条格式使用 `^`。
+
+秘密纸条可从“角色 / 通用数据”的添加类型中创建。
 
 ## CP 补丁
 
@@ -836,6 +907,13 @@ CP 补丁页面提供原始 Content Patcher Patch 编辑能力。
 - 用户输入的角色名、物品名、物品描述、对话、信件、任务文本等会写入 `i18n/default.json`。
 - 游戏数据里使用 `{{i18n:...}}` 引用这些文本。
 - 手动 i18n 编辑页已经隐藏，避免和表单数据产生两套来源。
+
+当前校验还会提示：
+
+- 必填 Target / Key 是否缺失。
+- `Load`、`EditImage`、`Include` 等是否缺少 `FromFile`。
+- `EditMap` 是否确实需要 `FromFile`，如果已经使用 `MapTiles`、`AddWarps` 等内联字段则不会误报。
+- 同一 `Characters/Dialogue/<NPC>` 或 `MarriageDialogue<NPC>` 下是否有重复 dialogue key。重复 key 允许保存，但导出时后者可能覆盖前者。
 
 ## 开发与测试
 

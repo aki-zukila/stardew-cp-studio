@@ -350,6 +350,38 @@ h2 {
   background: #fffdf8;
 }
 
+.studio-entry-card {
+  padding: 0;
+}
+
+.studio-entry-head {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px;
+}
+
+.studio-entry-head::-webkit-details-marker {
+  display: none;
+}
+
+.studio-entry-head input {
+  min-width: 180px;
+}
+
+.studio-entry-actions {
+  flex-shrink: 0;
+}
+
+.studio-entry-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.studio-entry-body {
+  border-top: 1px solid #e6dfd0;
+  padding: 14px;
+}
+
 .map-studio {
   display: grid;
   gap: 16px;

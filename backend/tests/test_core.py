@@ -71,6 +71,21 @@ class CoreTests(unittest.TestCase):
         self.assertIn("Action=Load", load_warning.message)
         self.assertIn("Target=Maps/Custom_Test", load_warning.message)
 
+    def test_validate_warns_duplicate_dialogue_keys(self):
+        project = new_project()
+        project.manifest.Name = "Test Pack"
+        project.manifest.UniqueID = "Author.TestPack"
+        project.game_data.extend([
+            GameDataEntry(kind="dialogue", target="Characters/Dialogue/Cale", key="Mon", value="{{i18n:Cale.CharacterDialogue.Mon.a1111111}}"),
+            GameDataEntry(kind="dialogue", target="Characters/Dialogue/Cale", key="Mon", value="{{i18n:Cale.CharacterDialogue.Mon.b2222222}}"),
+        ])
+
+        result = validate_project(project)
+
+        warning = next(issue for issue in result.warnings if issue.path == "game_data[0].key")
+        self.assertIn("Key=Mon", warning.message)
+        self.assertIn("互相覆盖", warning.message)
+
     def test_export_content_pack(self):
         import json
 

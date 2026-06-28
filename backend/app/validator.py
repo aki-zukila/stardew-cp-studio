@@ -35,6 +35,22 @@ def validate_project(project: Project) -> ValidationResult:
         if not entry.key.strip():
             errors.append(_issue("error", f"{path}.key", "游戏数据条目键不能为空。"))
 
+    duplicate_dialogue_keys: dict[tuple[str, str], list[int]] = {}
+    for index, entry in enumerate(project.game_data):
+        if entry.kind != "dialogue":
+            continue
+        key = (entry.target.strip(), entry.key.strip())
+        if not key[0] or not key[1]:
+            continue
+        duplicate_dialogue_keys.setdefault(key, []).append(index)
+    for (target, key), indexes in duplicate_dialogue_keys.items():
+        if len(indexes) > 1:
+            warnings.append(_issue(
+                "warning",
+                f"game_data[{indexes[0]}].key",
+                f"对话 Target={target} 的 Key={key} 出现 {len(indexes)} 次；导出时相同 Key 会互相覆盖，请确认是否需要改成不同 Key。",
+            ))
+
     asset_paths = {asset.stored_path for asset in project.assets}
     for index, patch in enumerate(project.patches):
         if patch.from_file and patch.from_file.startswith("assets/") and patch.from_file not in asset_paths:
