@@ -12,9 +12,10 @@ const alias = existsSync(sharedNodeModules)
 export default {
   resolve: { alias },
   server: {
-    host: "127.0.0.1",
+    host: "0.0.0.0",
     port: 5173,
     proxy: {
+      "/api/session/ws": { target: "ws://127.0.0.1:8766", ws: true },
       "/api": "http://127.0.0.1:8766"
     }
   }

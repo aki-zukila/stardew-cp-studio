@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 from backend.app.ai_service import get_ai_config, save_ai_config, suggest_with_ai
 from backend.app.exporter import export_content_pack
+from backend.app.main import get_session, update_session
 from backend.app import item_catalog
-from backend.app.models import AISuggestRequest, GameDataEntry, PatchEntry, SaveAIConfigRequest
+from backend.app.models import AISuggestRequest, GameDataEntry, PatchEntry, SaveAIConfigRequest, SessionStateUpdate
 from backend.app.project_io import new_project, open_project, write_project_package
 from backend.app.project_io import import_asset
 from backend.app.rule_library_loader import ai_rule_context, load_rule_library
@@ -15,6 +16,24 @@ from backend.app.validator import validate_project
 
 
 class CoreTests(unittest.TestCase):
+    def test_session_state_can_be_read_and_updated(self):
+        import asyncio
+
+        initial = get_session()
+        project = initial.project.model_copy(deep=True)
+        project.manifest.Name = "Synced Pack"
+        updated = asyncio.run(update_session(SessionStateUpdate(
+            project=project,
+            projectPath="E:/Codex/stardew-cp-studio/synced.cpgen",
+            exportPath="E:/Codex/stardew-cp-studio/exports",
+            clientId="test-client",
+        )))
+
+        self.assertGreater(updated.revision, initial.revision)
+        self.assertEqual(updated.lastClientId, "test-client")
+        self.assertEqual(updated.project.manifest.Name, "Synced Pack")
+        self.assertEqual(updated.projectPath, "E:/Codex/stardew-cp-studio/synced.cpgen")
+
     def test_save_open_roundtrip(self):
         with TemporaryDirectory() as temp_dir:
             project = new_project()
@@ -34,6 +53,23 @@ class CoreTests(unittest.TestCase):
         result = validate_project(project)
         self.assertFalse(result.can_export)
         self.assertTrue(any(issue.path == "manifest.UniqueID" for issue in result.errors))
+
+    def test_validate_from_file_messages_are_action_aware(self):
+        project = new_project()
+        project.manifest.Name = "Test Pack"
+        project.manifest.UniqueID = "Author.TestPack"
+        project.patches.extend([
+            PatchEntry(name="Open shop tile", action="EditMap", target="Maps/Town", fields={"MapTiles": [{"Position": {"X": 1, "Y": 2}}]}),
+            PatchEntry(name="Missing load asset", action="Load", target="Maps/Custom_Test"),
+        ])
+
+        result = validate_project(project)
+
+        self.assertFalse(any(issue.path == "patches[0].from_file" for issue in result.warnings))
+        load_warning = next(issue for issue in result.warnings if issue.path == "patches[1].from_file")
+        self.assertIn("Missing load asset", load_warning.message)
+        self.assertIn("Action=Load", load_warning.message)
+        self.assertIn("Target=Maps/Custom_Test", load_warning.message)
 
     def test_export_content_pack(self):
         import json

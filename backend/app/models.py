@@ -86,6 +86,7 @@ class Project(BaseModel):
     game_data: list[GameDataEntry] = Field(default_factory=list)
     i18n: dict[str, str] = Field(default_factory=dict)
     assets: list[AssetRecord] = Field(default_factory=list)
+    ui_state: JsonDict = Field(default_factory=dict)
 
 
 class Ruleset(BaseModel):
@@ -114,6 +115,21 @@ class ValidationResult(BaseModel):
 class SaveProjectRequest(BaseModel):
     project: Project
     path: str
+
+
+class SessionState(BaseModel):
+    project: Project
+    projectPath: str = ""
+    exportPath: str = ""
+    revision: int = 0
+    lastClientId: str = ""
+
+
+class SessionStateUpdate(BaseModel):
+    project: Project
+    projectPath: str = ""
+    exportPath: str = ""
+    clientId: str = ""
 
 
 class OpenProjectRequest(BaseModel):

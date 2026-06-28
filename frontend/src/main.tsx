@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -79,6 +79,7 @@ type Project = {
   game_data: GameDataEntry[];
   i18n: Record<string, string>;
   assets: Asset[];
+  ui_state?: JsonDict;
 };
 
 type ValidationIssue = { level: "error" | "warning"; path: string; message: string };
@@ -166,6 +167,7 @@ type AISuggestionKind = "when" | "field" | "game-data-patch";
 type AISuggestResponse = { text: string; json_value: unknown | null; warnings: string[] };
 type HealthStatus = { status: string; version: string; ai: string };
 type ImportAssetResponse = { project: Project; asset: Asset };
+type SessionState = { project: Project; projectPath: string; exportPath: string; revision: number; lastClientId: string };
 type ItemCatalogEntry = { id: string; qualified_id: string; name: string; display_name: string; description?: string; category?: number | null; type?: string; source: string };
 type ItemCatalogResponse = { items: ItemCatalogEntry[]; source_path: string; warning: string };
 type ItemOption = RulesetOption & { source?: string };
@@ -177,6 +179,9 @@ type MapResourceResponse = { maps: MapResourceEntry[]; source_path: string; warn
 type MapArea = { X: number; Y: number; Width: number; Height: number };
 type MapPoint = { X: number; Y: number };
 type MapPreviewImage = Asset | { url: string; label: string };
+
+type ProjectUiContextValue = { project: Project | null; setProject: (project: Project) => void };
+const ProjectUiContext = React.createContext<ProjectUiContextValue>({ project: null, setProject: () => undefined });
 type FestivalPositionMeta = { npcName: string; festivalId: string; phaseKey: string; x: number; y: number; direction: string };
 type MapDraftKind = "custom" | "edit" | "warp";
 type MapGeneratedRef = { target: string; key?: string; action?: Patch["action"]; from_file?: string | null };
@@ -377,16 +382,122 @@ function App() {
   const [pendingProjectOpen, setPendingProjectOpen] = useState<PendingProjectOpen | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [itemCatalog, setItemCatalog] = useState<ItemCatalogResponse>({ items: [], source_path: "", warning: "" });
+  const clientIdRef = useRef(makeId());
+  const revisionRef = useRef(0);
+  const projectRef = useRef<Project | null>(null);
+  const projectPathRef = useRef(projectPath);
+  const exportPathRef = useRef(exportPath);
+  const websocketRef = useRef<WebSocket | null>(null);
+  const broadcastTimerRef = useRef<number | null>(null);
+
+  function applySession(snapshot: SessionState) {
+    revisionRef.current = snapshot.revision;
+    projectRef.current = snapshot.project;
+    projectPathRef.current = snapshot.projectPath || projectPathRef.current;
+    exportPathRef.current = snapshot.exportPath || exportPathRef.current;
+    setProject(snapshot.project);
+    if (isObject(snapshot.project.ui_state) && typeof snapshot.project.ui_state.sidebarCollapsed === "boolean") {
+      setSidebarCollapsed(snapshot.project.ui_state.sidebarCollapsed);
+    }
+    setProjectPath(snapshot.projectPath || projectPathRef.current);
+    setExportPath(snapshot.exportPath || exportPathRef.current);
+    setValidation(null);
+  }
+
+  function broadcastSession(delay = 250) {
+    if (!projectRef.current) return;
+    if (broadcastTimerRef.current !== null) window.clearTimeout(broadcastTimerRef.current);
+    broadcastTimerRef.current = window.setTimeout(() => {
+      broadcastTimerRef.current = null;
+      if (!projectRef.current) return;
+      const payload = {
+        project: projectRef.current,
+        projectPath: projectPathRef.current,
+        exportPath: exportPathRef.current,
+        clientId: clientIdRef.current
+      };
+      const socket = websocketRef.current;
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(payload));
+      } else {
+        postJson<SessionState>("/api/session/state", payload)
+          .then((snapshot) => { revisionRef.current = snapshot.revision; })
+          .catch(() => undefined);
+      }
+    }, delay);
+  }
+
+  function updateProject(next: Project) {
+    projectRef.current = next;
+    setProject(next);
+    setValidation(null);
+    broadcastSession();
+  }
+
+  function updateSidebarCollapsed(next: boolean) {
+    setSidebarCollapsed(next);
+    if (!projectRef.current) return;
+    const current = projectRef.current;
+    const uiState = isObject(current.ui_state) ? current.ui_state : {};
+    updateProject({ ...current, ui_state: { ...uiState, sidebarCollapsed: next } });
+  }
+
+  function updateProjectPath(next: string) {
+    projectPathRef.current = next;
+    setProjectPath(next);
+    broadcastSession();
+  }
+
+  function updateExportPath(next: string) {
+    exportPathRef.current = next;
+    setExportPath(next);
+    broadcastSession();
+  }
 
   useEffect(() => {
-    Promise.all([fetchJson<Ruleset>("/api/ruleset"), fetchJson<Project>("/api/projects/new"), fetchJson<HealthStatus>("/api/health"), fetchJson<ItemCatalogResponse>("/api/items/catalog")])
-      .then(([nextRuleset, nextProject, nextHealth, nextCatalog]) => {
+    Promise.all([fetchJson<Ruleset>("/api/ruleset"), fetchJson<SessionState>("/api/session"), fetchJson<HealthStatus>("/api/health"), fetchJson<ItemCatalogResponse>("/api/items/catalog")])
+      .then(([nextRuleset, session, nextHealth, nextCatalog]) => {
         setRuleset(nextRuleset);
-        setProject(nextProject);
+        applySession(session);
         setHealth(nextHealth);
         setItemCatalog(nextCatalog);
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
+  }, []);
+
+  useEffect(() => {
+    let reconnectTimer: number | null = null;
+    let closed = false;
+
+    function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/api/session/ws`);
+      websocketRef.current = socket;
+      socket.onmessage = (event) => {
+        const snapshot = JSON.parse(event.data) as SessionState;
+        if (snapshot.lastClientId === clientIdRef.current) {
+          revisionRef.current = snapshot.revision;
+          return;
+        }
+        if (snapshot.revision >= revisionRef.current) {
+          applySession(snapshot);
+          setStatus(`已同步另一台设备的修改（版本 ${snapshot.revision}）。`);
+        }
+      };
+      socket.onclose = () => {
+        if (closed) return;
+        reconnectTimer = window.setTimeout(connect, 1500);
+      };
+      socket.onerror = () => socket.close();
+    }
+
+    connect();
+    return () => {
+      closed = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (broadcastTimerRef.current !== null) window.clearTimeout(broadcastTimerRef.current);
+      websocketRef.current?.close();
+    };
   }, []);
 
   async function validate(current = project) {
@@ -397,10 +508,11 @@ function App() {
   }
 
   async function saveProject() {
-    if (!project) return;
+    const currentProject = projectRef.current || project;
+    if (!currentProject) return;
     try {
-      await postJson("/api/projects/save", { project, path: projectPath });
-      setStatus(`已保存工程：${projectPath}`);
+      await postJson("/api/projects/save", { project: currentProject, path: projectPathRef.current });
+      setStatus(`已保存工程：${projectPathRef.current}`);
     } catch (error) {
       setStatus(`保存失败：${errorMessage(error)}`);
     }
@@ -413,8 +525,11 @@ function App() {
     }
     try {
       const opened = await postJson<Project>("/api/projects/open", { path: openPath });
+      projectRef.current = opened;
       setProject(opened);
+      setValidation(null);
       setPendingProjectOpen(null);
+      projectPathRef.current = openPath;
       setProjectPath(openPath);
       setStatus(`已打开工程：${openPath}`);
       await validate(opened);
@@ -435,7 +550,7 @@ function App() {
 
   async function confirmPendingProjectOpen() {
     if (!pendingProjectOpen) return;
-    setProject(pendingProjectOpen.project);
+    updateProject(pendingProjectOpen.project);
     setOpenPath("");
     setPendingProjectOpen(null);
     setStatus(`已打开工程：${pendingProjectOpen.label}。保存位置仍使用当前“保存到 .cpgen 路径”。`);
@@ -455,11 +570,6 @@ function App() {
       folder_name: project.manifest.Name
     });
     setStatus(`已导出内容包：${response.path}`);
-  }
-
-  function updateProject(next: Project) {
-    setProject(next);
-    setValidation(null);
   }
 
   const issues = useMemo(() => {
@@ -482,6 +592,7 @@ function App() {
   }
 
   return (
+    <ProjectUiContext.Provider value={{ project, setProject: updateProject }}>
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
@@ -491,7 +602,7 @@ function App() {
             <span>Content Patcher 本地工作台</span>
           </div>
         </div>
-        <button type="button" className="sidebar-toggle" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}>
+        <button type="button" className="sidebar-toggle" onClick={() => updateSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}>
           <Icon name="menu" />{!sidebarCollapsed && "收起侧栏"}
         </button>
         <nav>
@@ -531,7 +642,7 @@ function App() {
         {status && <div className="status">{status}</div>}
 
         {tab === "manifest" && <ManifestEditor project={project} setProject={updateProject} />}
-        {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} setProject={updateProject} />}
+        {tab === "story" && <StoryEventStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "patches" && <PatchEditor project={project} ruleset={ruleset} setProject={updateProject} />}
         {tab === "data" && <GameDataEditor project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
         {tab === "items" && <ItemStudio project={project} ruleset={ruleset} itemCatalog={itemCatalog} setProject={updateProject} />}
@@ -548,9 +659,9 @@ function App() {
             openPath={openPath}
             exportPath={exportPath}
             issues={issues}
-            setProjectPath={setProjectPath}
+            setProjectPath={updateProjectPath}
             setOpenPath={setOpenPath}
-            setExportPath={setExportPath}
+            setExportPath={updateExportPath}
             updateProject={updateProject}
             openProject={openProject}
             pendingProjectOpen={pendingProjectOpen}
@@ -564,6 +675,7 @@ function App() {
         )}
       </main>
     </div>
+    </ProjectUiContext.Provider>
   );
 }
 
@@ -690,9 +802,7 @@ function ItemStudio({ project, ruleset, itemCatalog, setProject }: { project: Pr
 
 function ItemStudioGroup({ title, entries, project, ruleset, itemCatalog, setProject, updateEntry, removeEntry }: { title: string; entries: { entry: GameDataEntry; index: number }[]; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void; updateEntry: (index: number, entry: GameDataEntry) => void; removeEntry: (entry: GameDataEntry) => void }) {
   return (
-    <details className="subsection collapsible-subsection item-studio-group" open>
-      <summary><h3>{title}</h3></summary>
-      <div className="collapsible-subsection-body">
+    <CollapsibleSubsection title={title} className="item-studio-group" stateKey={`item-studio:${title}`}>
         {entries.map(({ entry, index }) => (
           <article className="card compact-card" key={entry.id}>
             <div className="card-head">
@@ -710,8 +820,7 @@ function ItemStudioGroup({ title, entries, project, ruleset, itemCatalog, setPro
           </article>
         ))}
         {!entries.length && <div className="empty compact-empty">暂无条目，请从左侧添加。</div>}
-      </div>
-    </details>
+    </CollapsibleSubsection>
   );
 }
 
@@ -1166,11 +1275,57 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return <section className="section"><h2>{title}</h2>{children}</section>;
 }
 
-function CollapsibleSubsection({ title, children, highlight = false, defaultOpen = true, className = "" }: { title: string; children: React.ReactNode; highlight?: boolean; defaultOpen?: boolean; className?: string }) {
+function getPersistedDetailsOpen(project: Project | null, key: string, defaultOpen: boolean) {
+  const uiState = project && isObject(project.ui_state) ? project.ui_state : {};
+  const details = isObject(uiState.detailsOpen) ? uiState.detailsOpen : {};
+  const value = details[key];
+  return typeof value === "boolean" ? value : defaultOpen;
+}
+
+function setPersistedDetailsOpen(project: Project | null, setProject: (project: Project) => void, key: string, open: boolean) {
+  if (!project) return;
+  const uiState = isObject(project.ui_state) ? project.ui_state : {};
+  const details = isObject(uiState.detailsOpen) ? uiState.detailsOpen : {};
+  if (details[key] === open) return;
+  setProject({
+    ...project,
+    ui_state: {
+      ...uiState,
+      detailsOpen: {
+        ...details,
+        [key]: open
+      }
+    }
+  });
+}
+
+function CollapsibleSubsection({ title, children, highlight = false, defaultOpen = true, className = "", stateKey }: { title: string; children: React.ReactNode; highlight?: boolean; defaultOpen?: boolean; className?: string; stateKey?: string }) {
+  const { project, setProject } = React.useContext(ProjectUiContext);
+  const detailsKey = stateKey || `subsection:${title}`;
+  const open = getPersistedDetailsOpen(project, detailsKey, defaultOpen);
   return (
-    <details className={`subsection collapsible-subsection ${highlight ? "highlight" : ""} ${className}`} open={defaultOpen}>
+    <details
+      className={`subsection collapsible-subsection ${highlight ? "highlight" : ""} ${className}`}
+      open={open}
+      onToggle={(event) => setPersistedDetailsOpen(project, setProject, detailsKey, event.currentTarget.open)}
+    >
       <summary><h3>{title}</h3></summary>
       <div className="collapsible-subsection-body">{children}</div>
+    </details>
+  );
+}
+
+function PersistentDetails({ title, children, className = "", defaultOpen = false, stateKey }: { title: string; children: React.ReactNode; className?: string; defaultOpen?: boolean; stateKey: string }) {
+  const { project, setProject } = React.useContext(ProjectUiContext);
+  const open = getPersistedDetailsOpen(project, stateKey, defaultOpen);
+  return (
+    <details
+      className={className}
+      open={open}
+      onToggle={(event) => setPersistedDetailsOpen(project, setProject, stateKey, event.currentTarget.open)}
+    >
+      <summary>{title}</summary>
+      {children}
     </details>
   );
 }
@@ -1326,7 +1481,7 @@ function ManifestEditor({ project, setProject }: { project: Project; setProject:
   );
 }
 
-function FlowMode({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+function FlowMode({ project, ruleset, itemCatalog = { items: [], source_path: "", warning: "" }, setProject }: { project: Project; ruleset: Ruleset; itemCatalog?: ItemCatalogResponse; setProject: (project: Project) => void }) {
   const [flow, setFlow] = useState<WorkflowState>(() => initialFlow("character"));
   const options = (key: string) => rulesetOptions(ruleset, key);
   const createdEntries = project.game_data.filter((entry) => flow.createdEntryIds.includes(entry.id));
@@ -1541,7 +1696,9 @@ function FlowMode({ project, ruleset, setProject }: { project: Project; ruleset:
             {flow.configuringAction && (
               <FlowTodoConfigurator
                 flow={flow}
+                project={project}
                 ruleset={ruleset}
+                itemCatalog={itemCatalog}
                 onChange={updateFlow}
                 onConfirm={() => flow.configuringAction && confirmTodo(flow.configuringAction)}
                 onCancel={() => setFlow({ ...flow, configuringAction: null })}
@@ -1603,7 +1760,7 @@ function FlowMode({ project, ruleset, setProject }: { project: Project; ruleset:
   );
 }
 
-function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: { flow: WorkflowState; ruleset: Ruleset; onChange: (patch: Partial<WorkflowState>) => void; onConfirm: () => void; onCancel: () => void }) {
+function FlowTodoConfigurator({ flow, project, ruleset, itemCatalog, onChange, onConfirm, onCancel }: { flow: WorkflowState; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; onChange: (patch: Partial<WorkflowState>) => void; onConfirm: () => void; onCancel: () => void }) {
   const action = flow.configuringAction;
   const options = (key: string) => rulesetOptions(ruleset, key);
   const title = flow.todos.find((todo) => todo.action === action)?.label || "配置下一步";
@@ -1612,12 +1769,12 @@ function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: 
     <div className="flow-config">
       <h3>{title}</h3>
       {action === "dialogue" && (
-        <DialogueKeyBuilder flow={flow} ruleset={ruleset} onChange={onChange} />
+        <DialogueKeyBuilder flow={flow} project={project} ruleset={ruleset} itemCatalog={itemCatalog} onChange={onChange} />
       )}
       {action === "giftTaste" && (
         <div className="grid two">
           <ComboField label="默认喜好分组" value={flow.giftTasteGroup} options={options("gift_taste_groups")} onChange={(giftTasteGroup) => onChange({ giftTasteGroup: String(giftTasteGroup) })} />
-          <Field label="初始物品 ID（可留空）" value={flow.itemId} onChange={(itemId) => onChange({ itemId })} />
+          <ItemSingleSelect label="初始物品 ID（可留空）" options={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} value={flow.itemId} onChange={(itemId) => onChange({ itemId })} />
         </div>
       )}
       {action === "schedule" && (
@@ -1649,6 +1806,7 @@ function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: 
       {action === "giftTasteForItem" && (
         <div className="grid two">
           <Field label="目标 NPC 或 Universal_* key" value={flow.giftNpc} onChange={(giftNpc) => onChange({ giftNpc })} />
+          <ItemSingleSelect label="目标物品" options={itemSelectionOptions(project, ruleset, itemCatalog, "qualified")} value={flow.itemId} onChange={(itemId) => onChange({ itemId })} />
           <ComboField label="喜好分组" value={flow.giftTasteGroup} options={options("gift_taste_groups")} onChange={(giftTasteGroup) => onChange({ giftTasteGroup: String(giftTasteGroup) })} />
         </div>
       )}
@@ -1681,7 +1839,7 @@ function FlowTodoConfigurator({ flow, ruleset, onChange, onConfirm, onCancel }: 
   );
 }
 
-function DialogueKeyBuilder({ flow, ruleset, onChange }: { flow: WorkflowState; ruleset: Ruleset; onChange: (patch: Partial<WorkflowState>) => void }) {
+function DialogueKeyBuilder({ flow, ruleset, itemCatalog, project, onChange }: { flow: WorkflowState; ruleset: Ruleset; itemCatalog?: ItemCatalogResponse; project?: Project; onChange: (patch: Partial<WorkflowState>) => void }) {
   const npcName = normalizeInternalName(flow.npcName || flow.displayName || "ExampleNPC");
   const format = dialogueFormatById(flow.dialogueKeyType, ruleset);
   const key = buildDialogueKey(flow, npcName, ruleset);
@@ -1733,12 +1891,13 @@ function DialogueKeyBuilder({ flow, ruleset, onChange }: { flow: WorkflowState; 
             key={field.name}
             field={field}
             ruleset={ruleset}
+            itemOptions={project && itemCatalog ? itemSelectionOptions(project, ruleset, itemCatalog, "qualified") : []}
             npcName={npcName}
             value={workflowDialogueFieldValue(flow, field.name, format, npcName)}
             onChange={(value) => updateField(field, value)}
           />
         ))}
-        <Field label="台词正文（写入 i18n/default.json）" value={flow.dialogueText} textarea onChange={(dialogueText) => onChange({ dialogueText })} />
+        <DialogueTextareaWithTools label="台词正文（写入 i18n/default.json）" value={flow.dialogueText} onChange={(dialogueText) => onChange({ dialogueText })} stateKey="dialogue:workflow-tools" />
       </div>
       {format.warning && <div className="notice compact-note">{format.warning}</div>}
       <div className="notice compact-note">
@@ -1748,8 +1907,11 @@ function DialogueKeyBuilder({ flow, ruleset, onChange }: { flow: WorkflowState; 
   );
 }
 
-function DialogueFormatInput({ field, ruleset, npcName, value, onChange }: { field: DialogueFormatField; ruleset?: Ruleset; npcName: string; value: string | number; onChange: (value: string | number) => void }) {
+function DialogueFormatInput({ field, ruleset, itemOptions = [], npcName, value, onChange }: { field: DialogueFormatField; ruleset?: Ruleset; itemOptions?: ItemOption[]; npcName: string; value: string | number; onChange: (value: string | number) => void }) {
   const label = dialogueFieldLabel(field);
+  if (field.type === "item" || field.name === "itemId") {
+    return <ItemSingleSelect label={label} options={itemOptions} value={String(value || "")} onChange={onChange} />;
+  }
   if (field.type === "marriage_key") {
     return <ComboField label={label} value={value} options={marriageKeyOptions(npcName)} onChange={(next) => onChange(next as string | number)} />;
   }
@@ -1998,7 +2160,7 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       {entry.kind === "dialogue" && (
-        <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+        <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
       )}
 
       {entry.kind === "schedule" && (
@@ -2240,7 +2402,7 @@ function QuestEntryForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18
               <Field label="标题 Title" value={texts.Title} onChange={(text) => updateText("Title", text)} />
               <Field label="目标提示 Hint" value={texts.Hint} onChange={(text) => updateText("Hint", text)} />
               <Field label="描述 Description" value={texts.Description} textarea onChange={(text) => updateText("Description", text)} />
-              <Field label="完成反应 Reaction Text" value={texts.Reaction} textarea onChange={(text) => updateText("Reaction", text)} />
+              <DialogueTextareaWithTools label="完成反应 Reaction Text" value={texts.Reaction} onChange={(text) => updateText("Reaction", text)} stateKey="dialogue:quest-reaction-tools" />
             </div>
             {warningFields.length > 0 && <div className="notice warn compact-note">这些文本包含 <code>/</code>，Quest 数据是斜杠分隔格式，建议改写：{warningFields.join("、")}</div>}
           </CollapsibleSubsection>
@@ -2700,7 +2862,7 @@ function SpecialOrderObjectiveEditor({ objective, index, project, itemOptions, m
           <Field label="接受 Context Tags" value={stringField(data.AcceptedContextTags || "item_wood")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />
         </>}
         {objective.type === "Deliver" && <>
-          <ComboField label="交付物品" value={stringField(data.ItemId || "(O)388")} options={itemOptions} onChange={(ItemId) => patchData({ ItemId: String(ItemId) })} />
+          <ItemSingleSelect label="交付物品" options={itemOptions} value={stringField(data.ItemId || "(O)388")} onChange={(ItemId) => patchData({ ItemId })} />
           <Field label="接受者 NPC" value={stringField(data.TargetName || "Lewis")} onChange={(TargetName) => patchData({ TargetName })} />
         </>}
         {objective.type === "Fish" && <>
@@ -2744,7 +2906,7 @@ function SpecialOrderRewardEditor({ reward, itemOptions, onChange, onRemove }: {
         </>}
         {reward.type === "ResetEvent" && <Field label="事件 ID EventID" value={stringField(data.EventID || "")} onChange={(EventID) => patchData({ EventID })} />}
         {reward.type === "Object" && <>
-          <ComboField label="物品 ID" value={stringField(data.ItemId || "(O)388")} options={itemOptions} onChange={(ItemId) => patchData({ ItemId: String(ItemId) })} />
+          <ItemSingleSelect label="物品 ID" options={itemOptions} value={stringField(data.ItemId || "(O)388")} onChange={(ItemId) => patchData({ ItemId })} />
           <Field label="数量 Amount" value={stringField(data.Amount || "1")} onChange={(Amount) => patchData({ Amount })} />
         </>}
         <JsonField label="奖励 Data 高级 JSON" value={data} onChange={(next) => onChange({ ...reward, data: isObject(next) ? next as JsonDict : {} })} />
@@ -2886,8 +3048,7 @@ function OpenShopMapPatchForm({ project, ruleset, mapResources, patch, onChange 
 function ShopItemEditor({ item, itemOptions, onChange, onRemove }: { item: JsonDict; itemOptions: ItemOption[]; onChange: (item: JsonDict) => void; onRemove?: () => void }) {
   const patch = (next: JsonDict) => onChange(compactObject({ ...item, ...next }));
   return (
-    <details className="subsection" open>
-      <summary><h3>{stringField(item.Id || "ShopItem")}</h3></summary>
+    <CollapsibleSubsection title={stringField(item.Id || "ShopItem")} className="shop-nested-editor" stateKey={`shop-item:${stringField(item.Id || "new")}`}>
       <div className="grid two">
         <Field label="商品条目 ID" value={stringField(item.Id)} onChange={(next) => patch({ Id: next })} />
         <ItemSingleSelect label="出售物品 ItemId" options={itemOptions} value={stringField(item.ItemId)} onChange={(next) => patch({ ItemId: next })} />
@@ -2902,7 +3063,7 @@ function ShopItemEditor({ item, itemOptions, onChange, onRemove }: { item: JsonD
       </div>
       <JsonField label="商品高级字段" value={publicAdvancedValue(item, ["Id", "ItemId", "Price", "Condition", "AvailableStock", "AvailableStockLimit", "Stack", "TradeItemId", "TradeItemAmount", "IsRecipe"])} onChange={(next) => onChange({ ...pickObjectFields(item, ["Id", "ItemId", "Price", "Condition", "AvailableStock", "AvailableStockLimit", "Stack", "TradeItemId", "TradeItemAmount", "IsRecipe"]), ...(next as JsonDict) })} />
       {onRemove && <div className="button-row"><button type="button" className="secondary" onClick={onRemove}>删除商品</button></div>}
-    </details>
+    </CollapsibleSubsection>
   );
 }
 
@@ -2910,8 +3071,7 @@ function ShopOwnerEditor({ owner, index, onChange, onRemove }: { owner: JsonDict
   const dialogues = Array.isArray(owner.Dialogues) ? owner.Dialogues.filter(isObject) : [];
   const patch = (next: JsonDict) => onChange(compactObject({ ...owner, ...next }));
   return (
-    <details className="subsection" open>
-      <summary><h3>店主 {index + 1}: {stringField(owner.Name || "Any")}</h3></summary>
+    <CollapsibleSubsection title={`店主 ${index + 1}: ${stringField(owner.Name || "Any")}`} className="shop-nested-editor" stateKey={`shop-owner:${index}:${stringField(owner.Name || "Any")}`}>
       <div className="grid two">
         <Field label="Name（NPC 名或 Any）" value={stringField(owner.Name || "Any")} onChange={(next) => patch({ Name: next || "Any" })} />
         <ConditionField label="店主条件 Condition" value={owner.Condition} onChange={(next) => patch({ Condition: next })} placeholder="SEASON Summer" />
@@ -2923,7 +3083,7 @@ function ShopOwnerEditor({ owner, index, onChange, onRemove }: { owner: JsonDict
             <div className="grid two">
               <Field label="Dialogue ID" value={stringField(dialogue.Id)} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Id: next }) })} />
               <ConditionField label="Dialogue Condition" value={dialogue.Condition} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Condition: next }) })} placeholder="SEASON Summer, WEATHER Here Sun" />
-              <Field label="Dialogue" value={stringField(dialogue.Dialogue)} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Dialogue: next }) })} textarea />
+              <DialogueTextareaWithTools label="Dialogue" value={stringField(dialogue.Dialogue)} onChange={(next) => patch({ Dialogues: replaceAt(dialogues, dialogueIndex, { ...dialogue, Dialogue: next }) })} stateKey={`dialogue:shop-owner:${index}:${dialogueIndex}`} />
             </div>
             <button type="button" className="secondary" onClick={() => patch({ Dialogues: dialogues.filter((_, itemIndex) => itemIndex !== dialogueIndex) })}>删除对话</button>
           </div>
@@ -2931,7 +3091,7 @@ function ShopOwnerEditor({ owner, index, onChange, onRemove }: { owner: JsonDict
         <button type="button" className="secondary" onClick={() => patch({ Dialogues: [...dialogues, { Id: `Dialogue${dialogues.length + 1}`, Dialogue: "Welcome!" }] })}><Icon name="plus" />添加店主对话</button>
       </div>
       <div className="button-row"><button type="button" className="secondary" onClick={onRemove}>删除店主</button></div>
-    </details>
+    </CollapsibleSubsection>
   );
 }
 
@@ -3464,7 +3624,7 @@ function MailEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProj
         )}
         <ComboField label="文字颜色" value={stringField(normalized.TextColor || '')} options={MAIL_TEXT_COLOR_OPTIONS} onChange={(TextColor) => updateMail({ TextColor })} />
         <Field label="标题" value={stringField(normalized.Title || '')} onChange={(Title) => updateMail({ Title })} />
-        <DialogueTextTools label="信件正文" project={project} npcName={stringField(normalized.NpcName || 'ExampleNPC')} value={body} onChange={(next) => updateMail({ Body: next })} />
+        <Field label="信件正文" value={body} textarea onChange={(next) => updateMail({ Body: next })} />
       </div>
       <div className="mail-subsection">
         <h4>附件</h4>
@@ -4329,8 +4489,7 @@ function MailAttachmentEditor({ value, itemOptions, questOptions, specialOrderOp
             <Field label="自定义 marker" value={row.marker} onChange={(marker) => updateRow(index, { marker })} />
             {row.kind === "action" && <Field label="动作文本" value={row.action} onChange={(action) => updateRow(index, { action })} />}
             {row.kind === "item_id" && <>
-              <ComboField label="物品 ID" value={row.itemId} options={itemOptions} onChange={(itemId) => updateRow(index, { itemId: String(itemId) })} />
-              <Field label="自定义物品 ID" value={row.itemId} onChange={(itemId) => updateRow(index, { itemId })} />
+              <ItemSingleSelect label="物品 ID" options={itemOptions} value={row.itemId} onChange={(itemId) => updateRow(index, { itemId })} />
               <Field label="数量 Count" value={stringField(row.count)} onChange={(count) => updateRow(index, { count: integerInRange(count, 1, 9999, 1) })} />
             </>}
             {row.kind === "money" && <>
@@ -4926,6 +5085,107 @@ function GiftTasteEditor({ project, ruleset, itemCatalog, entry, npcName, displa
   );
 }
 
+function DialogueInsertToolbox({ onInsert, stateKey = "dialogue:text-tools" }: { onInsert: (token: string) => void; stateKey?: string }) {
+  const toolGroups = [
+    {
+      title: "常用",
+      tools: [
+        { label: "停顿", token: "#$b#", title: "插入一段停顿/换段，常用于同一句对话的第二段。" },
+        { label: "中断", token: "#$e#", title: "结束当前对话段并等待玩家继续。" },
+        { label: "换页", token: "$b", title: "对话命令：换到下一页文本。" },
+        { label: "结束", token: "$e", title: "对话命令：结束对话。" },
+        { label: "关闭", token: "$k", title: "对话命令：关闭对话框。" },
+        { label: "玩家名", token: "@", title: "替换为玩家名字。" }
+      ]
+    },
+    {
+      title: "问答",
+      tools: [
+        { label: "提问 $q", token: "$q response_id fallback_id#问题文本", title: "创建可回答的问题；后续用 $r 定义回答。" },
+        { label: "回答 $r", token: "$r response_id 10 neutral#回答文本", title: "添加一个回答选项：回答 ID、友情变化、反应、显示文本。" },
+        { label: "回答分支 $p", token: "$p response_id#选过时文本|没选过时文本", title: "根据玩家是否选过某个回答显示不同文本。" },
+        { label: "快速问答 $y", token: "$y 'Yes_好的|No_不了'", title: "快速 yes/no 式回答与回复。" }
+      ]
+    },
+    {
+      title: "条件",
+      tools: [
+        { label: "随机 $c", token: "$c 0.5#文本A#文本B", title: "按概率随机显示文本 A 或文本 B。" },
+        { label: "状态 $d", token: "$d state_id#已有状态文本|无状态文本", title: "根据对话状态/flag 选择文本。" },
+        { label: "查询 $query", token: "$query PLAYER_HAS_MAIL Current ExampleMail#满足时文本|不满足时文本", title: "按 Game State Query 条件选择文本。" },
+        { label: "性别", token: "${先生^女士^朋友}$", title: "按玩家性别显示不同文本，第三段为非二元选项。" }
+      ]
+    },
+    {
+      title: "动作",
+      tools: [
+        { label: "动作 $action", token: "$action AddMoney 500", title: "执行一个 action/trigger action 字符串。" },
+        { label: "话题 $t", token: "$t topic_id 7", title: "开启一个 active dialogue topic，后面数字是持续天数。" },
+        { label: "事件 $v", token: "$v event_id true true", title: "触发事件；后两个参数用于检查前置条件和已看过时跳过。" },
+        { label: "信件 $1", token: "$1 LetterId#首次文本#$e#再次文本", title: "按信件读取状态显示首次/再次文本。" },
+        { label: "分支 %fork", token: "%fork", title: "在支持的位置分叉后续对话。" },
+        { label: "揭示喜好", token: "%revealtaste:NPC:(O)336", title: "揭示某个 NPC 对某物品的喜好。" }
+      ]
+    },
+    {
+      title: "替换符",
+      tools: [
+        { label: "农场名", token: "%farm", title: "替换为农场名。" },
+        { label: "配偶", token: "%spouse", title: "替换为玩家配偶名。" },
+        { label: "孩子1", token: "%kid1", title: "替换为第一个孩子名。" },
+        { label: "孩子2", token: "%kid2", title: "替换为第二个孩子名。" },
+        { label: "时间", token: "%time", title: "替换为当前时间相关文本。" },
+        { label: "物品图标", token: "[336]", title: "插入物品图标/物品引用标记，可把 336 改为目标 ID。" }
+      ]
+    }
+  ];
+
+  return (
+    <PersistentDetails className="dialogue-toolbox" stateKey={stateKey} title="对话插入按钮" defaultOpen={false}>
+      <div className="dialogue-tool-groups">
+        {toolGroups.map((group) => (
+          <div className="dialogue-tool-group" key={group.title}>
+            <strong>{group.title}</strong>
+            <div className="button-row compact-buttons">
+              {group.tools.map((tool) => (
+                <button type="button" className="secondary" key={`${group.title}-${tool.label}`} onClick={() => onInsert(tool.token)} title={tool.title}>
+                  {tool.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </PersistentDetails>
+  );
+}
+
+function DialogueTextareaWithTools({ label, value, onChange, stateKey }: { label: string; value: string; onChange: (value: string) => void; stateKey?: string }) {
+  const textAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  function insertToken(token: string) {
+    const element = textAreaRef.current;
+    const start = element?.selectionStart ?? value.length;
+    const end = element?.selectionEnd ?? value.length;
+    const next = `${value.slice(0, start)}${token}${value.slice(end)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+
+  return (
+    <div className="dialogue-text-tools">
+      <label className="field">
+        <span>{label}</span>
+        <textarea ref={textAreaRef} value={value} onChange={(event) => onChange(event.target.value)} />
+      </label>
+      <DialogueInsertToolbox onInsert={insertToken} stateKey={stateKey} />
+    </div>
+  );
+}
+
 function DialogueTextTools({ label, project, npcName, value, onChange }: { label: string; project: Project; npcName: string; value: string; onChange: (value: string) => void }) {
   const textAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
 
@@ -4947,14 +5207,10 @@ function DialogueTextTools({ label, project, npcName, value, onChange }: { label
         <span>{label}</span>
         <textarea ref={textAreaRef} value={value} onChange={(event) => onChange(event.target.value)} />
       </label>
-      <div className="button-row">
-        <button type="button" className="secondary" onClick={() => insertToken("#$b#")}>停顿 #$b#</button>
-        <button type="button" className="secondary" onClick={() => insertToken("#$e#")}>中断 #$e#</button>
-      </div>
-      <details className="portrait-tools" open>
-        <summary>头像编号按钮</summary>
+      <DialogueInsertToolbox onInsert={insertToken} />
+      <PersistentDetails className="portrait-tools" stateKey={`dialogue:portrait-tools:${npcName || "default"}`} title="头像编号按钮" defaultOpen={false}>
         <PortraitTokenPicker project={project} npcName={npcName} onInsert={insertToken} />
-      </details>
+      </PersistentDetails>
     </div>
   );
 }
@@ -5771,7 +6027,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </div>
         <details className="dialogue-section" open>
           <summary>普通对话 <span>{normalDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={normalDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={normalDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
         <details className="dialogue-section" open={hasExpandedSpecialDialogue || undefined}>
           <summary>特殊对话 <span>{specialDialogueEntries.length} 条</span></summary>
@@ -5779,7 +6035,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
         </details>
         <details className="dialogue-section" open={hasExpandedMarriageDialogue || undefined}>
           <summary>婚后/室友对话 <span>{marriageDialogueEntries.length} 条</span></summary>
-          <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
+          <NpcDialogueList entries={marriageDialogueEntries} expandedEntryId={expandedNpcEntryId} project={project} ruleset={ruleset} itemCatalog={itemCatalog} i18n={project.i18n} onI18nChange={(i18n) => setProject({ ...project, i18n })} onChange={updateDialogueEntry} onRemove={removeDialogueEntry} />
         </details>
       </CollapsibleSubsection>
 
@@ -5858,7 +6114,7 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
   );
 }
 
-function NpcDialogueList({ entries, expandedEntryId, project, ruleset, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
+function NpcDialogueList({ entries, expandedEntryId, project, ruleset, itemCatalog, i18n, onI18nChange, onChange, onRemove }: { entries: GameDataEntry[]; expandedEntryId: string; project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void; onRemove: (entryId: string) => void }) {
   return (
     <div className="npc-dialogue-list">
       {!entries.length && <div className="empty compact-empty">暂无条目。</div>}
@@ -5868,7 +6124,7 @@ function NpcDialogueList({ entries, expandedEntryId, project, ruleset, i18n, onI
             <strong>{entry.key}</strong>
             <button type="button" className="secondary" onClick={() => onRemove(entry.id)}>删除</button>
           </summary>
-          <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+          <DialogueEntryFormClean project={project} entry={entry} ruleset={ruleset} itemCatalog={itemCatalog} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
         </details>
       ))}
     </div>
@@ -6102,13 +6358,14 @@ function DialogueEntryForm({ entry, ruleset, i18n, onI18nChange, onChange }: { e
           key={field.name}
           field={field}
           ruleset={ruleset}
+          itemOptions={[]}
           npcName={state.npcName}
           value={normalizeDialogueFields(format, state.fields, state.npcName)[field.name] ?? ""}
           onChange={(value) => updateField(field, value)}
         />
       ))}
       {format.warning && <div className="notice compact-note">{format.warning}</div>}
-      <Field label="台词正文（写入 i18n/default.json）" value={text} textarea onChange={updateText} />
+      <DialogueTextareaWithTools label="台词正文（写入 i18n/default.json）" value={text} onChange={updateText} stateKey="dialogue:legacy-entry-tools" />
       <div className="notice compact-note">
         当前导出：<code>{target}</code> / <code>{key}</code> = <code>{i18nRef(i18nKey)}</code>
       </div>
@@ -6139,7 +6396,7 @@ function withDialogueMetadata(entry: GameDataEntry, state: DialogueEntryState, f
   };
 }
 
-function DialogueEntryFormClean({ project, entry, ruleset, i18n, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
+function DialogueEntryFormClean({ project, entry, ruleset, itemCatalog, i18n, onI18nChange, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n: Record<string, string>; onI18nChange?: (i18n: Record<string, string>) => void; onChange: (entry: GameDataEntry) => void }) {
   const [state, setState] = useState(() => dialogueFormStateFromEntry(entry));
   const format = dialogueFormatById(state.keyType, ruleset);
   const normalizedFields = normalizeDialogueFields(format, state.fields, state.npcName);
@@ -6149,6 +6406,7 @@ function DialogueEntryFormClean({ project, entry, ruleset, i18n, onI18nChange, o
   const text = i18n[i18nKey] || (typeof entry.value === "string" && !entry.value.startsWith("{{i18n:") ? entry.value : "");
   const scope = state.isMarriage ? "marriage" : "normal";
   const textAreaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
 
   function applyState(next: DialogueEntryState, nextText = text) {
     const nextFormat = dialogueFormatById(next.keyType, ruleset);
@@ -6229,6 +6487,7 @@ function DialogueEntryFormClean({ project, entry, ruleset, i18n, onI18nChange, o
           key={field.name}
           field={field}
           ruleset={ruleset}
+          itemOptions={itemOptions}
           npcName={state.npcName}
           value={normalizedFields[field.name] ?? ""}
           onChange={(value) => updateField(field, value)}
@@ -6240,10 +6499,7 @@ function DialogueEntryFormClean({ project, entry, ruleset, i18n, onI18nChange, o
           <span>台词正文（写入 i18n/default.json）</span>
           <textarea ref={textAreaRef} value={text} onChange={(event) => updateText(event.target.value)} />
         </label>
-        <div className="button-row">
-          <button type="button" className="secondary" onClick={() => insertToken("#$b#")}>停顿 #$b#</button>
-          <button type="button" className="secondary" onClick={() => insertToken("#$e#")}>中断 #$e#</button>
-        </div>
+        <DialogueInsertToolbox onInsert={insertToken} />
       </div>
       <PortraitTokenPicker project={project} npcName={state.npcName} onInsert={insertToken} />
       <div className="notice compact-note">
@@ -6355,7 +6611,7 @@ function I18nEditor({ project, setProject }: { project: Project; setProject: (pr
   );
 }
 
-function StoryEventStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
+function StoryEventStudio({ project, ruleset, itemCatalog, setProject }: { project: Project; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; setProject: (project: Project) => void }) {
   const entries = project.game_data
     .map((entry, index) => ({ entry, index }))
     .filter(({ entry }) => entry.kind === "event");
@@ -6397,6 +6653,7 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
               project={project}
               entry={entry}
               ruleset={ruleset}
+              itemCatalog={itemCatalog}
               i18n={project.i18n}
               onChange={(next, i18nPatch) => updateStoryEntry(index, next, i18nPatch)}
             />
@@ -6408,7 +6665,7 @@ function StoryEventStudio({ project, ruleset, setProject }: { project: Project; 
   );
 }
 
-function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; i18n?: Record<string, string>; onChange: (entry: GameDataEntry, i18nPatch?: Record<string, string>) => void }) {
+function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onChange: (entry: GameDataEntry, i18nPatch?: Record<string, string>) => void }) {
   const meta = storyMetaFromEntry(project, entry);
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
   const [selectedNodeId, setSelectedNodeId] = useState(meta.nodes[0]?.id || "");
@@ -6419,6 +6676,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
   const branchPreviews = meta.branches.map((branch) => ({ key: branch.key, script: buildStoryBranchScript(branch, meta.actors) }));
   const selectedNodeIndex = meta.nodes.findIndex((node) => node.id === selectedNodeId);
   const selectedNode = selectedNodeIndex >= 0 ? meta.nodes[selectedNodeIndex] : meta.nodes[meta.nodes.length - 1];
+  const itemOptions = itemSelectionOptions(project, ruleset, itemCatalog, "qualified");
 
   useEffect(() => {
     let cancelled = false;
@@ -6517,8 +6775,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
         <Field label="i18n 前缀" value={meta.i18nPrefix} onChange={(i18nPrefix) => commitMeta({ ...meta, i18nPrefix })} />
       </div>
 
-      <details className="story-panel" open>
-        <summary>初始角色位置 <span>{meta.actors.length} 个角色</span></summary>
+      <PersistentDetails className="story-panel" stateKey={`story:${entry.id}:actors`} title={`初始角色位置（${meta.actors.length} 个角色）`} defaultOpen>
         <div className="story-list">
           {meta.actors.map((actor, index) => (
             <div className="story-row" key={`${actor.actor}-${index}`}>
@@ -6531,10 +6788,9 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
           ))}
           <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
         </div>
-      </details>
+      </PersistentDetails>
 
-      <details className="story-panel" open>
-        <summary>触发条件 Key Preconditions <span>{meta.preconditions.length} 条</span></summary>
+      <PersistentDetails className="story-panel" stateKey={`story:${entry.id}:preconditions`} title={`触发条件 Key Preconditions（${meta.preconditions.length} 条）`} defaultOpen>
         <div className="story-list">
           {meta.preconditions.map((condition, index) => (
             <StoryPreconditionEditor
@@ -6547,10 +6803,9 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
           ))}
           <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, preconditions: [...meta.preconditions, defaultStoryPrecondition("Friendship")] })}>添加条件</button>
         </div>
-      </details>
+      </PersistentDetails>
 
-      <details className="story-panel" open>
-        <summary>流程节点 <span>{meta.nodes.length} 个节点</span></summary>
+      <PersistentDetails className="story-panel" stateKey={`story:${entry.id}:nodes`} title={`流程节点（${meta.nodes.length} 个节点）`} defaultOpen>
         <div className="toolbar">
           <select value={nodeKind} onChange={(event) => setNodeKind(event.target.value as EventNodeKind)}>
             {STORY_NODE_OPTIONS.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
@@ -6584,6 +6839,7 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
               meta={meta}
               branches={meta.branches}
               mapPreview={eventMapPreview}
+              itemOptions={itemOptions}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
               onCreateBranch={(currentNode) => {
@@ -6602,10 +6858,9 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
             />
           ) : <div className="empty">还没有流程节点。请选择类型后点击“添加节点”。</div>}
         </div>
-      </details>
+      </PersistentDetails>
 
-      <details className="story-panel" open>
-        <summary>分支 Entries <span>{meta.branches.length} 个分支</span></summary>
+      <PersistentDetails className="story-panel" stateKey={`story:${entry.id}:branches`} title={`分支 Entries（${meta.branches.length} 个分支）`} defaultOpen>
         <div className="notice compact-note">用于 question/fork 后跳转的脚本，例如 SVE 示例里的 <code>746153081_PurchasedAuroraVineyard</code>。分支脚本不会重复音乐、视角、初始角色三段。</div>
         <div className="toolbar">
           <button type="button" onClick={addBranch}><Icon name="plus" />添加分支 Entry</button>
@@ -6617,13 +6872,14 @@ function StoryEventForm({ project, entry, ruleset, i18n = {}, onChange }: { proj
               branch={branch}
               meta={meta}
               mapPreview={eventMapPreview}
+              itemOptions={itemOptions}
               i18n={i18n}
               onChange={(nextBranch, i18nPatch) => commitMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) }, i18nPatch)}
               onRemove={() => commitMeta({ ...meta, branches: meta.branches.filter((item) => item.id !== branch.id) })}
             />
           ))}
         </div>
-      </details>
+      </PersistentDetails>
 
       <div className="story-preview">
         <div>
@@ -6699,7 +6955,7 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
   );
 }
 
-function StoryBranchEditor({ branch, meta, mapPreview, i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; mapPreview?: MapPreviewImage | null; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
+function StoryBranchEditor({ branch, meta, mapPreview, itemOptions = [], i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; mapPreview?: MapPreviewImage | null; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
   const [selectedNodeId, setSelectedNodeId] = useState(branch.nodes[0]?.id || "");
   const selectedNodeIndex = Math.max(0, branch.nodes.findIndex((node) => node.id === selectedNodeId));
@@ -6768,6 +7024,7 @@ function StoryBranchEditor({ branch, meta, mapPreview, i18n, onChange, onRemove 
               meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}`, nodes: branch.nodes }}
               branches={meta.branches}
               mapPreview={mapPreview}
+              itemOptions={itemOptions}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
               onRemove={() => {
@@ -6880,7 +7137,7 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], selectedNode
   );
 }
 
-function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; mapPreview?: MapPreviewImage | null; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, itemOptions = [], i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; mapPreview?: MapPreviewImage | null; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
   const data = node.data || {};
   const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
   const textValue = stringField(i18n[textKey] ?? data.text ?? "");
@@ -6922,35 +7179,35 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
           <>
             <Field label="说话角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="台词文本" value={textValue} textarea onChange={patchText} />
+            <DialogueTextareaWithTools label="台词文本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
           </>
         )}
         {node.kind === "splitSpeak" && (
           <>
             <Field label="说话角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="分段台词文本" value={textValue} textarea onChange={patchText} />
+            <DialogueTextareaWithTools label="分段台词文本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
           </>
         )}
         {node.kind === "textAboveHead" && (
           <>
             <Field label="气泡角色" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="气泡文本" value={textValue} textarea onChange={patchText} />
+            <DialogueTextareaWithTools label="气泡文本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
             <div className="notice compact-note">Wiki: textAboveHead 不会把 @ 替换为玩家名；需要玩家名时用 Content Patcher token：{"{{PlayerName}}"}</div>
           </>
         )}
         {node.kind === "message" && (
           <>
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="消息文本" value={textValue} textarea onChange={patchText} />
+            <DialogueTextareaWithTools label="消息文本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
           </>
         )}
         {node.kind === "question" && (
           <>
             <Field label="fork 标记" value={stringField(data.forkId)} onChange={(forkId) => patchData({ forkId })} />
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => onChange({ ...node, data: { ...data, i18nKey } }, { key: i18nKey, text: textValue })} />
-            <Field label="问题正文" value={storyQuestionPrompt(textValue)} textarea onChange={(prompt) => patchQuestion(prompt, questionAnswers)} />
+            <DialogueTextareaWithTools label="问题正文" value={storyQuestionPrompt(textValue)} onChange={(prompt) => patchQuestion(prompt, questionAnswers)} stateKey={`dialogue:story-node:${node.kind}`} />
             <div className="story-inline-editor">
               <strong>回答选项</strong>
               {questionAnswers.map((answer, answerIndex) => (
@@ -6981,7 +7238,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
         {node.kind === "quickQuestion" && (
           <>
             <Field label="i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-            <Field label="问题与回答脚本" value={textValue} textarea onChange={patchText} />
+            <DialogueTextareaWithTools label="问题与回答脚本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
             <div className="notice compact-note">格式：问题#选项1#选项2(break)选项1脚本(break)选项2脚本。Wiki 提醒：事件开头直接用 quickQuestion 可能循环，建议前面加 pause 1。</div>
           </>
         )}
@@ -7139,14 +7396,14 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
         )}
         {node.kind === "addItem" && (
           <>
-            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <ItemSingleSelect label="物品 ID" options={itemOptions} value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
             <Field label="数量 count" value={stringField(data.count)} onChange={(count) => patchData({ count: integerInRange(count, 1, 999, 1) })} />
             <Field label="品质 quality" value={stringField(data.quality)} onChange={(quality) => patchData({ quality: integerInRange(quality, 0, 4, 0) })} />
           </>
         )}
         {node.kind === "removeItem" && (
           <>
-            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <ItemSingleSelect label="物品 ID" options={itemOptions} value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
             <Field label="数量 count" value={stringField(data.count)} onChange={(count) => patchData({ count: integerInRange(count, 1, 999, 1) })} />
           </>
         )}
@@ -7154,7 +7411,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
           <>
             <Field label="X" value={stringField(data.x)} onChange={(x) => patchData({ x: integerInRange(x, -10000, 10000, 64) })} />
             <Field label="Y" value={stringField(data.y)} onChange={(y) => patchData({ y: integerInRange(y, -10000, 10000, 15) })} />
-            <Field label="物品 ID" value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
+            <ItemSingleSelect label="物品 ID" options={itemOptions} value={stringField(data.itemId)} onChange={(itemId) => patchData({ itemId })} />
             <Field label="layer depth（可空）" value={stringField(data.layerDepth)} onChange={(layerDepth) => patchData({ layerDepth })} />
           </>
         )}
@@ -7204,7 +7461,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
             <Field label="sprite 后缀（可空）" value={stringField(data.sprite)} onChange={(sprite) => patchData({ sprite })} />
           </>
         )}
-        {node.kind === "farmerEat" && <Field label="物品 ID" value={stringField(data.objectId)} onChange={(objectId) => patchData({ objectId })} />}
+        {node.kind === "farmerEat" && <ItemSingleSelect label="物品 ID" options={itemOptions} value={stringField(data.objectId)} onChange={(objectId) => patchData({ objectId })} />}
         {node.kind === "farmerAnimation" && <Field label="动画 ID" value={stringField(data.animation)} onChange={(animation) => patchData({ animation })} />}
         {node.kind === "friendship" && (
           <>
@@ -7220,7 +7477,7 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, i18n, o
               <>
                 <Field label="对话 NPC" value={stringField(data.actor)} onChange={(actor) => patchData({ actor })} />
                 <Field label="结束后对话 i18n Key" value={textKey} onChange={(i18nKey) => patchData({ i18nKey })} />
-                <Field label="结束后对话文本" value={textValue} textarea onChange={patchText} />
+                <DialogueTextareaWithTools label="结束后对话文本" value={textValue} onChange={patchText} stateKey={`dialogue:story-node:${node.kind}`} />
               </>
             )}
           </>
@@ -7701,11 +7958,20 @@ function IssueList({ issues }: { issues: ValidationIssue[] }) {
       {issues.map((issue, index) => (
         <div className={`issue ${issue.level}`} key={`${issue.path}-${index}`}>
           <Icon name="warn" />
-          <div><strong>{issue.path}</strong><span>{issue.message}</span></div>
+          <div><strong>{issue.path}</strong><span>{issue.message}</span>{issueHint(issue.path) && <small>{issueHint(issue.path)}</small>}</div>
         </div>
       ))}
     </div>
   );
+}
+
+function issueHint(path: string) {
+  const patchMatch = path.match(/^patches\[(\d+)\]/);
+  if (patchMatch) return `位置：CP 补丁页面，第 ${Number(patchMatch[1]) + 1} 个补丁。`;
+  const gameDataMatch = path.match(/^game_data\[(\d+)\]/);
+  if (gameDataMatch) return `位置：游戏数据页面，第 ${Number(gameDataMatch[1]) + 1} 个游戏数据条目。`;
+  if (path.startsWith("manifest.")) return "位置：模组信息页面。";
+  return "";
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {

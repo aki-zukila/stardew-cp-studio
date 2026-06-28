@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+from copy import deepcopy
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -22,6 +24,8 @@ from .models import (
     Project,
     SaveAIConfigRequest,
     SaveProjectRequest,
+    SessionState,
+    SessionStateUpdate,
 )
 from .project_io import import_asset, new_project, open_project, restore_package_assets, write_project_package
 from .rule_library_loader import ai_rule_context, load_rule_library
@@ -36,19 +40,96 @@ FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
 MAP_RESOURCE_DIR = ROOT_DIR / "MapResource"
 UPLOAD_DIR = RUNTIME_DIR / "uploads"
 ASSET_SOURCES: dict[str, Path] = {}
+DEFAULT_PROJECT_PATH = str(ROOT_DIR / "example.cpgen")
+DEFAULT_EXPORT_PATH = str(ROOT_DIR / "exports")
+
+
+class SharedSession:
+    def __init__(self) -> None:
+        self.project = new_project()
+        self.project_path = DEFAULT_PROJECT_PATH
+        self.export_path = DEFAULT_EXPORT_PATH
+        self.revision = 0
+        self.last_client_id = ""
+        self.lock = asyncio.Lock()
+        self.websockets: set[WebSocket] = set()
+
+    def snapshot(self) -> SessionState:
+        return SessionState(
+            project=deepcopy(self.project),
+            projectPath=self.project_path,
+            exportPath=self.export_path,
+            revision=self.revision,
+            lastClientId=self.last_client_id,
+        )
+
+    async def update(self, update: SessionStateUpdate) -> SessionState:
+        async with self.lock:
+            self.project = update.project
+            self.project_path = update.projectPath
+            self.export_path = update.exportPath
+            self.last_client_id = update.clientId
+            self.revision += 1
+            return self.snapshot()
+
+
+SESSION = SharedSession()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+async def broadcast_session(snapshot: SessionState) -> None:
+    stale: list[WebSocket] = []
+    payload = snapshot.model_dump(mode="json")
+    for websocket in list(SESSION.websockets):
+        try:
+            await websocket.send_json(payload)
+        except Exception:
+            stale.append(websocket)
+    for websocket in stale:
+        SESSION.websockets.discard(websocket)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "version": "ai-fields-v1", "ai": "ready"}
+
+
+@app.get("/api/session")
+def get_session() -> SessionState:
+    return SESSION.snapshot()
+
+
+@app.post("/api/session/state")
+async def update_session(request: SessionStateUpdate) -> SessionState:
+    snapshot = await SESSION.update(request)
+    await broadcast_session(snapshot)
+    return snapshot
+
+
+@app.websocket("/api/session/ws")
+async def session_websocket(websocket: WebSocket) -> None:
+    await websocket.accept()
+    SESSION.websockets.add(websocket)
+    await websocket.send_json(SESSION.snapshot().model_dump(mode="json"))
+    try:
+        while True:
+            data = await websocket.receive_json()
+            update = SessionStateUpdate.model_validate(data)
+            snapshot = await SESSION.update(update)
+            await broadcast_session(snapshot)
+    except WebSocketDisconnect:
+        SESSION.websockets.discard(websocket)
+    except Exception:
+        SESSION.websockets.discard(websocket)
+        await websocket.close()
 
 
 @app.get("/api/ruleset")
@@ -112,8 +193,11 @@ def get_ai_rule_context():
 
 @app.get("/api/projects/new")
 @app.post("/api/projects/new")
-def create_project() -> Project:
-    return new_project()
+async def create_project() -> Project:
+    project = new_project()
+    snapshot = await SESSION.update(SessionStateUpdate(project=project, projectPath=SESSION.project_path, exportPath=SESSION.export_path, clientId="server"))
+    await broadcast_session(snapshot)
+    return project
 
 
 @app.get("/favicon.ico")
@@ -122,10 +206,12 @@ def favicon():
 
 
 @app.post("/api/projects/open")
-def open_project_endpoint(request: OpenProjectRequest) -> Project:
+async def open_project_endpoint(request: OpenProjectRequest) -> Project:
     try:
         project = open_project(request.path)
         ASSET_SOURCES.update(restore_package_assets(request.path, UPLOAD_DIR))
+        snapshot = await SESSION.update(SessionStateUpdate(project=project, projectPath=request.path, exportPath=SESSION.export_path, clientId="server"))
+        await broadcast_session(snapshot)
         return project
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -149,9 +235,11 @@ async def open_uploaded_project_endpoint(file: UploadFile = File(...)) -> Projec
 
 
 @app.post("/api/projects/save")
-def save_project_endpoint(request: SaveProjectRequest) -> dict[str, str]:
+async def save_project_endpoint(request: SaveProjectRequest) -> dict[str, str]:
     try:
         write_project_package(request.project, request.path, ASSET_SOURCES)
+        snapshot = await SESSION.update(SessionStateUpdate(project=request.project, projectPath=request.path, exportPath=SESSION.export_path, clientId="server"))
+        await broadcast_session(snapshot)
         return {"path": request.path}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
