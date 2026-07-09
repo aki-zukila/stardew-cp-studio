@@ -183,14 +183,18 @@ type MapPreviewImage = Asset | { url: string; label: string };
 type ProjectUiContextValue = { project: Project | null; setProject: (project: Project) => void };
 const ProjectUiContext = React.createContext<ProjectUiContextValue>({ project: null, setProject: () => undefined });
 type FestivalPositionMeta = { npcName: string; festivalId: string; phaseKey: string; x: number; y: number; direction: string };
-type MapDraftKind = "custom" | "edit" | "warp";
+type MapDraftKind = "custom" | "edit" | "warp" | "tilesheets";
 type MapGeneratedRef = { target: string; key?: string; action?: Patch["action"]; from_file?: string | null };
 type MapDraft = { id: string; kind: MapDraftKind; generated: MapGeneratedRef[] };
+type CustomMapDraftInitial = { mapKeyRaw: string; displayName: string; mapFile: string; previewFile: string; arrival: MapPoint; locationType: string; alwaysActive: boolean; canPlant: boolean; greenRainSpawns: boolean; excludePathfinding: boolean };
+type WarpMapDraftInitial = { warpSourceMap: string; warpTargetMap: string; warpFrom: MapPoint; warpTo: MapPoint; warpKind: "AddWarps" | "AddNpcWarps" };
 type ScheduleKeyField = { name: string; type: string; options?: string; min?: number; max?: number };
 type ScheduleKeyFormat = { id: string; category: string; label: string; template: string; fields: ScheduleKeyField[] };
-type SchedulePoint = { id: string; time: string; location: string; x: number; y: number; direction: number; animation: string; dialogueKey: string; dialogueText: string };
+type AffinityDialogueGroupId = "0123" | "4567" | "8910" | "married";
+type AffinityDialogueVariants = Record<AffinityDialogueGroupId, string>;
+type SchedulePoint = { id: string; time: string; location: string; x: number; y: number; direction: number; animation: string; dialogueKey: string; dialogueText: string; dialogueVariants: AffinityDialogueVariants };
 type ScheduleMeta = { npcName: string; keyType: string; fields: Record<string, string | number>; initialCommand: string; gotoKey: string; friendshipNpc: string; friendshipHearts: number; mailId: string; mailMissingKey: string; mailReceivedKey: string; points: SchedulePoint[]; dialogueEntries: { key: string; i18nKey: string }[] };
-type AnimationMeta = { npcName: string; isSleep: boolean; customKey: string; framesText: string };
+type AnimationMeta = { npcName: string; isSleep: boolean; customKey: string; entryFrames: string; repeatFrames: string; leavingFrames: string; messageText: string; messageVariants: AffinityDialogueVariants; layingDown: boolean; useOffset: boolean; offsetX: number; offsetY: number; rawMode?: boolean; rawValue?: string };
 type FlowTodo = { id: string; label: string; description: string; action: FlowAction; done: boolean };
 type FlowAction = "dialogue" | "giftTaste" | "schedule" | "mail" | "event" | "roommateItem" | "customMap" | "giftTasteForItem" | "mailForItem" | "mapLocation" | "mapWarpTodo" | "mapEventTodo";
 type FlowKind = "character" | "item" | "map";
@@ -379,6 +383,7 @@ function App() {
   const [exportPath, setExportPath] = useState("E:\\Codex\\stardew-cp-studio\\exports");
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [status, setStatus] = useState("");
+  const [toast, setToast] = useState("");
   const [loadError, setLoadError] = useState("");
   const [pendingProjectOpen, setPendingProjectOpen] = useState<PendingProjectOpen | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -390,6 +395,17 @@ function App() {
   const exportPathRef = useRef(exportPath);
   const websocketRef = useRef<WebSocket | null>(null);
   const broadcastTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  function notify(message: string) {
+    setStatus(message);
+    setToast(message);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast("");
+      toastTimerRef.current = null;
+    }, 4200);
+  }
 
   function applySession(snapshot: SessionState) {
     revisionRef.current = snapshot.revision;
@@ -482,7 +498,7 @@ function App() {
         }
         if (snapshot.revision >= revisionRef.current) {
           applySession(snapshot);
-          setStatus(`已同步另一台设备的修改（版本 ${snapshot.revision}）。`);
+          notify(`已同步另一台设备的修改（版本 ${snapshot.revision}）。`);
         }
       };
       socket.onclose = () => {
@@ -497,6 +513,7 @@ function App() {
       closed = true;
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       if (broadcastTimerRef.current !== null) window.clearTimeout(broadcastTimerRef.current);
+      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
       websocketRef.current?.close();
     };
   }, []);
@@ -513,15 +530,15 @@ function App() {
     if (!currentProject) return;
     try {
       await postJson("/api/projects/save", { project: currentProject, path: projectPathRef.current });
-      setStatus(`已保存工程：${projectPathRef.current}`);
+      notify(`已保存工程：${projectPathRef.current}`);
     } catch (error) {
-      setStatus(`保存失败：${errorMessage(error)}`);
+      notify(`保存失败：${errorMessage(error)}`);
     }
   }
 
   async function openProject() {
     if (!openPath.trim()) {
-      setStatus("请先填写 .cpgen 工程路径，或直接拖入/选择工程文件。");
+      notify("请先填写 .cpgen 工程路径，或直接拖入/选择工程文件。");
       return;
     }
     try {
@@ -532,10 +549,10 @@ function App() {
       setPendingProjectOpen(null);
       projectPathRef.current = openPath;
       setProjectPath(openPath);
-      setStatus(`已打开工程：${openPath}`);
+      notify(`已打开工程：${openPath}`);
       await validate(opened);
     } catch (error) {
-      setStatus(`打开失败：${errorMessage(error)}`);
+      notify(`打开失败：${errorMessage(error)}`);
     }
   }
 
@@ -543,9 +560,9 @@ function App() {
     try {
       const opened = await openUploadedProject(file);
       setPendingProjectOpen({ project: opened, label: file.name });
-      setStatus(`已读取工程预览：${file.name}`);
+      notify(`已读取工程预览：${file.name}`);
     } catch (error) {
-      setStatus(`读取工程失败：${errorMessage(error)}`);
+      notify(`读取工程失败：${errorMessage(error)}`);
     }
   }
 
@@ -554,7 +571,7 @@ function App() {
     updateProject(pendingProjectOpen.project);
     setOpenPath("");
     setPendingProjectOpen(null);
-    setStatus(`已打开工程：${pendingProjectOpen.label}。保存位置仍使用当前“保存到 .cpgen 路径”。`);
+    notify(`已打开工程：${pendingProjectOpen.label}。保存位置仍使用当前“保存到 .cpgen 路径”。`);
     await validate(pendingProjectOpen.project);
   }
 
@@ -562,15 +579,19 @@ function App() {
     if (!project) return;
     const result = await validate(project);
     if (result && result.errors.length > 0) {
-      setStatus("导出前请先修复阻止性错误。");
+      notify("导出前请先修复阻止性错误。");
       return;
     }
-    const response = await postJson<{ path: string }>("/api/export/content-pack", {
-      project,
-      output_dir: exportPath,
-      folder_name: project.manifest.Name
-    });
-    setStatus(`已导出内容包：${response.path}`);
+    try {
+      const response = await postJson<{ path: string }>("/api/export/content-pack", {
+        project,
+        output_dir: exportPath,
+        folder_name: project.manifest.Name
+      });
+      notify(`已导出内容包：${response.path}`);
+    } catch (error) {
+      notify(`导出失败：${errorMessage(error)}`);
+    }
   }
 
   const issues = useMemo(() => {
@@ -595,6 +616,7 @@ function App() {
   return (
     <ProjectUiContext.Provider value={{ project, setProject: updateProject }}>
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {toast && <div className={`toast ${/失败|错误|修复/.test(toast) ? "error" : ""}`}>{toast}</div>}
       <aside className="sidebar">
         <div className="brand">
           <Icon name="pkg" />
@@ -1720,16 +1742,60 @@ function SeasonDayField({ season, day, seasons, onChange }: { season: string; da
 function ManifestEditor({ project, setProject }: { project: Project; setProject: (project: Project) => void }) {
   const manifest = project.manifest;
   const update = (key: keyof Manifest, value: unknown) => setProject({ ...project, manifest: { ...manifest, [key]: value } });
+  const dependencies = Array.isArray(manifest.Dependencies) ? manifest.Dependencies : [];
+
+  function updateDependency(index: number, patch: Partial<Manifest["Dependencies"][number]>) {
+    update("Dependencies", dependencies.map((dependency, itemIndex) => itemIndex === index ? { ...dependency, ...patch } : dependency));
+  }
+
+  function addDependency() {
+    update("Dependencies", [...dependencies, { UniqueID: "", IsRequired: true, MinimumVersion: null }]);
+  }
+
+  function removeDependency(index: number) {
+    update("Dependencies", dependencies.filter((_, itemIndex) => itemIndex !== index));
+  }
+
   return (
     <Section title="模组信息">
-      <div className="grid two">
-        <Field label="模组名称 Name" value={manifest.Name} onChange={(value) => update("Name", value)} />
-        <Field label="作者 Author" value={manifest.Author} onChange={(value) => update("Author", value)} />
-        <Field label="唯一 ID UniqueID" value={manifest.UniqueID} onChange={(value) => update("UniqueID", value)} />
-        <Field label="版本 Version" value={manifest.Version} onChange={(value) => update("Version", value)} />
-        <Field label="最低 SMAPI 版本 MinimumApiVersion" value={manifest.MinimumApiVersion} onChange={(value) => update("MinimumApiVersion", value)} />
-        <Field label="更新键 UpdateKeys，用逗号分隔" value={manifest.UpdateKeys.join(", ")} onChange={(value) => update("UpdateKeys", splitComma(value))} />
-        <Field label="简介 Description" value={manifest.Description} textarea onChange={(value) => update("Description", value)} />
+      <div className="stack">
+        <div className="grid two">
+          <Field label="模组名称 Name" value={manifest.Name} onChange={(value) => update("Name", value)} />
+          <Field label="作者 Author" value={manifest.Author} onChange={(value) => update("Author", value)} />
+          <Field label="唯一 ID UniqueID" value={manifest.UniqueID} onChange={(value) => update("UniqueID", value)} />
+          <Field label="版本 Version" value={manifest.Version} onChange={(value) => update("Version", value)} />
+          <Field label="最低 SMAPI 版本 MinimumApiVersion" value={manifest.MinimumApiVersion} onChange={(value) => update("MinimumApiVersion", value)} />
+          <Field label="更新键 UpdateKeys，用逗号分隔" value={manifest.UpdateKeys.join(", ")} onChange={(value) => update("UpdateKeys", splitComma(value))} />
+          <Field label="简介 Description" value={manifest.Description} textarea onChange={(value) => update("Description", value)} />
+        </div>
+        <CollapsibleSubsection title={`依赖模组 Dependencies (${dependencies.length})`} stateKey="manifest:dependencies">
+          <div className="structured-editor-head">
+            <div>
+              <strong>依赖模组</strong>
+              <span>用于声明其他模组是否必须安装，可选填写最低版本。</span>
+            </div>
+            <button type="button" className="secondary" onClick={addDependency}><Icon name="plus" />添加依赖</button>
+          </div>
+          <div className="stack">
+            {dependencies.map((dependency, index) => (
+              <div className="card compact-card" key={`${dependency.UniqueID}-${index}`}>
+                <div className="grid two">
+                  <Field label="依赖 UniqueID" value={dependency.UniqueID} onChange={(value) => updateDependency(index, { UniqueID: value })} />
+                  <Field label="最低版本 MinimumVersion" value={stringField(dependency.MinimumVersion)} onChange={(value) => updateDependency(index, { MinimumVersion: value.trim() ? value.trim() : null })} />
+                  <BoolField label="必选 IsRequired" value={dependency.IsRequired !== false} onChange={(value) => updateDependency(index, { IsRequired: value })} />
+                  <div className="field">
+                    <span>导出预览</span>
+                    <code>{JSON.stringify(compactObject({ UniqueID: dependency.UniqueID || "Mod.UniqueID", IsRequired: dependency.IsRequired !== false, MinimumVersion: dependency.MinimumVersion || undefined }))}</code>
+                  </div>
+                </div>
+                <div className="button-row">
+                  <button type="button" className="secondary" onClick={() => removeDependency(index)}>删除依赖</button>
+                </div>
+              </div>
+            ))}
+            {!dependencies.length && <div className="empty compact-empty">暂无依赖。比如 DLX.PIF、Sharogg.Tilesheets、mushymato.MMAP 可以从这里添加。</div>}
+          </div>
+        </CollapsibleSubsection>
       </div>
     </Section>
   );
@@ -2446,7 +2512,15 @@ function GameDataForm({ project, entry, ruleset, itemCatalog, i18n = {}, onI18nC
       )}
 
       {entry.kind === "event" && (
-        <StoryEventForm project={project} entry={entry} ruleset={ruleset} i18n={i18n} onI18nChange={onI18nChange} onChange={onChange} />
+        <StoryEventForm
+          project={project}
+          entry={entry}
+          ruleset={ruleset}
+          itemCatalog={itemCatalog}
+          i18n={i18n}
+          onChange={(nextEntry, i18nPatch) => i18nPatch ? setEntryAndI18n(nextEntry, i18nPatch) : onChange(nextEntry)}
+          setProject={setProject}
+        />
       )}
 
       {entry.kind === "custom" && (
@@ -3113,6 +3187,7 @@ function SpecialOrderObjectiveEditor({ objective, index, project, itemOptions, m
           <Field label="收集箱 DropBox" value={stringField(data.DropBox || "DropBox")} onChange={(DropBox) => patchData({ DropBox })} />
           <ComboField label="收集箱地点" value={stringField(data.DropBoxGameLocation || "Town")} options={mapOptions} onChange={(DropBoxGameLocation) => patchData({ DropBoxGameLocation: String(DropBoxGameLocation) })} />
           <Field label="指示坐标 X Y" value={stringField(data.DropBoxIndicatorLocation || "0 0")} onChange={(DropBoxIndicatorLocation) => patchData({ DropBoxIndicatorLocation })} />
+          <ItemSingleSelect label="捐赠物品 ItemId" options={itemOptions} value={stringField(data.ItemId || "(O)388")} onChange={(ItemId) => patchData({ ItemId })} />
           <Field label="接受 Context Tags" value={stringField(data.AcceptedContextTags || "item_wood")} onChange={(AcceptedContextTags) => patchData({ AcceptedContextTags })} />
         </>}
         {objective.type === "Deliver" && <>
@@ -3351,7 +3426,7 @@ function ShopOwnerEditor({ owner, index, onChange, onRemove }: { owner: JsonDict
 
 function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset: Ruleset; setProject: (project: Project) => void }) {
   const [addPanelOpen, setAddPanelOpen] = useState(true);
-  const [drafts, setDrafts] = useState<MapDraft[]>([{ id: makeId(), kind: "custom", generated: [] }]);
+  const [drafts, setDrafts] = useState<MapDraft[]>(() => mapDraftsFromProject(project));
   const [mapResources, setMapResources] = useState<MapResourceResponse>({ maps: [], source_path: "", warning: "" });
 
   useEffect(() => {
@@ -3361,6 +3436,10 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    setDrafts(mapDraftsFromProject(project));
+  }, [project.meta.id, project.meta.updated_at]);
 
   function addDraft(kind: MapDraftKind) {
     setDrafts([...drafts, { id: makeId(), kind, generated: [] }]);
@@ -3397,6 +3476,7 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
               <button type="button" className="compact-add-button" onClick={() => addDraft("custom")}><Icon name="plus" /><span>自定义新地图</span></button>
               <button type="button" className="compact-add-button" onClick={() => addDraft("edit")}><Icon name="plus" /><span>修改原有地图</span></button>
               <button type="button" className="compact-add-button" onClick={() => addDraft("warp")}><Icon name="plus" /><span>添加传送点</span></button>
+              <button type="button" className="compact-add-button" onClick={() => addDraft("tilesheets")}><Icon name="plus" /><span>额外贴图文件</span></button>
             </div>
           )}
         </aside>
@@ -3404,12 +3484,13 @@ function MapStudio({ project, ruleset, setProject }: { project: Project; ruleset
           {drafts.map((draft, index) => (
             <article className="card" key={draft.id}>
               <div className="card-head">
-                <strong>{index + 1}. {draft.kind === "custom" ? "自定义新地图" : draft.kind === "edit" ? "修改原有地图" : "添加传送点"}</strong>
+                <strong>{index + 1}. {draft.kind === "custom" ? "自定义新地图" : draft.kind === "edit" ? "修改原有地图" : draft.kind === "warp" ? "添加传送点" : "额外贴图文件"}</strong>
                 <button type="button" className="secondary" onClick={() => removeDraft(draft.id)}>删除</button>
               </div>
-              {draft.kind === "custom" && <CustomMapDraftForm draftId={draft.id} project={project} setProject={setProject} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
+              {draft.kind === "custom" && <CustomMapDraftForm draftId={draft.id} initial={customMapDraftInitial(project, draft.id)} project={project} setProject={setProject} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
               {draft.kind === "edit" && <EditMapDraftForm draftId={draft.id} project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
-              {draft.kind === "warp" && <MapWarpDraftForm draftId={draft.id} project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
+              {draft.kind === "warp" && <MapWarpDraftForm draftId={draft.id} initial={warpMapDraftInitial(project, draft.id)} project={project} ruleset={ruleset} setProject={setProject} mapResources={mapResources.maps} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
+              {draft.kind === "tilesheets" && <MapTilesheetDraftForm draftId={draft.id} project={project} setProject={setProject} onGenerated={(refs) => recordGenerated(draft.id, refs)} />}
             </article>
           ))}
           {!drafts.length && <div className="empty compact-empty">暂无地图操作。请从左侧添加。</div>}
@@ -3429,6 +3510,50 @@ function mapDraftId(advanced: JsonDict | undefined) {
   const studio = isObject(advanced?.StardewCPStudio) ? advanced?.StardewCPStudio as JsonDict : {};
   const mapDraft = isObject(studio.mapDraft) ? studio.mapDraft as JsonDict : {};
   return typeof mapDraft.draftId === "string" ? mapDraft.draftId : "";
+}
+
+function mapDraftKind(advanced: JsonDict | undefined): MapDraftKind | "" {
+  const studio = isObject(advanced?.StardewCPStudio) ? advanced?.StardewCPStudio as JsonDict : {};
+  const mapDraft = isObject(studio.mapDraft) ? studio.mapDraft as JsonDict : {};
+  return mapDraft.kind === "custom" || mapDraft.kind === "edit" || mapDraft.kind === "warp" || mapDraft.kind === "tilesheets" ? mapDraft.kind : "";
+}
+
+function mapDraftsFromProject(project: Project): MapDraft[] {
+  const byId = new Map<string, MapDraft>();
+  function add(draftId: string, kind: MapDraftKind, ref: MapGeneratedRef) {
+    if (!draftId) return;
+    const existing = byId.get(draftId);
+    if (existing) existing.generated.push(ref);
+    else byId.set(draftId, { id: draftId, kind, generated: [ref] });
+  }
+  for (const entry of project.game_data) {
+    const draftId = mapDraftId(entry.advanced);
+    const kind = mapDraftKind(entry.advanced);
+    if (draftId && kind) add(draftId, kind, { target: entry.target, key: entry.key });
+  }
+  for (const patch of project.patches) {
+    const draftId = mapDraftId(patch.advanced);
+    const kind = mapDraftKind(patch.advanced);
+    if (draftId && kind) add(draftId, kind, { action: patch.action, target: patch.target, from_file: patch.from_file ?? null });
+  }
+  for (const entry of project.game_data) {
+    if (entry.target !== "Data/Locations" || mapDraftId(entry.advanced)) continue;
+    const value = isObject(entry.value) ? entry.value as JsonDict : {};
+    const createOnLoad = isObject(value.CreateOnLoad) ? value.CreateOnLoad as JsonDict : {};
+    const mapPath = stringField(createOnLoad.MapPath);
+    if (!entry.key || !mapPath.startsWith("Maps/")) continue;
+    add(`restored-custom-${entry.key}`, "custom", { target: entry.target, key: entry.key });
+    const loadPatch = project.patches.find((patch) => patch.action === "Load" && patch.target === mapPath);
+    if (loadPatch) add(`restored-custom-${entry.key}`, "custom", { action: "Load", target: loadPatch.target, from_file: loadPatch.from_file ?? null });
+  }
+  project.patches.forEach((patch, index) => {
+    if (mapDraftId(patch.advanced)) return;
+    if (patch.action === "EditMap" && (Array.isArray(patch.fields.AddWarps) || Array.isArray(patch.fields.AddNpcWarps))) {
+      add(`restored-warp-${patch.id || index}`, "warp", { action: patch.action, target: patch.target, from_file: patch.from_file ?? null });
+    }
+  });
+  const restored = Array.from(byId.values()).filter((draft) => draft.kind === "custom" || draft.kind === "warp" || draft.kind === "edit" || draft.kind === "tilesheets");
+  return restored.length ? restored : [{ id: makeId(), kind: "custom", generated: [] }];
 }
 
 function mapRefMatchesEntry(ref: MapGeneratedRef, entry: GameDataEntry) {
@@ -3453,17 +3578,80 @@ function withMapDraftAdvanced<T extends { advanced: JsonDict }>(item: T, draftId
   };
 }
 
-function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { draftId: string; project: Project; setProject: (project: Project) => void; onGenerated: (refs: MapGeneratedRef[]) => void }) {
-  const [mapKeyRaw, setMapKeyRaw] = useState("ExampleCave");
-  const [displayName, setDisplayName] = useState("Example Cave");
-  const [mapFile, setMapFile] = useState("");
-  const [previewFile, setPreviewFile] = useState("");
-  const [arrival, setArrival] = useState<MapPoint>({ X: 0, Y: 0 });
-  const [locationType, setLocationType] = useState("Default");
-  const [alwaysActive, setAlwaysActive] = useState(false);
-  const [canPlant, setCanPlant] = useState(false);
-  const [greenRainSpawns, setGreenRainSpawns] = useState(false);
-  const [excludePathfinding, setExcludePathfinding] = useState(false);
+function customMapDraftInitial(project: Project, draftId: string): CustomMapDraftInitial {
+  const restoredKey = draftId.startsWith("restored-custom-") ? draftId.replace(/^restored-custom-/, "") : "";
+  const entry = project.game_data.find((item) =>
+    item.target === "Data/Locations" &&
+    (isMapDraftOwned(item.advanced, draftId) || Boolean(restoredKey && item.key === restoredKey))
+  );
+  const value = isObject(entry?.value) ? entry.value as JsonDict : {};
+  const studio = isObject(entry?.advanced?.StardewCPStudio) ? entry?.advanced.StardewCPStudio as JsonDict : {};
+  const mapMeta = isObject(studio.map) ? studio.map as JsonDict : {};
+  const mapKey = stringField(entry?.key || mapMeta.key || "Custom_ExampleCave");
+  const mapKeyRaw = mapKey.replace(/^Custom_/, "") || "ExampleCave";
+  const loadPatch = project.patches.find((patch) => patch.action === "Load" && patch.target === `Maps/${mapKey}`);
+  const arrival = isObject(value.DefaultArrivalTile) ? value.DefaultArrivalTile as JsonDict : {};
+  const displayNameKey = i18nKeyFromRef(value.DisplayName);
+  const inferredPreview = stringField(mapMeta.previewFile || `assets/Maps/${mapKey}/preview.png`);
+  const previewFile = previewAssetForPath(project, inferredPreview) ? inferredPreview : stringField(mapMeta.previewFile || "");
+  return {
+    mapKeyRaw,
+    displayName: displayNameKey ? stringField(project.i18n[displayNameKey] || mapKeyRaw) : mapKeyRaw,
+    mapFile: stringField(mapMeta.mapFile || loadPatch?.from_file || ""),
+    previewFile,
+    arrival: { X: integerInRange(arrival.X, 0, 999, 0), Y: integerInRange(arrival.Y, 0, 999, 0) },
+    locationType: stringField(value.Type || "Default"),
+    alwaysActive: Boolean(value.AlwaysActive),
+    canPlant: Boolean(value.CanPlantHere),
+    greenRainSpawns: Boolean(value.CanHaveGreenRainSpawns),
+    excludePathfinding: Boolean(value.ExcludeFromNpcPathfinding)
+  };
+}
+
+function warpMapDraftInitial(project: Project, draftId: string): WarpMapDraftInitial {
+  const restoredWarpId = draftId.startsWith("restored-warp-") ? draftId.replace(/^restored-warp-/, "") : "";
+  const patch = project.patches.find((item) => item.action === "EditMap" && isMapDraftOwned(item.advanced, draftId)) ||
+    (restoredWarpId ? project.patches.find((item, index) => item.action === "EditMap" && (item.id || String(index)) === restoredWarpId) : undefined) ||
+    project.patches.find((item) => item.action === "EditMap" && (Array.isArray(item.fields.AddWarps) || Array.isArray(item.fields.AddNpcWarps)));
+  const studio = isObject(patch?.advanced?.StardewCPStudio) ? patch?.advanced.StardewCPStudio as JsonDict : {};
+  const saved = isObject(studio.mapWarp) ? studio.mapWarp as JsonDict : {};
+  if (Object.keys(saved).length) {
+    return {
+      warpSourceMap: stringField(saved.warpSourceMap || patch?.target || "Maps/Town"),
+      warpTargetMap: stringField(saved.warpTargetMap || "Maps/Farm"),
+      warpFrom: mapPointFromUnknown(saved.warpFrom),
+      warpTo: mapPointFromUnknown(saved.warpTo),
+      warpKind: saved.warpKind === "AddNpcWarps" ? "AddNpcWarps" : "AddWarps"
+    };
+  }
+  const warpKind = Array.isArray(patch?.fields?.AddNpcWarps) ? "AddNpcWarps" : "AddWarps";
+  const raw = Array.isArray(patch?.fields?.[warpKind]) ? stringField((patch?.fields?.[warpKind] as unknown[])[0]) : "";
+  const parts = raw.split(/\s+/).filter(Boolean);
+  return {
+    warpSourceMap: stringField(patch?.target || "Maps/Town"),
+    warpTargetMap: parts[2] ? `Maps/${parts[2]}` : "Maps/Farm",
+    warpFrom: { X: integerInRange(parts[0], 0, 999, 0), Y: integerInRange(parts[1], 0, 999, 0) },
+    warpTo: { X: integerInRange(parts[3], 0, 999, 0), Y: integerInRange(parts[4], 0, 999, 0) },
+    warpKind
+  };
+}
+
+function mapPointFromUnknown(value: unknown): MapPoint {
+  const point = isObject(value) ? value : {};
+  return { X: integerInRange(point.X, 0, 999, 0), Y: integerInRange(point.Y, 0, 999, 0) };
+}
+
+function CustomMapDraftForm({ draftId, initial, project, setProject, onGenerated }: { draftId: string; initial: CustomMapDraftInitial; project: Project; setProject: (project: Project) => void; onGenerated: (refs: MapGeneratedRef[]) => void }) {
+  const [mapKeyRaw, setMapKeyRaw] = useState(initial.mapKeyRaw);
+  const [displayName, setDisplayName] = useState(initial.displayName);
+  const [mapFile, setMapFile] = useState(initial.mapFile);
+  const [previewFile, setPreviewFile] = useState(initial.previewFile);
+  const [arrival, setArrival] = useState<MapPoint>(initial.arrival);
+  const [locationType, setLocationType] = useState(initial.locationType);
+  const [alwaysActive, setAlwaysActive] = useState(initial.alwaysActive);
+  const [canPlant, setCanPlant] = useState(initial.canPlant);
+  const [greenRainSpawns, setGreenRainSpawns] = useState(initial.greenRainSpawns);
+  const [excludePathfinding, setExcludePathfinding] = useState(initial.excludePathfinding);
   const [status, setStatus] = useState("");
   const mapKey = customMapKey(mapKeyRaw);
   const customPreview = previewAssetForPath(project, previewFile);
@@ -3490,7 +3678,7 @@ function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { dra
         ...locationEntry.advanced,
         StardewCPStudio: {
           ...(isObject(locationEntry.advanced.StardewCPStudio) ? locationEntry.advanced.StardewCPStudio as JsonDict : {}),
-          map: { key: mapKey, previewFile: nextPreviewFile },
+          map: { key: mapKey, mapFile: nextMapFile, previewFile: nextPreviewFile },
           mapDraft: { draftId, kind: "custom" }
         }
       }
@@ -3540,6 +3728,137 @@ function CustomMapDraftForm({ draftId, project, setProject, onGenerated }: { dra
         <button type="button" onClick={() => upsertCustomMap()}><Icon name="plus" />生成/更新自定义地图</button>
       </div>
       {customPreview && <MapPreviewPicker title="预览图坐标" image={assetToMapPreview(customPreview)} selected={arrival} onPick={setArrival} />}
+    </div>
+  );
+}
+
+type TilesheetDraftItem = { id: string; file: File; name: string; draftName: string; storedPath: string; previewUrl: string; assetId?: string; status: string };
+
+function MapTilesheetDraftForm({ draftId, project, setProject, onGenerated }: { draftId: string; project: Project; setProject: (project: Project) => void; onGenerated: (refs: MapGeneratedRef[]) => void }) {
+  const [items, setItems] = useState<TilesheetDraftItem[]>([]);
+  const [status, setStatus] = useState("");
+  const target = tilesheetLoadTarget(items);
+  const fromFile = "assets/Tilesheets/{{TargetWithoutPath}}.png";
+
+  async function importItem(baseProject: Project, item: TilesheetDraftItem) {
+    const storedPath = tilesheetStoredPath(item.name);
+    const response = await importProjectAssetWithRecord(baseProject, item.file, storedPath);
+    return {
+      project: response.project,
+      item: {
+        ...item,
+        storedPath,
+        assetId: response.asset.id,
+        status: `已导入：${storedPath}`
+      }
+    };
+  }
+
+  async function importFiles(files: File[]) {
+    let nextProject = project;
+    const imported: TilesheetDraftItem[] = [];
+    for (const file of files) {
+      const name = normalizeTilesheetName(file.name.replace(/\.[^.]+$/, ""));
+      const previewUrl = URL.createObjectURL(file);
+      const item: TilesheetDraftItem = { id: makeId(), file, name, draftName: name, storedPath: tilesheetStoredPath(name), previewUrl, status: "导入中..." };
+      try {
+        const result = await importItem(nextProject, item);
+        nextProject = result.project;
+        imported.push(result.item);
+      } catch (error) {
+        imported.push({ ...item, status: `导入失败：${readError(error)}` });
+      }
+    }
+    setItems((current) => [...current, ...imported]);
+    setProject(nextProject);
+    setStatus(imported.length ? `已导入 ${imported.length} 张贴图。` : "");
+  }
+
+  function updateDraftName(index: number, nextName: string) {
+    const item = items[index];
+    if (!item) return;
+    setItems(replaceAt(items, index, { ...item, draftName: nextName }));
+  }
+
+  async function applyRename(index: number) {
+    const item = items[index];
+    if (!item) return;
+    const renamed = { ...item, name: normalizeTilesheetName(item.draftName), draftName: normalizeTilesheetName(item.draftName), status: "正在更新文件名..." };
+    setItems(replaceAt(items, index, renamed));
+    try {
+      const result = await importItem(project, renamed);
+      setProject(result.project);
+      setItems((current) => replaceAt(current, index, result.item));
+    } catch (error) {
+      setItems((current) => replaceAt(current, index, { ...renamed, status: `重命名导入失败：${readError(error)}` }));
+    }
+  }
+
+  function removeItem(index: number) {
+    setItems(items.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function upsertTilesheetLoad() {
+    const validItems = items.filter((item) => item.name.trim());
+    if (!validItems.length) {
+      setStatus("请先导入至少一张 PNG 贴图。");
+      return;
+    }
+    const patch: Patch = withMapDraftAdvanced({
+      id: makeId(),
+      name: "加载地图额外贴图文件",
+      action: "Load",
+      enabled: true,
+      target: tilesheetLoadTarget(validItems),
+      from_file: fromFile,
+      when: {},
+      fields: { Priority: "Low" },
+      advanced: {}
+    }, draftId, "tilesheets");
+    setProject({
+      ...project,
+      patches: mergeWorkflowPatches(project.patches, [patch])
+    });
+    onGenerated([{ action: "Load", target: patch.target, from_file: fromFile }]);
+    setStatus(`已生成总导入：${patch.target}`);
+  }
+
+  return (
+    <div className="map-studio">
+      {status && <div className="status">{status}</div>}
+      <div className="grid two">
+        <label className="field character-asset-field">
+          <span>导入多张 PNG 贴图</span>
+          <input type="file" accept="image/png" multiple onChange={(event) => importFiles(Array.from(event.target.files || []))} />
+          <code>assets/Tilesheets/&lt;文件名&gt;.png</code>
+        </label>
+        <div className="field">
+          <span>总 Load Target</span>
+          <code>{target || "Maps/<文件名>, Maps/<文件名>"}</code>
+        </div>
+        <div className="field">
+          <span>总 FromFile</span>
+          <code>{fromFile}</code>
+        </div>
+      </div>
+      <div className="tilesheet-grid">
+        {items.map((item, index) => (
+          <div className="tilesheet-card" key={item.id}>
+            <img src={item.previewUrl} alt={item.name} />
+            <Field label="文件名（不含 .png）" value={item.draftName} onChange={(next) => updateDraftName(index, next)} />
+            <code>{item.storedPath}</code>
+            <small>{item.status}</small>
+            <div className="button-row">
+              <button type="button" className="secondary" onClick={() => applyRename(index)}>应用文件名</button>
+              <button type="button" className="secondary" onClick={() => removeItem(index)}>删除贴图</button>
+            </div>
+          </div>
+        ))}
+        {!items.length && <div className="empty compact-empty">还没有导入贴图。案例中的 VanillaCraftables、AI、blanket 等就是这里的文件名。</div>}
+      </div>
+      <div className="button-row">
+        <button type="button" onClick={upsertTilesheetLoad}><Icon name="plus" />生成/更新贴图总导入</button>
+      </div>
     </div>
   );
 }
@@ -3601,12 +3920,12 @@ function EditMapDraftForm({ draftId, project, ruleset, setProject, mapResources,
   );
 }
 
-function MapWarpDraftForm({ draftId, project, ruleset, setProject, mapResources, onGenerated }: { draftId: string; project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[]; onGenerated: (refs: MapGeneratedRef[]) => void }) {
-  const [warpSourceMap, setWarpSourceMap] = useState("Maps/Town");
-  const [warpTargetMap, setWarpTargetMap] = useState("Maps/Farm");
-  const [warpFrom, setWarpFrom] = useState<MapPoint>({ X: 0, Y: 0 });
-  const [warpTo, setWarpTo] = useState<MapPoint>({ X: 0, Y: 0 });
-  const [warpKind, setWarpKind] = useState<"AddWarps" | "AddNpcWarps">("AddWarps");
+function MapWarpDraftForm({ draftId, initial, project, ruleset, setProject, mapResources, onGenerated }: { draftId: string; initial: WarpMapDraftInitial; project: Project; ruleset: Ruleset; setProject: (project: Project) => void; mapResources: MapResourceEntry[]; onGenerated: (refs: MapGeneratedRef[]) => void }) {
+  const [warpSourceMap, setWarpSourceMap] = useState(initial.warpSourceMap);
+  const [warpTargetMap, setWarpTargetMap] = useState(initial.warpTargetMap);
+  const [warpFrom, setWarpFrom] = useState<MapPoint>(initial.warpFrom);
+  const [warpTo, setWarpTo] = useState<MapPoint>(initial.warpTo);
+  const [warpKind, setWarpKind] = useState<"AddWarps" | "AddNpcWarps">(initial.warpKind);
   const [status, setStatus] = useState("");
   const allMapOptions = mapTargetOptions(project, ruleset);
   const warpSourcePreview = previewForMapTarget(project, warpSourceMap, mapResources);
@@ -3614,7 +3933,7 @@ function MapWarpDraftForm({ draftId, project, ruleset, setProject, mapResources,
 
   function addWarpPatch() {
     const warp = `${warpFrom.X} ${warpFrom.Y} ${mapNameFromTarget(warpTargetMap)} ${warpTo.X} ${warpTo.Y}`;
-    const patch: Patch = withMapDraftAdvanced({
+    const patch = withMapDraftAdvanced({
       id: makeId(),
       name: `${warpKind === "AddNpcWarps" ? "NPC" : "玩家"}传送 ${warpSourceMap}`,
       action: "EditMap",
@@ -3625,6 +3944,13 @@ function MapWarpDraftForm({ draftId, project, ruleset, setProject, mapResources,
       fields: { [warpKind]: [warp] },
       advanced: {}
     }, draftId, "warp");
+    patch.advanced = {
+      ...patch.advanced,
+      StardewCPStudio: {
+        ...(isObject(patch.advanced.StardewCPStudio) ? patch.advanced.StardewCPStudio as JsonDict : {}),
+        mapWarp: { warpSourceMap, warpTargetMap, warpFrom, warpTo, warpKind }
+      }
+    };
     setProject({ ...project, patches: mergeWorkflowPatches(project.patches, [patch]) });
     onGenerated([{ action: "EditMap", target: warpSourceMap, from_file: null }]);
     setStatus(`已生成 ${warpKind}: ${warp}`);
@@ -3985,7 +4311,7 @@ function ScheduleEntryForm({ project, entry, ruleset, onChange }: { project: Pro
       {finalKey === "spring" && <div className="notice compact-note">Wiki 提醒：spring 常作为默认日程，建议保留至少一个可用 spring 日程。</div>}
       <div className="grid two">
         <ComboField label="初始命令" value={meta.initialCommand} options={rulesetOptions(ruleset, "schedule_initial_commands")} onChange={(initialCommand) => updateMeta({ initialCommand: String(initialCommand) })} />
-        {meta.initialCommand === "GOTO" && <Field label="跳转 Key" value={meta.gotoKey} onChange={(gotoKey) => updateMeta({ gotoKey })} />}
+        {meta.initialCommand === "GOTO" && <ComboField label="跳转 Key" value={meta.gotoKey} options={scheduleGotoKeyOptions(project, npcName, finalKey)} onChange={(gotoKey) => updateMeta({ gotoKey: String(gotoKey) })} />}
         {meta.initialCommand === "NOT_FRIENDSHIP" && <>
           <Field label="NPC" value={meta.friendshipNpc} onChange={(friendshipNpc) => updateMeta({ friendshipNpc })} />
           <Field label="心数" value={stringField(meta.friendshipHearts)} onChange={(friendshipHearts) => updateMeta({ friendshipHearts: integerInRange(friendshipHearts, 0, 14, 6) })} />
@@ -3997,33 +4323,37 @@ function ScheduleEntryForm({ project, entry, ruleset, onChange }: { project: Pro
           <Field label="已收到跳转 Key" value={meta.mailReceivedKey} onChange={(mailReceivedKey) => updateMeta({ mailReceivedKey })} />
         </>}
       </div>
-      <div className="structured-editor">
-        <div className="structured-editor-head">
-          <div>
-          <strong>移动点位 / 地点列表</strong>
-          <span>一个日程可以去多个地方；每个点位会按 Wiki 格式用 / 串成 schedule script。</span>
+      {meta.initialCommand === "GOTO" ? (
+        <div className="notice compact-note">GOTO 日程只导出 <code>{`GOTO ${meta.gotoKey || "spring"}`}</code>。地点列表已临时隐藏，原点位数据会保留，切回普通日程后仍可继续编辑。</div>
+      ) : (
+        <div className="structured-editor">
+          <div className="structured-editor-head">
+            <div>
+            <strong>移动点位 / 地点列表</strong>
+            <span>一个日程可以去多个地方；每个点位会按 Wiki 格式用 / 串成 schedule script。</span>
+          </div>
+            <button type="button" className="secondary" onClick={addPoint}><Icon name="plus" />添加下一个地点</button>
+          </div>
+          {mapError && <div className="inline-error">{mapError}</div>}
+          {meta.points.map((point, index) => (
+            <SchedulePointEditor
+              key={point.id}
+              project={project}
+              npcName={npcName}
+              scheduleKey={finalKey}
+              index={index}
+              point={point}
+              ruleset={ruleset}
+              mapResources={mapResources.maps}
+              onChange={(nextPoint) => updatePoint(index, nextPoint)}
+              onMoveUp={() => movePoint(index, -1)}
+              onMoveDown={() => movePoint(index, 1)}
+              onRemove={() => removePoint(index)}
+            />
+          ))}
+          {!meta.points.length && <div className="empty compact-empty">暂无日程点位。</div>}
         </div>
-          <button type="button" className="secondary" onClick={addPoint}><Icon name="plus" />添加下一个地点</button>
-        </div>
-        {mapError && <div className="inline-error">{mapError}</div>}
-        {meta.points.map((point, index) => (
-          <SchedulePointEditor
-            key={point.id}
-            project={project}
-            npcName={npcName}
-            scheduleKey={finalKey}
-            index={index}
-            point={point}
-            ruleset={ruleset}
-            mapResources={mapResources.maps}
-            onChange={(nextPoint) => updatePoint(index, nextPoint)}
-            onMoveUp={() => movePoint(index, -1)}
-            onMoveDown={() => movePoint(index, 1)}
-            onRemove={() => removePoint(index)}
-          />
-        ))}
-        {!meta.points.length && <div className="empty compact-empty">暂无日程点位。</div>}
-      </div>
+      )}
       <div className="field">
         <span>脚本预览</span>
         <code>{buildScheduleScript(meta, npcName, finalKey)}</code>
@@ -4034,8 +4364,8 @@ function ScheduleEntryForm({ project, entry, ruleset, onChange }: { project: Pro
 }
 
 function SchedulePointEditor({ project, npcName, scheduleKey, index, point, ruleset, mapResources, onChange, onMoveUp, onMoveDown, onRemove }: { project: Project; npcName: string; scheduleKey: string; index: number; point: SchedulePoint; ruleset: Ruleset; mapResources: MapResourceEntry[]; onChange: (point: SchedulePoint) => void; onMoveUp: () => void; onMoveDown: () => void; onRemove: () => void }) {
-  const selectedMap = mapResources.find((item) => item.key === point.location);
   const isBed = point.location === "bed";
+  const selectedMapPreview = isBed ? null : previewForMapTarget(project, point.location.startsWith("Maps/") ? point.location : `Maps/${point.location}`, mapResources);
   const locationOptions = scheduleLocationOptions(project, mapResources);
   const dialogueKey = point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`;
 
@@ -4060,50 +4390,49 @@ function SchedulePointEditor({ project, npcName, scheduleKey, index, point, rule
           <Field label="X" value={stringField(point.x)} onChange={(x) => patchPoint({ x: integerInRange(x, 0, 999, 0) })} />
           <Field label="Y" value={stringField(point.y)} onChange={(y) => patchPoint({ y: integerInRange(y, 0, 999, 0) })} />
           <ComboField label="朝向" value={point.direction} options={SCHEDULE_DIRECTION_OPTIONS} onChange={(direction) => patchPoint({ direction: Number(direction) })} />
-          <ComboField label="动画" value={point.animation} options={scheduleAnimationOptions(ruleset, npcName)} onChange={(animation) => patchPoint({ animation: String(animation).replace("<npc>", npcName) })} />
+          <ComboField label="动画" value={point.animation} options={scheduleAnimationOptions(project, ruleset, npcName)} onChange={(animation) => patchPoint({ animation: String(animation).replace("<npc>", npcName) })} />
           <Field label="自定义动画" value={point.animation} onChange={(animation) => patchPoint({ animation })} />
           <Field label="日程台词 Key" value={dialogueKey} onChange={(nextKey) => patchPoint({ dialogueKey: nextKey })} />
-          <DialogueTextTools label="日程台词" project={project} npcName={npcName} value={point.dialogueText} onChange={(dialogueText) => patchPoint({ dialogueText, dialogueKey })} />
+          <AffinityDialogueVariantEditor
+            title="日程台词"
+            project={project}
+            npcName={npcName}
+            variants={point.dialogueVariants}
+            onChange={(dialogueVariants) => patchPoint({ dialogueVariants, dialogueText: dialogueVariants["0123"], dialogueKey })}
+          />
         </>}
       </div>
-      {selectedMap && !isBed ? (
-        <div className="schedule-map-picker">
-          <div className="schedule-map-meta">{selectedMap.filename}：{selectedMap.width}x{selectedMap.height}px，{selectedMap.tile_width}x{selectedMap.tile_height} 格；当前 {point.x} {point.y}</div>
-          <div className="schedule-map-scroll">
-            <img
-              src={selectedMap.url}
-              alt={selectedMap.key}
-              onClick={(event) => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                const x = Math.floor(((event.clientX - rect.left) / rect.width) * selectedMap.width / 16);
-                const y = Math.floor(((event.clientY - rect.top) / rect.height) * selectedMap.height / 16);
-                patchPoint({ x: Math.max(0, Math.min(selectedMap.tile_width - 1, x)), y: Math.max(0, Math.min(selectedMap.tile_height - 1, y)), location: selectedMap.key });
-              }}
-            />
-          </div>
-        </div>
-      ) : !isBed ? <div className="notice compact-note">这个地点没有内置预览图，可手动输入坐标。</div> : null}
+      {!isBed && (
+        <MapPreviewPicker
+          title="日程点位坐标"
+          image={selectedMapPreview}
+          selected={{ X: point.x, Y: point.y }}
+          onPick={(nextPoint) => patchPoint({ x: nextPoint.X, y: nextPoint.Y })}
+        />
+      )}
     </div>
   );
 }
 
 function AnimationEntryForm({ project, entry, onChange }: { project: Project; entry: GameDataEntry; onChange: (entry: GameDataEntry) => void }) {
+  const [activePart, setActivePart] = useState<AnimationFramePart>("repeatFrames");
   const [insertIndex, setInsertIndex] = useState<number | null>(null);
   const meta = animationMetaFromEntry(entry);
   const npcName = normalizeInternalName(meta.npcName || npcNameFromAnimationKey(entry.key) || "ExampleNPC");
   const finalKey = meta.isSleep ? sleepAnimationKey(npcName) : normalizeAnimationKey(meta.customKey || entry.key || `${npcName}_CustomAnimation`);
-  const framesText = stringField(meta.framesText || entry.value || "");
-  const editableFrames = parseAnimationFrameNumbers(framesText);
+  const value = buildAnimationDescriptionValue(meta, npcName, finalKey);
+  const activeFramesText = stringField(meta[activePart] || "");
+  const editableFrames = parseAnimationFrameNumbers(activeFramesText);
 
   function commit(nextMeta: AnimationMeta) {
     const nextNpc = normalizeInternalName(nextMeta.npcName || npcName);
     const key = nextMeta.isSleep ? sleepAnimationKey(nextNpc) : normalizeAnimationKey(nextMeta.customKey || `${nextNpc}_CustomAnimation`);
-    const value = stringField(nextMeta.framesText);
+    const nextValue = buildAnimationDescriptionValue(nextMeta, nextNpc, key);
     onChange({
       ...entry,
       target: "Data/animationDescriptions",
       key,
-      value,
+      value: nextValue,
       name: entry.name || `${nextNpc} 动画`,
       advanced: {
         ...entry.advanced,
@@ -4113,7 +4442,8 @@ function AnimationEntryForm({ project, entry, onChange }: { project: Project; en
             ...nextMeta,
             npcName: nextNpc,
             customKey: key,
-            framesText: value
+            rawValue: nextMeta.rawMode ? stringField(nextMeta.rawValue || nextValue) : "",
+            exportValue: nextValue
           }
         }
       }
@@ -4121,12 +4451,12 @@ function AnimationEntryForm({ project, entry, onChange }: { project: Project; en
   }
 
   function updateMeta(patch: Partial<AnimationMeta>) {
-    commit({ ...meta, npcName, customKey: finalKey, framesText, ...patch });
+    commit({ ...meta, npcName, customKey: finalKey, ...patch });
   }
 
   function updateFrames(frames: number[]) {
     const nextFramesText = animationFramesToText(frames);
-    updateMeta({ framesText: nextFramesText });
+    updateMeta({ [activePart]: nextFramesText, rawMode: false } as Partial<AnimationMeta>);
     setInsertIndex(Math.min(insertIndex ?? frames.length, frames.length));
   }
 
@@ -4141,6 +4471,12 @@ function AnimationEntryForm({ project, entry, onChange }: { project: Project; en
     if (!editableFrames.valid) return;
     updateFrames(editableFrames.frames.filter((_, itemIndex) => itemIndex !== index));
     setInsertIndex(Math.max(0, Math.min(index, editableFrames.frames.length - 1)));
+  }
+
+  function switchPart(part: AnimationFramePart) {
+    setActivePart(part);
+    const parsed = parseAnimationFrameNumbers(stringField(meta[part] || ""));
+    setInsertIndex(parsed.valid ? parsed.frames.length : 0);
   }
 
   return (
@@ -4168,49 +4504,88 @@ function AnimationEntryForm({ project, entry, onChange }: { project: Project; en
           <code>Data/animationDescriptions</code>
         </div>
       </div>
-      <AnimationFrameSequence
-        frames={editableFrames.valid ? editableFrames.frames : []}
-        valid={editableFrames.valid}
-        error={editableFrames.error}
-        insertIndex={insertIndex ?? (editableFrames.valid ? editableFrames.frames.length : 0)}
-        onSelectInsertIndex={setInsertIndex}
-        onRemove={removeFrame}
+      <div className="animation-part-tabs">
+        {ANIMATION_FRAME_PARTS.map((part) => (
+          <button type="button" className={activePart === part.key ? "active" : ""} key={part.key} onClick={() => switchPart(part.key)}>
+            {part.label}
+          </button>
+        ))}
+      </div>
+      {ANIMATION_FRAME_PARTS.map((part) => {
+        const parsed = parseAnimationFrameNumbers(stringField(meta[part.key] || ""));
+        return (
+          <AnimationFrameSequence
+            key={part.key}
+            title={part.label}
+            note={part.note}
+            frames={parsed.valid ? parsed.frames : []}
+            valid={parsed.valid}
+            error={parsed.error}
+            active={activePart === part.key}
+            insertIndex={activePart === part.key ? insertIndex ?? (parsed.valid ? parsed.frames.length : 0) : -1}
+            onActivate={() => switchPart(part.key)}
+            onSelectInsertIndex={(index) => { setActivePart(part.key); setInsertIndex(index); }}
+            onRemove={(index) => { setActivePart(part.key); const frames = parsed.valid ? parsed.frames : []; updateMeta({ [part.key]: animationFramesToText(frames.filter((_, itemIndex) => itemIndex !== index)), rawMode: false } as Partial<AnimationMeta>); }}
+          />
+        );
+      })}
+      <div className="grid two">
+        <BoolField label="去掉阴影 laying_down" value={meta.layingDown} onChange={(layingDown) => updateMeta({ layingDown, rawMode: false })} />
+        <BoolField label="启用像素偏移 offset" value={meta.useOffset} onChange={(useOffset) => updateMeta({ useOffset, rawMode: false })} />
+        {meta.useOffset && <>
+          <Field label="offset X" value={String(meta.offsetX)} onChange={(offsetX) => updateMeta({ offsetX: integerInRange(offsetX, -999, 999, 0), rawMode: false })} />
+          <Field label="offset Y" value={String(meta.offsetY)} onChange={(offsetY) => updateMeta({ offsetY: integerInRange(offsetY, -999, 999, 0), rawMode: false })} />
+        </>}
+      </div>
+      <AffinityDialogueVariantEditor
+        title="动画期间对话"
+        project={project}
+        npcName={npcName}
+        variants={meta.messageVariants}
+        onChange={(messageVariants) => updateMeta({ messageVariants, messageText: messageVariants["0123"], rawMode: false })}
       />
-      <SpriteFramePicker project={project} npcName={npcName} framesText={framesText} insertIndex={insertIndex ?? (editableFrames.valid ? editableFrames.frames.length : 0)} onInsert={insertFrame} />
+      {meta.rawMode && (
+        <div className="subsection">
+          <div className="notice compact-note">旧动画值无法安全拆分，当前处于原始字符串模式。修改任意帧区块或选项后会切换为结构化导出。</div>
+          <Field label="原始 animationDescriptions 值" value={stringField(meta.rawValue || entry.value)} textarea onChange={(rawValue) => updateMeta({ rawValue, rawMode: true })} />
+        </div>
+      )}
+      <SpriteFramePicker project={project} npcName={npcName} framesText={activeFramesText} insertIndex={insertIndex ?? (editableFrames.valid ? editableFrames.frames.length : 0)} onInsert={insertFrame} />
       <div className="notice compact-note">
-        当前导出：<code>Data/animationDescriptions</code> / Key <code>{finalKey}</code> = <code>{framesText || "0/1/2"}</code>
+        当前导出：<code>Data/animationDescriptions</code> / Key <code>{finalKey}</code> = <code>{value || "0/1/2"}</code>
+        {hasAffinityDialogueText(meta.messageVariants) && <>；文本：<code>Strings/animation/{npcName}</code> / <code>{finalKey}</code> → <code>{animationI18nKey(npcName, finalKey)}.&lt;group&gt;</code></>}
       </div>
     </div>
   );
 }
 
-function AnimationFrameSequence({ frames, valid, error, insertIndex, onSelectInsertIndex, onRemove }: { frames: number[]; valid: boolean; error: string; insertIndex: number; onSelectInsertIndex: (index: number) => void; onRemove: (index: number) => void }) {
+function AnimationFrameSequence({ title = "动画帧序列", note = "点击两个编号之间的空隙选择插入位置；点击下方行走图帧后会插入到该位置。", frames, valid, error, active = true, insertIndex, onActivate, onSelectInsertIndex, onRemove }: { title?: string; note?: string; frames: number[]; valid: boolean; error: string; active?: boolean; insertIndex: number; onActivate?: () => void; onSelectInsertIndex: (index: number) => void; onRemove: (index: number) => void }) {
   return (
-    <div className="animation-sequence-editor">
+    <div className={`animation-sequence-editor ${active ? "active" : ""}`} onClick={onActivate}>
       <div className="structured-editor-head">
         <div>
-          <strong>动画帧序列</strong>
-          <span>点击两个编号之间的空隙选择插入位置；点击下方行走图帧后会插入到该位置。</span>
+          <strong>{title}</strong>
+          <span>{note}</span>
         </div>
       </div>
       {!valid && <div className="inline-error">{error}</div>}
       {valid ? (
         <div className="animation-frame-sequence">
-          <button type="button" className={`animation-insert-slot ${insertIndex === 0 ? "active" : ""}`} onClick={() => onSelectInsertIndex(0)} title="插入到开头" />
+          <button type="button" className={`animation-insert-slot ${insertIndex === 0 ? "active" : ""}`} onClick={(event) => { event.stopPropagation(); onSelectInsertIndex(0); }} title="插入到开头" />
           {frames.map((frame, index) => (
             <React.Fragment key={`${index}-${frame}`}>
               <div className="animation-frame-cell">
                 <span>{frame}</span>
-                <button type="button" className="animation-frame-remove" onClick={() => onRemove(index)} title={`删除 ${frame}`}>×</button>
+                <button type="button" className="animation-frame-remove" onClick={(event) => { event.stopPropagation(); onRemove(index); }} title={`删除 ${frame}`}>×</button>
               </div>
-              <button type="button" className={`animation-insert-slot ${insertIndex === index + 1 ? "active" : ""}`} onClick={() => onSelectInsertIndex(index + 1)} title={`插入到第 ${index + 1} 格后`} />
+              <button type="button" className={`animation-insert-slot ${insertIndex === index + 1 ? "active" : ""}`} onClick={(event) => { event.stopPropagation(); onSelectInsertIndex(index + 1); }} title={`插入到第 ${index + 1} 格后`} />
             </React.Fragment>
           ))}
           {!frames.length && <div className="compact-empty">暂无帧。选择下方编号后会插入到这里。</div>}
         </div>
       ) : (
         <div className="button-row">
-          <button type="button" className="secondary" onClick={() => onSelectInsertIndex(0)}>等待正确格式</button>
+          <button type="button" className="secondary" onClick={(event) => { event.stopPropagation(); onSelectInsertIndex(0); }}>等待正确格式</button>
         </div>
       )}
     </div>
@@ -4258,7 +4633,7 @@ function SpriteFramePicker({ project, npcName, framesText, insertIndex, onInsert
     if (!parsed.valid || parsed.frames.length <= 1) return;
     const timer = window.setInterval(() => {
       setActiveFrame((current) => (current + 1) % parsed.frames.length);
-    }, 250);
+    }, 100);
     return () => window.clearInterval(timer);
   }, [parsed.valid, parsed.frames.join("/")]);
 
@@ -4296,24 +4671,279 @@ function SpriteFramePicker({ project, npcName, framesText, insertIndex, onInsert
   );
 }
 
+function EventSpriteFramePicker({ project, setProject, actorName, framesText, onChange }: { project: Project; setProject: (project: Project) => void; actorName: string; framesText: string; onChange: (frames: string) => void }) {
+  const [frames, setFrames] = useState<string[]>([]);
+  const [activeFrame, setActiveFrame] = useState(0);
+  const [insertIndex, setInsertIndex] = useState(0);
+  const normalizedActor = normalizeInternalName(actorName || "ExampleNPC");
+  const spriteAsset = findNpcSpriteAsset(project, normalizedActor);
+  const parsed = parseEventAnimationFrames(framesText, frames.length);
+  const sequenceFrames = parsed.valid ? parsed.frames : [];
+
+  useEffect(() => {
+    if (insertIndex > sequenceFrames.length) setInsertIndex(sequenceFrames.length);
+  }, [insertIndex, sequenceFrames.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFrames([]);
+    if (!spriteAsset) return;
+    const image = new Image();
+    image.onload = () => {
+      if (cancelled) return;
+      const columns = Math.floor(image.width / 16);
+      const rows = Math.floor(image.height / 32);
+      const nextFrames: string[] = [];
+      const canvas = document.createElement("canvas");
+      canvas.width = 16;
+      canvas.height = 32;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < columns; x += 1) {
+          context.clearRect(0, 0, 16, 32);
+          context.drawImage(image, x * 16, y * 32, 16, 32, 0, 0, 16, 32);
+          nextFrames.push(canvas.toDataURL("image/png"));
+        }
+      }
+      setFrames(nextFrames);
+      setActiveFrame(0);
+    };
+    image.src = `/api/assets/${spriteAsset.id}`;
+    return () => {
+      cancelled = true;
+    };
+  }, [spriteAsset?.id]);
+
+  useEffect(() => {
+    if (!parsed.valid || parsed.frames.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setActiveFrame((current) => (current + 1) % parsed.frames.length);
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [parsed.valid, parsed.frames.join(" ")]);
+
+  function commitFrames(nextFrames: number[]) {
+    onChange(eventAnimationFramesToText(nextFrames));
+  }
+
+  function insertFrame(frame: number) {
+    if (!parsed.valid) return;
+    const nextFrames = [...sequenceFrames];
+    nextFrames.splice(Math.max(0, Math.min(insertIndex, nextFrames.length)), 0, frame);
+    commitFrames(nextFrames);
+    setInsertIndex(Math.max(0, Math.min(insertIndex + 1, nextFrames.length)));
+  }
+
+  function removeFrame(index: number) {
+    const nextFrames = sequenceFrames.filter((_, itemIndex) => itemIndex !== index);
+    commitFrames(nextFrames);
+    setInsertIndex(Math.max(0, Math.min(insertIndex, nextFrames.length)));
+  }
+
+  const previewIndex = parsed.valid ? parsed.frames[activeFrame % Math.max(1, parsed.frames.length)] : null;
+
+  return (
+    <div className="sprite-frame-picker">
+      <CharacterAssetImport
+        label="导入该角色行走图 Sprite"
+        project={project}
+        npcName={normalizedActor}
+        assetKind="sprite"
+        currentPath={spriteAsset?.stored_path || ""}
+        onImported={(nextProject) => setProject(nextProject)}
+      />
+      <AnimationFrameSequence
+        frames={sequenceFrames}
+        valid={parsed.valid}
+        error={parsed.error}
+        insertIndex={Math.max(0, Math.min(insertIndex, sequenceFrames.length))}
+        onSelectInsertIndex={setInsertIndex}
+        onRemove={removeFrame}
+      />
+      <div className="structured-editor-head">
+        <div>
+          <strong>事件动画帧编号</strong>
+          <span>{spriteAsset ? `${spriteAsset.stored_path}；事件 animate 使用空格分隔帧。` : "导入或选择该角色的行走图后，可以点击 16x32 帧生成 animate 帧列表。"}</span>
+        </div>
+        <div className="animation-preview">
+          {previewIndex !== null && frames[previewIndex] ? (
+            <img src={frames[previewIndex]} alt={`frame ${previewIndex}`} />
+          ) : (
+            <span>{framesText.trim() ? "等待正确格式" : "等待帧序列"}</span>
+          )}
+        </div>
+      </div>
+      {!parsed.valid && framesText.trim() && <div className="inline-error">{parsed.error}</div>}
+      {spriteAsset ? (
+        <div className="sprite-frame-grid">
+          {frames.map((frame, index) => (
+            <button type="button" className="sprite-frame-token" key={`${spriteAsset.id}-${index}`} onClick={() => insertFrame(index)} title={`插入 ${index}`}>
+              <img src={frame} alt={`frame ${index}`} />
+              <span>{index}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="notice compact-note">当前项目里还没有找到 <code>{normalizedActor}</code> 的行走图素材。可以在这里直接导入，或先到角色素材里导入。</div>
+      )}
+    </div>
+  );
+}
+
+function PatioSpriteFramePicker({ project, setProject, npcName, framesText, onChange }: { project: Project; setProject: (project: Project) => void; npcName: string; framesText: string; onChange: (frames: string) => void }) {
+  const [frames, setFrames] = useState<string[]>([]);
+  const [activeFrame, setActiveFrame] = useState(0);
+  const [insertIndex, setInsertIndex] = useState(0);
+  const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
+  const spriteAsset = findNpcSpriteAsset(project, normalizedNpc);
+  const parsed = parsePatioFrameSequence(framesText, frames.length);
+  const sequenceFrames = parsed.valid ? parsed.frames : [];
+
+  useEffect(() => {
+    if (insertIndex > sequenceFrames.length) setInsertIndex(sequenceFrames.length);
+  }, [insertIndex, sequenceFrames.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFrames([]);
+    if (!spriteAsset) return;
+    const image = new Image();
+    image.onload = () => {
+      if (cancelled) return;
+      const columns = Math.floor(image.width / 16);
+      const rows = Math.floor(image.height / 32);
+      const nextFrames: string[] = [];
+      const canvas = document.createElement("canvas");
+      canvas.width = 16;
+      canvas.height = 32;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < columns; x += 1) {
+          context.clearRect(0, 0, 16, 32);
+          context.drawImage(image, x * 16, y * 32, 16, 32, 0, 0, 16, 32);
+          nextFrames.push(canvas.toDataURL("image/png"));
+        }
+      }
+      setFrames(nextFrames);
+      setActiveFrame(0);
+    };
+    image.src = `/api/assets/${spriteAsset.id}`;
+    return () => {
+      cancelled = true;
+    };
+  }, [spriteAsset?.id]);
+
+  useEffect(() => {
+    if (!parsed.valid || parsed.frames.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setActiveFrame((current) => (current + 1) % parsed.frames.length);
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [parsed.valid, parsed.frames.join(" ")]);
+
+  function commitFrames(nextFrames: number[]) {
+    onChange(eventAnimationFramesToText(nextFrames));
+  }
+
+  function insertFrame(frame: number) {
+    if (!parsed.valid) return;
+    const nextFrames = [...sequenceFrames];
+    nextFrames.splice(Math.max(0, Math.min(insertIndex, nextFrames.length)), 0, frame);
+    commitFrames(nextFrames);
+    setInsertIndex(Math.max(0, Math.min(insertIndex + 1, nextFrames.length)));
+  }
+
+  function removeFrame(index: number) {
+    const nextFrames = sequenceFrames.filter((_, itemIndex) => itemIndex !== index);
+    commitFrames(nextFrames);
+    setInsertIndex(Math.max(0, Math.min(insertIndex, nextFrames.length)));
+  }
+
+  const previewIndex = parsed.valid ? parsed.frames[activeFrame % Math.max(1, parsed.frames.length)] : null;
+
+  return (
+    <div className="sprite-frame-picker">
+      <CharacterAssetImport
+        label="导入该角色行走图 Sprite"
+        project={project}
+        npcName={normalizedNpc}
+        assetKind="sprite"
+        currentPath={spriteAsset?.stored_path || ""}
+        onImported={(nextProject) => setProject(nextProject)}
+      />
+      <AnimationFrameSequence
+        frames={sequenceFrames}
+        valid={parsed.valid}
+        error={parsed.error}
+        insertIndex={Math.max(0, Math.min(insertIndex, sequenceFrames.length))}
+        onSelectInsertIndex={setInsertIndex}
+        onRemove={removeFrame}
+      />
+      <div className="structured-editor-head">
+        <div>
+          <strong>庭院动画帧编号</strong>
+          <span>{spriteAsset ? `${spriteAsset.stored_path}；预览按每帧 100ms 播放，导出时连续相同帧会自动合并时长。` : "导入角色行走图后，可以点击 16x32 帧生成庭院动画。"}</span>
+        </div>
+        <div className="animation-preview">
+          {previewIndex !== null && frames[previewIndex] ? (
+            <img src={frames[previewIndex]} alt={`frame ${previewIndex}`} />
+          ) : (
+            <span>{framesText.trim() ? "等待正确格式" : "等待帧序列"}</span>
+          )}
+        </div>
+      </div>
+      {!parsed.valid && framesText.trim() && <div className="inline-error">{parsed.error}</div>}
+      {spriteAsset ? (
+        <div className="sprite-frame-grid">
+          {frames.map((frame, index) => (
+            <button type="button" className="sprite-frame-token" key={`${spriteAsset.id}-patio-${index}`} onClick={() => insertFrame(index)} title={`插入 ${index}`}>
+              <img src={frame} alt={`frame ${index}`} />
+              <span>{index}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="notice compact-note">当前项目里还没有找到 <code>{normalizedNpc}</code> 的行走图素材。可以在这里直接导入。</div>
+      )}
+      <div className="notice compact-note">例如 <code>19 19 18 18 18 19</code> 会导出为 <code>[[19,200],[18,300],[19]]</code>。</div>
+    </div>
+  );
+}
+
 function animationMetaFromEntry(entry: GameDataEntry): AnimationMeta {
   const studio = isObject(entry.advanced?.StardewCPStudio) ? entry.advanced.StardewCPStudio as JsonDict : {};
   const saved = isObject(studio.animation) ? studio.animation as JsonDict : {};
   const npcName = stringField(saved.npcName || npcNameFromAnimationKey(entry.key) || "ExampleNPC");
   const isSleep = saved.isSleep === undefined ? /_sleep$/i.test(entry.key) : Boolean(saved.isSleep);
+  const parsed = parseAnimationDescriptionValue(stringField(entry.value || saved.exportValue || saved.framesText || "0/1/2"));
+  const savedOffset = isObject(saved.offset) ? saved.offset as JsonDict : {};
+  const hasSavedMessage = stringField(saved.messageText || "").trim().length > 0;
+  const messageVariants = normalizeAffinityDialogueVariants(saved.messageVariants, stringField(saved.messageText || ""));
   return {
     npcName,
     isSleep,
     customKey: stringField(saved.customKey || entry.key || `${npcName}_CustomAnimation`),
-    framesText: stringField(saved.framesText || entry.value || "0/1/2")
+    entryFrames: stringField(saved.entryFrames ?? parsed.entryFrames),
+    repeatFrames: stringField(saved.repeatFrames ?? parsed.repeatFrames),
+    leavingFrames: stringField(saved.leavingFrames ?? parsed.leavingFrames),
+    messageText: stringField(saved.messageText || ""),
+    messageVariants,
+    layingDown: saved.layingDown === undefined ? parsed.layingDown : Boolean(saved.layingDown),
+    useOffset: saved.useOffset === undefined ? parsed.useOffset : Boolean(saved.useOffset),
+    offsetX: integerInRange(saved.offsetX ?? savedOffset.X ?? parsed.offsetX, -999, 999, 0),
+    offsetY: integerInRange(saved.offsetY ?? savedOffset.Y ?? parsed.offsetY, -999, 999, 0),
+    rawMode: saved.rawMode === undefined ? (parsed.rawMode || (parsed.hasExternalMessage && !hasSavedMessage && !hasAffinityDialogueText(messageVariants))) : Boolean(saved.rawMode),
+    rawValue: stringField(saved.rawValue || (parsed.rawMode ? entry.value : ""))
   };
 }
 
 function parseAnimationFrames(text: string, frameCount: number) {
   const trimmed = text.trim();
-  if (!trimmed) return { valid: false, frames: [] as number[], error: "请输入帧编号，例如 50/50/50。" };
-  if (!/^\d+(\s*\/\s*\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "格式应为数字用 / 分隔，例如 0/1/2。" };
-  const frames = trimmed.split("/").map((part) => Number(part.trim()));
+  if (!trimmed) return { valid: false, frames: [] as number[], error: "请输入帧编号，例如 16 16 17 17。" };
+  if (!/^\d+(\s+\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "格式应为空格分隔数字，例如 16 16 17 17。" };
+  const frames = trimmed.split(/\s+/).map((part) => Number(part.trim()));
   const outOfRange = frames.find((frame) => frame < 0 || frame >= frameCount);
   if (outOfRange !== undefined) return { valid: false, frames, error: `帧 ${outOfRange} 超出当前行走图范围。` };
   return { valid: true, frames, error: "" };
@@ -4322,12 +4952,155 @@ function parseAnimationFrames(text: string, frameCount: number) {
 function parseAnimationFrameNumbers(text: string) {
   const trimmed = text.trim();
   if (!trimmed) return { valid: true, frames: [] as number[], error: "" };
-  if (!/^\d+(\s*\/\s*\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "已有帧序列格式异常；请选择下方帧重新生成序列。" };
-  return { valid: true, frames: trimmed.split("/").map((part) => Number(part.trim())), error: "" };
+  if (!/^\d+(\s+\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "已有帧序列格式异常；请选择下方帧重新生成序列。" };
+  return { valid: true, frames: trimmed.split(/\s+/).map((part) => Number(part.trim())), error: "" };
 }
 
 function animationFramesToText(frames: number[]) {
-  return frames.map((frame) => String(Math.max(0, Math.round(frame)))).join("/");
+  return frames.map((frame) => String(Math.max(0, Math.round(frame)))).join(" ");
+}
+
+type AnimationFramePart = "entryFrames" | "repeatFrames" | "leavingFrames";
+
+const ANIMATION_FRAME_PARTS: { key: AnimationFramePart; label: string; note: string }[] = [
+  { key: "entryFrames", label: "开场帧 Entry Frames", note: "NPC 到达日程点后先播放一次。" },
+  { key: "repeatFrames", label: "循环帧 Repeat Frames", note: "停留期间循环播放，常用重复帧控制停留时间。" },
+  { key: "leavingFrames", label: "离开帧 Leaving Frames", note: "离开前播放一次，然后前往下一个日程点。" }
+];
+
+function buildAnimationDescriptionValue(meta: AnimationMeta, npcName: string, animationKey: string) {
+  if (meta.rawMode) return stringField(meta.rawValue || "");
+  const base = [
+    animationFramePartValue(meta.entryFrames, "0"),
+    animationFramePartValue(meta.repeatFrames, "0"),
+    animationFramePartValue(meta.leavingFrames, "0")
+  ];
+  const messageKey = hasAffinityDialogueText(meta.messageVariants) ? `Strings\\\\animation\\\\${npcName}:${animationKey}` : "";
+  const extras: string[] = [];
+  if (meta.layingDown) extras.push("laying_down");
+  if (meta.useOffset) extras.push(`offset ${integerInRange(meta.offsetX, -999, 999, 0)} ${integerInRange(meta.offsetY, -999, 999, 0)}`);
+  if (messageKey || extras.length) base.push(messageKey);
+  return [...base, ...extras].join("/");
+}
+
+function animationFramePartValue(value: string, fallback: string) {
+  const parsed = parseAnimationFrameNumbers(value);
+  return parsed.valid && parsed.frames.length ? animationFramesToText(parsed.frames) : fallback;
+}
+
+function parseAnimationDescriptionValue(value: string): AnimationMeta & { hasExternalMessage?: boolean } {
+  const parts = stringField(value || "0/1/2").split("/");
+  const frameParts = parts.slice(0, 3);
+  const framesValid = frameParts.length >= 3 && frameParts.every((part) => parseAnimationFrameNumbers(part.trim()).valid);
+  if (!framesValid) {
+    return {
+      npcName: "ExampleNPC",
+      isSleep: false,
+      customKey: "CustomAnimation",
+      entryFrames: "0",
+      repeatFrames: "1",
+      leavingFrames: "2",
+      messageText: "",
+      messageVariants: emptyAffinityDialogueVariants(),
+      layingDown: false,
+      useOffset: false,
+      offsetX: 0,
+      offsetY: 0,
+      rawMode: true,
+      rawValue: value
+    };
+  }
+  const extraParts = parts.slice(3).map((part) => part.trim());
+  const messagePart = extraParts[0] && extraParts[0] !== "laying_down" && !/^offset\s+/i.test(extraParts[0]) ? extraParts[0] : "";
+  const offsetPart = extraParts.find((part) => /^offset\s+-?\d+\s+-?\d+$/i.test(part));
+  const offsetMatch = offsetPart?.match(/^offset\s+(-?\d+)\s+(-?\d+)$/i);
+  return {
+    npcName: "ExampleNPC",
+    isSleep: false,
+    customKey: "CustomAnimation",
+    entryFrames: frameParts[0].trim(),
+    repeatFrames: frameParts[1].trim(),
+    leavingFrames: frameParts[2].trim(),
+    messageText: "",
+    messageVariants: emptyAffinityDialogueVariants(),
+    layingDown: extraParts.some((part) => part === "laying_down"),
+    useOffset: Boolean(offsetMatch),
+    offsetX: integerInRange(offsetMatch?.[1], -999, 999, 0),
+    offsetY: integerInRange(offsetMatch?.[2], -999, 999, 0),
+    rawMode: false,
+    rawValue: "",
+    hasExternalMessage: Boolean(messagePart)
+  };
+}
+
+function animationI18nKey(npcName: string, animationKey: string) {
+  return `${normalizeInternalName(npcName || "ExampleNPC")}.Animation.${normalizeAnimationKey(animationKey || "CustomAnimation")}`;
+}
+
+function patioFramesToText(value: unknown) {
+  if (!Array.isArray(value)) return "";
+  const expanded: number[] = [];
+  value.forEach((frame) => {
+    if (Array.isArray(frame)) {
+      const index = Number(frame[0] ?? 0);
+      const duration = frame.length > 1 ? Number(frame[1]) : null;
+      const repeats = Number.isFinite(duration) && duration !== null ? Math.max(1, Math.round(duration / 100)) : 1;
+      for (let count = 0; count < repeats; count += 1) expanded.push(index);
+      return;
+    }
+    const frameNumber = Number(frame);
+    if (Number.isFinite(frameNumber)) expanded.push(frameNumber);
+  });
+  return expanded.join(" ");
+}
+
+function patioFramesFromText(text: string) {
+  const frames = parsePatioFrameSequence(text).frames;
+  const grouped: number[][] = [];
+  for (const frame of frames) {
+    const last = grouped[grouped.length - 1];
+    if (last && last[0] === frame) {
+      last[1] = (last[1] || 100) + 100;
+    } else {
+      grouped.push([frame]);
+    }
+  }
+  return grouped.map((frame, index) => {
+    if (frame.length === 1) return frame;
+    if (index === grouped.length - 1 && frame[1] === 100) return [frame[0]];
+    return frame;
+  });
+}
+
+function parsePatioAnimationFrames(text: string) {
+  const parsed = parsePatioFrameSequence(text);
+  return { valid: parsed.valid, error: parsed.error };
+}
+
+function parsePatioFrameSequence(text: string, frameCount = 0) {
+  const trimmed = text.trim();
+  if (!trimmed) return { valid: true, frames: [] as number[], error: "" };
+  if (!/^\d+(\s+\d+)*$/.test(trimmed)) {
+    return { valid: false, frames: [] as number[], error: "格式应为空格分隔的帧编号，例如 19 19 18 18 18 19。" };
+  }
+  const frames = trimmed.split(/\s+/).map((part) => Number(part));
+  const outOfRange = frameCount > 0 ? frames.find((frame) => frame < 0 || frame >= frameCount) : undefined;
+  if (outOfRange !== undefined) return { valid: false, frames, error: `帧 ${outOfRange} 超出当前行走图范围。` };
+  return { valid: true, frames, error: "" };
+}
+
+function parseEventAnimationFrames(text: string, frameCount: number) {
+  const trimmed = text.trim();
+  if (!trimmed) return { valid: true, frames: [] as number[], error: "" };
+  if (!/^\d+(\s+\d+)*$/.test(trimmed)) return { valid: false, frames: [] as number[], error: "事件 animate 帧应使用空格分隔，例如 0 1 2。" };
+  const frames = trimmed.split(/\s+/).map((part) => Number(part));
+  const outOfRange = frameCount > 0 ? frames.find((frame) => frame < 0 || frame >= frameCount) : undefined;
+  if (outOfRange !== undefined) return { valid: false, frames, error: `帧 ${outOfRange} 超出当前行走图范围。` };
+  return { valid: true, frames, error: "" };
+}
+
+function eventAnimationFramesToText(frames: number[]) {
+  return frames.map((frame) => String(Math.max(0, Math.round(frame)))).join(" ");
 }
 
 function npcNameFromAnimationKey(key: string) {
@@ -4356,8 +5129,8 @@ function scheduleMetaFromEntry(entry: GameDataEntry): ScheduleMeta {
     npcName,
     keyType,
     fields,
-    initialCommand: stringField(saved.initialCommand || "none"),
-    gotoKey: stringField(saved.gotoKey || "spring"),
+    initialCommand: stringField(saved.initialCommand || inferScheduleInitialCommand(stringField(entry.value)) || "none"),
+    gotoKey: stringField(saved.gotoKey || inferScheduleGotoKey(stringField(entry.value)) || "spring"),
     friendshipNpc: stringField(saved.friendshipNpc || npcName),
     friendshipHearts: integerInRange(saved.friendshipHearts, 0, 14, 6),
     mailId: stringField(saved.mailId || "ExampleMail"),
@@ -4379,13 +5152,14 @@ function normalizeSchedulePoint(value: unknown): SchedulePoint {
     direction: integerInRange(source.direction, 0, 3, 2),
     animation: stringField(source.animation || ""),
     dialogueKey: stringField(source.dialogueKey || ""),
-    dialogueText: stringField(source.dialogueText || "")
+    dialogueText: stringField(source.dialogueText || ""),
+    dialogueVariants: normalizeAffinityDialogueVariants(source.dialogueVariants, stringField(source.dialogueText || ""))
   };
 }
 
 function defaultSchedulePoint(index: number, location: string): SchedulePoint {
   const times = ["0900", "1200", "1500", "1800", "2200"];
-  return { id: makeId(), time: times[index] || "0900", location, x: 0, y: 0, direction: 2, animation: "", dialogueKey: "", dialogueText: "" };
+  return { id: makeId(), time: times[index] || "0900", location, x: 0, y: 0, direction: 2, animation: "", dialogueKey: "", dialogueText: "", dialogueVariants: emptyAffinityDialogueVariants() };
 }
 
 function scheduleKeyFormats(ruleset: Ruleset): ScheduleKeyFormat[] {
@@ -4436,25 +5210,50 @@ function scheduleFieldLabel(name: string) {
 
 function buildScheduleScript(meta: ScheduleMeta, npcName: string, scheduleKey: string) {
   const parts: string[] = [];
-  if (meta.initialCommand === "GOTO") parts.push(`GOTO ${meta.gotoKey || "spring"}`);
+  if (meta.initialCommand === "GOTO") return `GOTO ${meta.gotoKey || "spring"}`;
   if (meta.initialCommand === "NOT_FRIENDSHIP") parts.push(`NOT friendship ${meta.friendshipNpc || npcName} ${Math.max(0, meta.friendshipHearts || 0) * 250}`, `GOTO ${meta.gotoKey || "spring"}`);
   if (meta.initialCommand === "MAIL") parts.push(`MAIL ${meta.mailId || "ExampleMail"}`, `GOTO ${meta.mailMissingKey || "spring"}`, `GOTO ${meta.mailReceivedKey || "spring"}`);
   for (const [index, point] of meta.points.entries()) parts.push(schedulePointScript(point, npcName, scheduleKey, index));
   return parts.filter(Boolean).join("/");
 }
 
+function scheduleGotoKeyOptions(project: Project, npcName: string, currentKey: string): RulesetOption[] {
+  const target = `Characters/schedules/${normalizeInternalName(npcName || "ExampleNPC")}`;
+  const values = new Set<string>();
+  for (const entry of project.game_data) {
+    if (entry.kind === "schedule" && entry.target === target && entry.key && entry.key !== currentKey) values.add(entry.key);
+  }
+  values.add("spring");
+  values.add("default");
+  values.delete(currentKey);
+  return [...values].map((value) => ({ label: value === currentKey ? `${value}（当前 Key）` : value, value }));
+}
+
+function inferScheduleInitialCommand(script: string) {
+  const trimmed = script.trim();
+  if (/^GOTO\s+\S+$/i.test(trimmed)) return "GOTO";
+  if (/^NOT\s+friendship\s+/i.test(trimmed)) return "NOT_FRIENDSHIP";
+  if (/^MAIL\s+/i.test(trimmed)) return "MAIL";
+  return "";
+}
+
+function inferScheduleGotoKey(script: string) {
+  const goto = script.trim().match(/^GOTO\s+(\S+)$/i);
+  return goto?.[1] || "";
+}
+
 function schedulePointScript(point: SchedulePoint, npcName: string, scheduleKey: string, index: number) {
   if (point.location === "bed") return `${point.time} bed`;
   const pieces = [point.time, point.location || "Town", String(point.x || 0), String(point.y || 0), String(point.direction ?? 2)];
   if (point.animation.trim()) pieces.push(point.animation.trim().replace("<npc>", npcName));
-  if (point.dialogueText.trim()) pieces.push(`"Strings\\\\schedules\\\\${npcName}:${point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`}"`);
+  if (hasAffinityDialogueText(point.dialogueVariants)) pieces.push(`"Strings\\\\schedules\\\\${npcName}:${point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`}"`);
   return pieces.join(" ");
 }
 
 function scheduleDialogueRows(meta: ScheduleMeta, npcName: string, scheduleKey: string) {
   return meta.points
     .map((point, index) => {
-      if (!point.dialogueText.trim()) return null;
+      if (!hasAffinityDialogueText(point.dialogueVariants)) return null;
       const key = point.dialogueKey || `${scheduleKey}.${String(index).padStart(3, "0")}`;
       return { key, i18nKey: `${npcName}.Schedule.${key}` };
     })
@@ -4570,8 +5369,16 @@ function MapAreaPicker({ title, image, area, onChange, lockSize = false }: { tit
   );
 }
 
-function scheduleAnimationOptions(ruleset: Ruleset, npcName: string): RulesetOption[] {
-  return rulesetOptions(ruleset, "schedule_animations").map((option) => ({ ...option, value: String(option.value).replace("<npc>", npcName), label: String(option.label).replace("<npc>", npcName) }));
+function scheduleAnimationOptions(project: Project, ruleset: Ruleset, npcName: string): RulesetOption[] {
+  const normalizedNpc = normalizeInternalName(npcName || "ExampleNPC");
+  const options = rulesetOptions(ruleset, "schedule_animations").map((option) => ({ ...option, value: String(option.value).replace("<npc>", normalizedNpc), label: String(option.label).replace("<npc>", normalizedNpc) }));
+  for (const entry of project.game_data) {
+    if (!isNpcAnimationEntry(entry, normalizedNpc)) continue;
+    const key = entry.key || normalizeAnimationKey(stringField(animationMetaFromEntry(entry).customKey));
+    if (!key || options.some((option) => String(option.value) === key)) continue;
+    options.push({ label: `角色动画 ${key}`, value: key });
+  }
+  return options;
 }
 
 function TriggerActionForm({ project, entry, ruleset, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; onChange: (entry: GameDataEntry) => void }) {
@@ -5060,6 +5867,31 @@ function TargetedAssetImport({ label, project, storedPath, accept, onImported }:
   );
 }
 
+function SpouseMapImport({ label, project, npcName, shortName, fallbackName, onImported }: { label: string; project: Project; npcName: string; shortName: string; fallbackName: string; onImported: (project: Project, storedPath: string, asset: Asset) => void }) {
+  const [status, setStatus] = useState("");
+  const basePath = `assets/Maps/${normalizeInternalName(npcName)}/${spouseMapShortName(shortName, fallbackName)}`;
+  return (
+    <label className="field character-asset-field">
+      <span>{label}</span>
+      <input type="file" accept=".tmx,.tbin" onChange={async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const ext = file.name.toLowerCase().endsWith(".tbin") ? ".tbin" : ".tmx";
+        const storedPath = `${basePath}${ext}`;
+        try {
+          const response = await importProjectAssetWithRecord(project, file, storedPath);
+          onImported(response.project, storedPath, response.asset);
+          setStatus(`已导入：${storedPath}`);
+        } catch (error) {
+          setStatus(`导入失败：${readError(error)}`);
+        }
+      }} />
+      <code>{basePath}.tmx / {basePath}.tbin</code>
+      {status && <small>{status}</small>}
+    </label>
+  );
+}
+
 function dictArray(value: unknown): JsonDict[] {
   return Array.isArray(value) ? value.filter(isObject) : [];
 }
@@ -5212,24 +6044,28 @@ function NpcAppearanceEditor({ value, project, ruleset, npcName, onChange, onImp
 
 function NpcSpouseRoomEditor({ value, project, npcName, onChange, onImportMap }: { value: unknown; project: Project; npcName: string; onChange: (value: JsonDict) => void; onImportMap: (nextProject: Project, nextRoom: JsonDict, patch?: Patch) => void }) {
   const room = isObject(value) ? value : {};
-  const rect = isObject(room.MapSourceRect) ? room.MapSourceRect : {};
   const hasRoom = Object.keys(room).length > 0;
-  const defaultMapKey = `Custom_${npcName}SpouseRoom`;
-  const mapKey = stringField(room.MapAsset || spouseRoomTarget(project, npcName));
+  const shortName = spouseMapShortName(stringField(room.MapAsset), `${npcName}SpouseRoom`);
+  const mapAsset = spouseMapAsset(shortName);
 
-  function updateRoom(patch: JsonDict) {
-    onChange({ ...room, ...patch });
+  function roomValue(nextShortName: string, patch: JsonDict = {}) {
+    return {
+      ...room,
+      ...patch,
+      MapAsset: spouseMapAsset(nextShortName),
+      MapSourceRect: spouseRoomSourceRect()
+    };
   }
 
-  function updateRect(key: "X" | "Y" | "Width" | "Height", next: string) {
-    updateRoom({ MapSourceRect: { ...rect, [key]: numberOrText(next) } });
+  function updateShortName(nextShortName: string) {
+    onChange(roomValue(nextShortName));
   }
 
-  function importSpouseRoomTexture(nextProject: Project, storedPath: string) {
-    const target = spouseRoomTarget(nextProject, npcName);
+  function importSpouseRoomMap(nextProject: Project, storedPath: string) {
+    const target = spouseMapLoadTarget(shortName);
     const patch: Patch = {
       id: makeId(),
-      name: `加载 ${npcName} 配偶房贴图`,
+      name: `加载 ${npcName} 配偶房地图`,
       action: "Load",
       enabled: true,
       target,
@@ -5238,7 +6074,7 @@ function NpcSpouseRoomEditor({ value, project, npcName, onChange, onImportMap }:
       fields: {},
       advanced: {}
     };
-    onImportMap(nextProject, { ...room, MapAsset: target }, patch);
+    onImportMap(nextProject, roomValue(shortName), patch);
   }
 
   return (
@@ -5246,18 +6082,23 @@ function NpcSpouseRoomEditor({ value, project, npcName, onChange, onImportMap }:
       <div className="structured-editor-head">
         <div>
           <strong>配偶房 SpouseRoom</strong>
-          <span>可结婚或室友路线常用。参考 Cale：MapAsset 加 MapSourceRect。</span>
+          <span>导入 tmx/tbin 地图；MapAsset 会自动写为 <code>{mapAsset}</code>，Load Target 写为 <code>{spouseMapLoadTarget(shortName)}</code>。</span>
         </div>
-        {!hasRoom && <button type="button" className="secondary" onClick={() => onChange({ MapAsset: spouseRoomTarget(project, npcName), MapSourceRect: { X: 0, Y: 0, Width: 6, Height: 9 } })}><Icon name="plus" />添加配偶房</button>}
+        {!hasRoom && <button type="button" className="secondary" onClick={() => onChange(roomValue(shortName))}><Icon name="plus" />添加配偶房</button>}
       </div>
       {hasRoom && (
         <div className="grid two">
-          <Field label="地图资源 MapAsset" value={mapKey} onChange={(next) => updateRoom({ MapAsset: next })} />
-          <Field label="矩形 X" value={stringField(rectField(rect, "X", 0))} onChange={(next) => updateRect("X", next)} />
-          <Field label="矩形 Y" value={stringField(rectField(rect, "Y", 0))} onChange={(next) => updateRect("Y", next)} />
-          <Field label="宽度 Width" value={stringField(rectField(rect, "Width", 6))} onChange={(next) => updateRect("Width", next)} />
-          <Field label="高度 Height" value={stringField(rectField(rect, "Height", 9))} onChange={(next) => updateRect("Height", next)} />
-          <TargetedAssetImport label="导入配偶房贴图图片" project={project} accept="image/png,image/jpeg,image/webp" storedPath={`assets/Maps/${defaultMapKey}/${defaultMapKey}.png`} onImported={(nextProject, storedPath) => importSpouseRoomTexture(nextProject, storedPath)} />
+          <Field label="地图短名" value={shortName} onChange={updateShortName} />
+          <div className="field">
+            <span>写入 MapAsset</span>
+            <code>{mapAsset}</code>
+          </div>
+          <div className="field">
+            <span>固定 MapSourceRect</span>
+            <code>{JSON.stringify(spouseRoomSourceRect())}</code>
+          </div>
+          <SpouseMapImport label="导入配偶房地图 tmx/tbin" project={project} npcName={npcName} shortName={shortName} fallbackName={`${npcName}SpouseRoom`} onImported={(nextProject, storedPath) => importSpouseRoomMap(nextProject, storedPath)} />
+          {stringField(room.MapAsset).startsWith("Mods/") && <div className="inline-warning">检测到旧的贴图式 MapAsset。请重新导入 tmx/tbin 地图以改为 <code>{mapAsset}</code>。</div>}
         </div>
       )}
       <JsonField label="SpouseRoom 高级 JSON" value={room} onChange={(next) => onChange(isObject(next) ? next : {})} />
@@ -5265,16 +6106,74 @@ function NpcSpouseRoomEditor({ value, project, npcName, onChange, onImportMap }:
   );
 }
 
-function NpcSpousePatioEditor({ value, onChange }: { value: unknown; onChange: (value: JsonDict) => void }) {
+function NpcSpousePatioEditor({ value, project, setProject, npcName, entry, characterValue, onChange }: { value: unknown; project: Project; setProject: (project: Project) => void; npcName: string; entry: GameDataEntry; characterValue: JsonDict; onChange: (value: JsonDict) => void }) {
   const patio = isObject(value) ? value : {};
+  const rect = isObject(patio.MapSourceRect) ? patio.MapSourceRect : {};
+  const pixelOffset = isObject(patio.SpriteAnimationPixelOffset) ? patio.SpriteAnimationPixelOffset : {};
+  const frames = patioFramesToText(patio.SpriteAnimationFrames);
+  const parsedFrames = parsePatioAnimationFrames(frames);
+  const shortName = spouseMapShortName(stringField(patio.MapAsset), "SpousePatio");
+
+  function updatePatio(patch: JsonDict) {
+    onChange({ ...patio, ...patch });
+  }
+
+  function updateRect(key: "X" | "Y" | "Width" | "Height", next: string) {
+    updatePatio({ MapSourceRect: { ...spousePatioSourceRect(rect), [key]: numberOrText(next) } });
+  }
+
+  function updatePixelOffset(key: "X" | "Y", next: string) {
+    updatePatio({ SpriteAnimationPixelOffset: { ...pixelOffset, [key]: numberOrText(next) } });
+  }
+
+  function updateFrames(nextFrames: string) {
+    updatePatio({ SpriteAnimationFrames: patioFramesFromText(nextFrames) });
+  }
+
+  function importSpousePatioMap(nextProject: Project, storedPath: string) {
+    const nextPatio = { ...patio, MapAsset: spouseMapAsset(shortName), MapSourceRect: spousePatioSourceRect(rect) };
+    const patch: Patch = {
+      id: makeId(),
+      name: `加载 ${npcName} 配偶庭院地图`,
+      action: "Load",
+      enabled: true,
+      target: spouseMapLoadTarget(shortName),
+      from_file: storedPath,
+      when: {},
+      fields: {},
+      advanced: {}
+    };
+    setProject({
+      ...nextProject,
+      patches: mergeWorkflowPatches(nextProject.patches, [patch]),
+      game_data: project.game_data.map((item) => item.id === entry.id ? { ...entry, value: { ...characterValue, SpousePatio: nextPatio } } : item)
+    });
+  }
 
   return (
     <div className="structured-editor">
       <div className="structured-editor-head">
         <div>
           <strong>配偶庭院 SpousePatio</strong>
-          <span>庭院动作先暂不表单化；这里保留原始 JSON，之后再按事件、地图和动作一起细化。</span>
+          <span>MapAsset 不包含 Maps/ 前缀；导入 tmx/tbin 后会生成 <code>{spouseMapLoadTarget(shortName)}</code>。动画按 100ms 帧序列编辑并自动压缩导出。</span>
         </div>
+      </div>
+      <div className="grid two">
+        <Field label="庭院地图短名" value={shortName} onChange={(next) => updatePatio({ MapAsset: spouseMapAsset(next), MapSourceRect: spousePatioSourceRect(rect) })} />
+        <div className="field">
+          <span>写入 MapAsset</span>
+          <code>{spouseMapAsset(shortName)}</code>
+        </div>
+        <Field label="矩形 X" value={stringField(rectField(rect, "X", 0))} onChange={(next) => updateRect("X", next)} />
+        <Field label="矩形 Y" value={stringField(rectField(rect, "Y", 0))} onChange={(next) => updateRect("Y", next)} />
+        <Field label="宽度 Width" value={stringField(rectField(rect, "Width", 4))} onChange={(next) => updateRect("Width", next)} />
+        <Field label="高度 Height" value={stringField(rectField(rect, "Height", 4))} onChange={(next) => updateRect("Height", next)} />
+        <SpouseMapImport label="导入配偶庭院地图 tmx/tbin" project={project} npcName={npcName} shortName={shortName} fallbackName="SpousePatio" onImported={(nextProject, storedPath) => importSpousePatioMap(nextProject, storedPath)} />
+        <Field label="动画帧序列 SpriteAnimationFrames" value={frames} onChange={updateFrames} />
+        {!parsedFrames.valid && frames.trim() && <div className="inline-error">{parsedFrames.error}</div>}
+        <PatioSpriteFramePicker project={project} setProject={setProject} npcName={npcName} framesText={frames} onChange={updateFrames} />
+        <Field label="像素偏移 X" value={stringField(pointField(pixelOffset, "X", 0))} onChange={(next) => updatePixelOffset("X", next)} />
+        <Field label="像素偏移 Y" value={stringField(pointField(pixelOffset, "Y", 0))} onChange={(next) => updatePixelOffset("Y", next)} />
       </div>
       <JsonField label="SpousePatio 高级 JSON" value={patio} onChange={(next) => onChange(isObject(next) ? next : {})} />
     </div>
@@ -5465,6 +6364,55 @@ function DialogueTextTools({ label, project, npcName, value, onChange }: { label
       <PersistentDetails className="portrait-tools" stateKey={`dialogue:portrait-tools:${npcName || "default"}`} title="头像编号按钮" defaultOpen={false}>
         <PortraitTokenPicker project={project} npcName={npcName} onInsert={insertToken} />
       </PersistentDetails>
+    </div>
+  );
+}
+
+const AFFINITY_DIALOGUE_GROUPS: { id: AffinityDialogueGroupId; label: string; whenLabel: string; suffix: string }[] = [
+  { id: "0123", label: "0-3 心", whenLabel: "Hearts:<NPC> = 0, 1, 2, 3", suffix: "0123" },
+  { id: "4567", label: "4-7 心", whenLabel: "Hearts:<NPC> = 4, 5, 6, 7", suffix: "4567" },
+  { id: "8910", label: "8-10 心", whenLabel: "Hearts:<NPC> = 8, 9, 10", suffix: "8910" },
+  { id: "married", label: "已婚", whenLabel: "Relationship:<NPC> = Married", suffix: "married" }
+];
+
+function emptyAffinityDialogueVariants(): AffinityDialogueVariants {
+  return { "0123": "", "4567": "", "8910": "", married: "" };
+}
+
+function normalizeAffinityDialogueVariants(value: unknown, legacyText = ""): AffinityDialogueVariants {
+  const source = isObject(value) ? value as JsonDict : {};
+  return {
+    "0123": stringField(source["0123"] ?? legacyText),
+    "4567": stringField(source["4567"] ?? ""),
+    "8910": stringField(source["8910"] ?? ""),
+    married: stringField(source.married ?? "")
+  };
+}
+
+function hasAffinityDialogueText(variants: AffinityDialogueVariants) {
+  return AFFINITY_DIALOGUE_GROUPS.some((group) => variants[group.id].trim());
+}
+
+function AffinityDialogueVariantEditor({ title, project, npcName, variants, onChange }: { title: string; project: Project; npcName: string; variants: AffinityDialogueVariants; onChange: (variants: AffinityDialogueVariants) => void }) {
+  return (
+    <div className="affinity-dialogue-editor">
+      <div className="structured-editor-head">
+        <div>
+          <strong>{title}</strong>
+          <span>默认按好感/关系分组导出；NPC 会自动填入 {npcName}。</span>
+        </div>
+      </div>
+      {AFFINITY_DIALOGUE_GROUPS.map((group) => (
+        <PersistentDetails key={group.id} className="dialogue-section" stateKey={`affinity-dialogue:${title}:${npcName}:${group.id}`} title={`${group.label} / ${group.whenLabel.replace("<NPC>", npcName)}`} defaultOpen={group.id === "0123" || Boolean(variants[group.id].trim())}>
+          <DialogueTextTools
+            label={`${title} ${group.label}`}
+            project={project}
+            npcName={npcName}
+            value={variants[group.id]}
+            onChange={(text) => onChange({ ...variants, [group.id]: text })}
+          />
+        </PersistentDetails>
+      ))}
     </div>
   );
 }
@@ -6047,9 +6995,17 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
       npcName,
       isSleep,
       customKey: key,
-      framesText: "0/1/2"
+      entryFrames: "0",
+      repeatFrames: "1",
+      leavingFrames: "2",
+      messageText: "",
+      messageVariants: emptyAffinityDialogueVariants(),
+      layingDown: false,
+      useOffset: false,
+      offsetX: 0,
+      offsetY: 0
     };
-    const animationEntry = npcModuleMetadata(createWorkflowEntry("animation", `${displayName} ${isSleep ? "睡眠动画" : "自定义动画"}`, "Data/animationDescriptions", key, meta.framesText), "animation");
+    const animationEntry = npcModuleMetadata(createWorkflowEntry("animation", `${displayName} ${isSleep ? "睡眠动画" : "自定义动画"}`, "Data/animationDescriptions", key, buildAnimationDescriptionValue(meta, npcName, key)), "animation");
     setExpandedNpcEntryId(mergedEntryId(project, animationEntry));
     upsertNpcEntries([{ ...animationEntry, advanced: { ...animationEntry.advanced, StardewCPStudio: { ...(isObject(animationEntry.advanced.StardewCPStudio) ? animationEntry.advanced.StardewCPStudio as JsonDict : {}), animation: meta } } }]);
   }
@@ -6155,6 +7111,25 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <ComboField label="社交焦虑 SocialAnxiety" value={value.SocialAnxiety || "Neutral"} options={options("npc_social_anxiety")} onChange={(next) => updateValue({ SocialAnxiety: next })} />
           <ComboField label="乐观程度 Optimism" value={value.Optimism || "Neutral"} options={options("npc_optimism")} onChange={(next) => updateValue({ Optimism: next })} />
           <Field label="默认地图 DefaultMap" value={stringField(value.DefaultMap || "Town")} onChange={(next) => updateValue({ DefaultMap: next })} />
+          <BoolField label="配偶收养孩子 SpouseAdopts" value={Boolean(value.SpouseAdopts)} onChange={(next) => updateValue({ SpouseAdopts: next })} />
+          <BoolField label="配偶想要孩子 SpouseWantsChildren" value={Boolean(value.SpouseWantsChildren)} onChange={(next) => updateValue({ SpouseWantsChildren: next })} />
+          <ConditionField label="配偶送礼嫉妒 SpouseGiftJealousy" value={value.SpouseGiftJealousy ?? true} onChange={(next) => updateValue({ SpouseGiftJealousy: next })} placeholder="TRUE" />
+          <Field label="嫉妒友谊变化 SpouseGiftJealousyFriendshipChange" value={stringField(value.SpouseGiftJealousyFriendshipChange ?? -30)} onChange={(next) => updateValue({ SpouseGiftJealousyFriendshipChange: numberOrText(next) })} />
+          <Field label="配偶可用地板 SpouseFloors" value={numberListToText(value.SpouseFloors)} onChange={(next) => updateValue({ SpouseFloors: textToNumberList(next) })} />
+          <Field label="配偶可用墙纸 SpouseWallpapers" value={numberListToText(value.SpouseWallpapers)} onChange={(next) => updateValue({ SpouseWallpapers: textToNumberList(next) })} />
+          <div className="notice compact-note">SpouseFloors 范围通常为 0-39；SpouseWallpapers 通常为 0-111。留空会省略字段，让游戏随机选择默认范围。</div>
+          <NpcSpouseRoomEditor
+            value={value.SpouseRoom || {}}
+            project={project}
+            npcName={npcName}
+            onChange={(next) => updateValue({ SpouseRoom: next })}
+            onImportMap={(nextProject, nextRoom, patch) => setProject({
+              ...nextProject,
+              patches: patch ? mergeWorkflowPatches(nextProject.patches, [patch]) : nextProject.patches,
+              game_data: project.game_data.map((item) => item.id === entry.id ? { ...entry, value: { ...value, SpouseRoom: nextRoom } } : item)
+            })}
+          />
+          <NpcSpousePatioEditor value={value.SpousePatio || {}} project={project} setProject={setProject} npcName={npcName} entry={entry} characterValue={value} onChange={(next) => updateValue({ SpousePatio: next })} />
         </div>
       </CollapsibleSubsection>
 
@@ -6242,24 +7217,10 @@ function NpcEntryForm({ project, entry, ruleset, itemCatalog, onChange, setProje
           <OptionalBoolField label="花舞节可跳舞 FlowerDanceCanDance" value={value.FlowerDanceCanDance} onChange={(next) => updateValue({ FlowerDanceCanDance: next })} />
           <ConditionField label="冬星盛宴参与 WinterStarParticipant" value={value.WinterStarParticipant ?? true} onChange={(next) => updateValue({ WinterStarParticipant: next })} placeholder="TRUE" />
           <BoolField label="生成缺失 NPC SpawnIfMissing" value={value.SpawnIfMissing !== false} onChange={(next) => updateValue({ SpawnIfMissing: next })} />
-          <BoolField label="配偶收养孩子 SpouseAdopts" value={Boolean(value.SpouseAdopts)} onChange={(next) => updateValue({ SpouseAdopts: next })} />
-          <BoolField label="配偶想要孩子 SpouseWantsChildren" value={Boolean(value.SpouseWantsChildren)} onChange={(next) => updateValue({ SpouseWantsChildren: next })} />
           <ComboField label="结局幻灯片 EndSlideShow" value={value.EndSlideShow || "MainGroup"} options={options("end_slideshow_groups")} onChange={(next) => updateValue({ EndSlideShow: next })} />
           <Field label="翻垃圾友谊影响 DumpsterDiveFriendshipEffect" value={String(value.DumpsterDiveFriendshipEffect ?? 0)} onChange={(next) => updateValue({ DumpsterDiveFriendshipEffect: numberOrText(next) })} />
           <JsonField label="朋友与家人 FriendsAndFamily" value={value.FriendsAndFamily || {}} onChange={(next) => updateValue({ FriendsAndFamily: next as JsonDict })} />
           <WinterStarGiftsEditor value={value.WinterStarGifts || []} project={project} ruleset={ruleset} itemCatalog={itemCatalog} onChange={(next) => updateValue({ WinterStarGifts: next })} />
-          <NpcSpouseRoomEditor
-            value={value.SpouseRoom || {}}
-            project={project}
-            npcName={npcName}
-            onChange={(next) => updateValue({ SpouseRoom: next })}
-            onImportMap={(nextProject, nextRoom, patch) => setProject({
-              ...nextProject,
-              patches: patch ? mergeWorkflowPatches(nextProject.patches, [patch]) : nextProject.patches,
-              game_data: project.game_data.map((item) => item.id === entry.id ? { ...entry, value: { ...value, SpouseRoom: nextRoom } } : item)
-            })}
-          />
-          <NpcSpousePatioEditor value={value.SpousePatio || {}} onChange={(next) => updateValue({ SpousePatio: next })} />
           <JsonField label="自定义字段 CustomFields" value={value.CustomFields || {}} onChange={(next) => updateValue({ CustomFields: next as JsonDict })} />
         </div>
         <div className="structured-editor-head">
@@ -6962,6 +7923,7 @@ function StoryEventStudio({ project, ruleset, itemCatalog, setProject }: { proje
                 itemCatalog={itemCatalog}
                 i18n={project.i18n}
                 onChange={(next, i18nPatch) => updateStoryEntry(index, next, i18nPatch)}
+                setProject={setProject}
               />
             </StudioEntryShell>
           ))}
@@ -6972,7 +7934,7 @@ function StoryEventStudio({ project, ruleset, itemCatalog, setProject }: { proje
   );
 }
 
-function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onChange }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onChange: (entry: GameDataEntry, i18nPatch?: Record<string, string>) => void }) {
+function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onChange, setProject }: { project: Project; entry: GameDataEntry; ruleset: Ruleset; itemCatalog: ItemCatalogResponse; i18n?: Record<string, string>; onChange: (entry: GameDataEntry, i18nPatch?: Record<string, string>) => void; setProject: (project: Project) => void }) {
   const meta = storyMetaFromEntry(project, entry);
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("speak");
   const [selectedNodeId, setSelectedNodeId] = useState(meta.nodes[0]?.id || "");
@@ -7091,6 +8053,7 @@ function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onCha
               <Field label="Y" value={stringField(actor.y)} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, y: integerInRange(value, -10000, 10000, actor.y) }) })} />
               <ComboField label="方向" value={actor.direction} options={STORY_DIRECTION_OPTIONS} onChange={(value) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, direction: Number(value) }) })} />
               <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, actors: meta.actors.filter((_, itemIndex) => itemIndex !== index) })}>删除</button>
+              <MapPreviewPicker title={`${actor.actor || "角色"} 初始位置`} image={eventMapPreview} selected={{ X: actor.x, Y: actor.y }} onPick={(point) => commitMeta({ ...meta, actors: replaceAt(meta.actors, index, { ...actor, x: point.X, y: point.Y }) })} />
             </div>
           ))}
           <button type="button" className="secondary" onClick={() => commitMeta({ ...meta, actors: [...meta.actors, { actor: "ExampleNPC", x: 0, y: 0, direction: 2 }] })}>添加角色位置</button>
@@ -7146,6 +8109,8 @@ function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onCha
               meta={meta}
               branches={meta.branches}
               mapPreview={eventMapPreview}
+              project={project}
+              setProject={setProject}
               itemOptions={itemOptions}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
@@ -7179,6 +8144,8 @@ function StoryEventForm({ project, entry, ruleset, itemCatalog, i18n = {}, onCha
               branch={branch}
               meta={meta}
               mapPreview={eventMapPreview}
+              project={project}
+              setProject={setProject}
               itemOptions={itemOptions}
               i18n={i18n}
               onChange={(nextBranch, i18nPatch) => commitMeta({ ...meta, branches: replaceAt(meta.branches, branchIndex, nextBranch) }, i18nPatch)}
@@ -7262,7 +8229,7 @@ function StoryPreconditionEditor({ condition, ruleset, onChange, onRemove }: { c
   );
 }
 
-function StoryBranchEditor({ branch, meta, mapPreview, itemOptions = [], i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; mapPreview?: MapPreviewImage | null; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
+function StoryBranchEditor({ branch, meta, mapPreview, project, setProject, itemOptions = [], i18n, onChange, onRemove }: { branch: StoryEventBranch; meta: StoryEventMeta; mapPreview?: MapPreviewImage | null; project: Project; setProject: (project: Project) => void; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (branch: StoryEventBranch, i18nPatch?: Record<string, string>) => void; onRemove: () => void }) {
   const [nodeKind, setNodeKind] = useState<EventNodeKind>("message");
   const [selectedNodeId, setSelectedNodeId] = useState(branch.nodes[0]?.id || "");
   const selectedNodeIndex = Math.max(0, branch.nodes.findIndex((node) => node.id === selectedNodeId));
@@ -7331,6 +8298,8 @@ function StoryBranchEditor({ branch, meta, mapPreview, itemOptions = [], i18n, o
               meta={{ ...meta, eventId: branch.key, i18nPrefix: `${meta.i18nPrefix}.${sanitizeI18nPart(branch.key)}`, nodes: branch.nodes }}
               branches={meta.branches}
               mapPreview={mapPreview}
+              project={project}
+              setProject={setProject}
               itemOptions={itemOptions}
               i18n={i18n}
               onChange={(next, textPatch) => updateNode(selectedNodeIndex, next, textPatch)}
@@ -7444,7 +8413,7 @@ function StoryFlowCanvas({ title, startLabel, nodes, branches = [], selectedNode
   );
 }
 
-function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, itemOptions = [], i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; mapPreview?: MapPreviewImage | null; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
+function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, project, setProject, itemOptions = [], i18n, onChange, onCreateBranch, onAddQuestionAnswer, onRemove, onMove }: { node: StoryEventNode; index: number; meta: StoryEventMeta; branches?: StoryEventBranch[]; mapPreview?: MapPreviewImage | null; project: Project; setProject: (project: Project) => void; itemOptions?: ItemOption[]; i18n: Record<string, string>; onChange: (node: StoryEventNode, textPatch?: { key: string; text: string }) => void; onCreateBranch?: (node: StoryEventNode) => void; onAddQuestionAnswer?: (node: StoryEventNode) => void; onRemove: () => void; onMove: (index: number, direction: -1 | 1) => void }) {
   const data = node.data || {};
   const textKey = stringField(data.i18nKey) || storyNodeI18nKey(meta, node);
   const textValue = stringField(i18n[textKey] ?? data.text ?? "");
@@ -7639,6 +8608,13 @@ function StoryNodeEditor({ node, index, meta, branches = [], mapPreview, itemOpt
             <BoolField label="循环 loop" value={data.loop !== false} onChange={(loop) => patchData({ loop })} />
             <Field label="每帧毫秒" value={stringField(data.frameDuration)} onChange={(frameDuration) => patchData({ frameDuration: integerInRange(frameDuration, 1, 600000, 120) })} />
             <Field label="帧列表" value={stringField(data.frames)} onChange={(frames) => patchData({ frames })} />
+            <EventSpriteFramePicker
+              project={project}
+              setProject={setProject}
+              actorName={stringField(data.actor) || "ExampleNPC"}
+              framesText={stringField(data.frames)}
+              onChange={(frames) => patchData({ frames })}
+            />
           </>
         )}
         {node.kind === "showFrame" && (
@@ -9330,6 +10306,10 @@ function gameDataTemplate(kind: GameDataEntry["kind"]) {
           SocialTab: "HiddenUntilMet",
           SpouseAdopts: false,
           SpouseWantsChildren: false,
+          SpouseGiftJealousy: true,
+          SpouseGiftJealousyFriendshipChange: -30,
+          SpouseFloors: [],
+          SpouseWallpapers: [],
           CanSocialize: true,
           CanReceiveGifts: true,
           CanGreetNearbyCharacters: false,
@@ -10828,6 +11808,7 @@ function defaultSpecialOrderObjective(project: Project, orderId: string, index: 
       DropBox: "DropBox",
       DropBoxGameLocation: "Town",
       DropBoxIndicatorLocation: "0 0",
+      ItemId: "(O)388",
       AcceptedContextTags: "item_wood"
     }
   };
@@ -11589,16 +12570,34 @@ function normalizeWinterStarGift(value: JsonDict): JsonDict {
 
 function findNpcPortraitAsset(project: Project, npcName: string) {
   const normalized = normalizeInternalName(npcName || "ExampleNPC");
+  const basePath = npcBaseAssetPath(project, normalized, "portrait");
+  const baseAsset = previewAssetForPath(project, basePath);
+  if (baseAsset) return baseAsset;
   const prefix = `assets/CharacterFiles/Portraits/${normalized}/`;
   const candidates = project.assets.filter((asset) => asset.stored_path.startsWith(prefix) && asset.content_type.startsWith("image/"));
-  return candidates[candidates.length - 1] || null;
+  return assetByPreferredName(candidates, normalized) || candidates[candidates.length - 1] || null;
 }
 
 function findNpcSpriteAsset(project: Project, npcName: string) {
   const normalized = normalizeInternalName(npcName || "ExampleNPC");
+  const basePath = npcBaseAssetPath(project, normalized, "sprite");
+  const baseAsset = previewAssetForPath(project, basePath);
+  if (baseAsset) return baseAsset;
   const prefix = `assets/CharacterFiles/OverworldSprites/${normalized}/`;
   const candidates = project.assets.filter((asset) => asset.stored_path.startsWith(prefix) && asset.content_type.startsWith("image/"));
-  return candidates[candidates.length - 1] || null;
+  return assetByPreferredName(candidates, normalized) || candidates[candidates.length - 1] || null;
+}
+
+function npcBaseAssetPath(project: Project, npcName: string, kind: "portrait" | "sprite") {
+  const npcEntry = project.game_data.find((entry) => entry.target === "Data/Characters" && normalizeInternalName(entry.key) === npcName);
+  const studio = isObject(npcEntry?.advanced?.StardewCPStudio) ? npcEntry?.advanced.StardewCPStudio as JsonDict : {};
+  const npc = isObject(studio.npc) ? studio.npc as JsonDict : {};
+  return stringField(kind === "portrait" ? npc.portraitAssetPath : npc.spriteAssetPath);
+}
+
+function assetByPreferredName(candidates: Asset[], npcName: string) {
+  const normalized = npcName.toLowerCase();
+  return candidates.find((asset) => stripExtension(asset.stored_path.split("/").pop() || "").toLowerCase() === normalized) || null;
 }
 
 function isShopModuleEntry(entry: GameDataEntry) {
@@ -11812,9 +12811,55 @@ function nextAvailableKey(baseKey: string, used: Set<string>) {
   return `${baseKey}_${makeId().slice(0, 8)}`;
 }
 
-function spouseRoomTarget(project: Project, npcName: string) {
-  const uniqueId = project.manifest.UniqueID || "Author.Mod";
-  return `Mods/${uniqueId}/Custom_${normalizeInternalName(npcName)}SpouseRoom`;
+function spouseMapShortName(value: string, fallback: string) {
+  const trimmed = stringField(value || fallback).trim();
+  const lastPart = trimmed.split("/").filter(Boolean).pop() || trimmed;
+  return lastPart.replace(/^Maps\//i, "").replace(/^Custom_/i, "") || fallback;
+}
+
+function spouseMapAsset(shortName: string) {
+  const clean = normalizeInternalName(spouseMapShortName(shortName, "SpouseRoom") || "SpouseRoom");
+  return `Custom_${clean}`;
+}
+
+function spouseMapLoadTarget(shortName: string) {
+  return `Maps/${spouseMapAsset(shortName)}`;
+}
+
+function spouseRoomSourceRect() {
+  return { X: 0, Y: 0, Width: 6, Height: 9 };
+}
+
+function spousePatioSourceRect(rect: unknown = {}) {
+  const source = isObject(rect) ? rect : {};
+  return {
+    X: numberOrText(stringField(source.X ?? 0)),
+    Y: numberOrText(stringField(source.Y ?? 0)),
+    Width: numberOrText(stringField(source.Width ?? 4)),
+    Height: numberOrText(stringField(source.Height ?? 4))
+  };
+}
+
+function numberListToText(value: unknown) {
+  if (!Array.isArray(value)) return "";
+  return value.map((item) => String(item)).join(", ");
+}
+
+function textToNumberList(text: string) {
+  const values = text.split(/[\s,]+/).map((part) => part.trim()).filter(Boolean).map((part) => integerInRange(part, -9999, 9999, 0));
+  return values.length ? values : undefined;
+}
+
+function normalizeTilesheetName(value: string) {
+  return value.trim().replace(/\.png$/i, "").replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_") || "Tilesheet";
+}
+
+function tilesheetStoredPath(name: string) {
+  return `assets/Tilesheets/${normalizeTilesheetName(name)}.png`;
+}
+
+function tilesheetLoadTarget(items: { name: string }[]) {
+  return items.map((item) => normalizeTilesheetName(item.name)).filter(Boolean).map((name) => `Maps/${name}`).join(", ");
 }
 
 function roommateItemTextureTarget(project: Project, npcName: string) {

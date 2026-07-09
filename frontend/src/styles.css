@@ -387,6 +387,36 @@ h2 {
   gap: 16px;
 }
 
+.tilesheet-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.tilesheet-card {
+  background: #fbfaf5;
+  border: 1px solid #ded7c9;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.tilesheet-card img {
+  background: #ffffff;
+  border: 1px solid #cfc8ba;
+  border-radius: 6px;
+  image-rendering: pixelated;
+  max-height: 160px;
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.tilesheet-card code {
+  overflow-wrap: anywhere;
+}
+
 .map-module-layout {
   display: grid;
   gap: 16px;
@@ -850,6 +880,26 @@ code {
 
 .status.compact {
   margin: 16px 0 0;
+}
+
+.toast {
+  background: #eef7ef;
+  border: 1px solid #9bb89f;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(31, 45, 34, 0.18);
+  color: #25422f;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 12px 14px;
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 60;
+}
+
+.toast.error {
+  background: #fff0ed;
+  border-color: #d9978f;
+  color: #7b2d25;
 }
 
 .notice {
@@ -1342,6 +1392,29 @@ code {
   gap: 10px;
   grid-column: 1 / -1;
   padding: 12px;
+}
+
+.animation-sequence-editor.active {
+  border-color: #5f7f68;
+  box-shadow: inset 0 0 0 1px #5f7f68;
+}
+
+.animation-part-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.animation-part-tabs button {
+  font-size: 13px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.animation-part-tabs button.active {
+  background: #315f47;
+  color: #ffffff;
 }
 
 .animation-frame-sequence {

@@ -122,7 +122,6 @@ class CoreTests(unittest.TestCase):
             project.manifest.Name = "Test Pack"
             project.manifest.Author = "Author"
             project.manifest.UniqueID = "Author.TestPack"
-            project.i18n = {"Sophia.Schedule.Mon.000": "Hello from schedule."}
             project.game_data.extend([
                 GameDataEntry(
                     kind="schedule",
@@ -131,8 +130,21 @@ class CoreTests(unittest.TestCase):
                     value="900 Town 64 15 2 \"Strings\\\\schedules\\\\Sophia:Mon.000\"",
                     advanced={"StardewCPStudio": {"schedule": {
                         "npcName": "Sophia",
-                        "points": [{"time": "900", "location": "Town", "x": 64, "y": 15, "direction": 2, "dialogueKey": "Mon.000", "dialogueText": "Hello from schedule."}],
-                        "dialogueEntries": [{"key": "Mon.000", "i18nKey": "Sophia.Schedule.Mon.000"}],
+                        "points": [{
+                            "time": "900",
+                            "location": "Town",
+                            "x": 64,
+                            "y": 15,
+                            "direction": 2,
+                            "dialogueKey": "Mon.000",
+                            "dialogueVariants": {
+                                "0123": "Hello from schedule.",
+                                "4567": "Hello from schedule, friend.",
+                                "8910": "Hello from schedule, best friend.",
+                                "married": "Hello from schedule, dear.",
+                            },
+                        }],
+                        "dialogueEntries": [],
                     }}},
                 ),
                 GameDataEntry(
@@ -155,9 +167,17 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(any(change.get("Action") == "Include" and change.get("FromFile") == "assets/CharacterFiles/Schedules/Sophia/ScheduleDialogue.json" for change in characters["Changes"]))
             rain_patch = next(change for change in characters["Changes"] if change.get("Entries", {}).get("rain") == "900 Town 1 2 2")
             self.assertEqual(rain_patch["When"], {"Weather": "Rain"})
-            self.assertEqual(schedule_dialogue["Changes"][0]["Target"], "Strings/schedules/Sophia")
-            self.assertEqual(schedule_dialogue["Changes"][0]["Entries"]["Mon.000"], "{{i18n:Sophia.Schedule.Mon.000}}")
-            self.assertEqual(json.loads((output / "i18n" / "default.json").read_text(encoding="utf-8"))["Sophia.Schedule.Mon.000"], "Hello from schedule.")
+            dialogue_changes = schedule_dialogue["Changes"]
+            self.assertEqual([change["Target"] for change in dialogue_changes], ["Strings/schedules/Sophia"] * 4)
+            self.assertEqual(dialogue_changes[0]["When"], {"Hearts:Sophia": "0, 1, 2, 3"})
+            self.assertEqual(dialogue_changes[1]["When"], {"Hearts:Sophia": "4, 5, 6, 7"})
+            self.assertEqual(dialogue_changes[2]["When"], {"Hearts:Sophia": "8, 9, 10"})
+            self.assertEqual(dialogue_changes[3]["When"], {"Relationship:Sophia": "Married"})
+            self.assertEqual(dialogue_changes[0]["Entries"]["Mon.000"], "{{i18n:Sophia.Schedule.Mon.000.0123}}")
+            self.assertEqual(dialogue_changes[3]["Entries"]["Mon.000"], "{{i18n:Sophia.Schedule.Mon.000.married}}")
+            i18n = json.loads((output / "i18n" / "default.json").read_text(encoding="utf-8"))
+            self.assertEqual(i18n["Sophia.Schedule.Mon.000.0123"], "Hello from schedule.")
+            self.assertEqual(i18n["Sophia.Schedule.Mon.000.married"], "Hello from schedule, dear.")
 
     def test_export_animation_descriptions_to_character_code(self):
         import json
@@ -171,16 +191,85 @@ class CoreTests(unittest.TestCase):
                 GameDataEntry(
                     kind="animation",
                     target="Data/animationDescriptions",
-                    key="pufferbob_sleep",
-                    value="50/50/50",
-                    advanced={"StardewCPStudio": {"animation": {"npcName": "Pufferbob", "isSleep": True}}},
+                    key="sam_work",
+                    value="40/40 40 41 41 42 42 41 41/40/Strings\\\\animation\\\\Sam:sam_work",
+                    advanced={"StardewCPStudio": {"animation": {
+                        "npcName": "Sam",
+                        "isSleep": False,
+                        "customKey": "sam_work",
+                        "entryFrames": "40",
+                        "repeatFrames": "40 40 41 41 42 42 41 41",
+                        "leavingFrames": "40",
+                        "messageVariants": {
+                            "0123": "Working hard.",
+                            "4567": "Still working.",
+                            "8910": "Almost done.",
+                            "married": "For us.",
+                        },
+                    }}},
+                )
+            )
+            project.game_data.append(
+                GameDataEntry(
+                    kind="animation",
+                    target="Data/animationDescriptions",
+                    key="sam_wave",
+                    value="16/16 17/16/Strings\\\\animation\\\\Sam:sam_wave",
+                    advanced={"StardewCPStudio": {"animation": {
+                        "npcName": "Sam",
+                        "isSleep": False,
+                        "customKey": "sam_wave",
+                        "entryFrames": "16",
+                        "repeatFrames": "16 17",
+                        "leavingFrames": "16",
+                        "messageVariants": {
+                            "0123": "Hey.",
+                        },
+                    }}},
+                )
+            )
+            project.game_data.append(
+                GameDataEntry(
+                    kind="animation",
+                    target="Data/animationDescriptions",
+                    key="haley_beach_towel",
+                    value="20 20/22/20//laying_down/offset 0 16",
+                    advanced={"StardewCPStudio": {"animation": {
+                        "npcName": "Haley",
+                        "isSleep": False,
+                        "customKey": "haley_beach_towel",
+                        "entryFrames": "20 20",
+                        "repeatFrames": "22",
+                        "leavingFrames": "20",
+                        "layingDown": True,
+                        "useOffset": True,
+                        "offsetX": 0,
+                        "offsetY": 16,
+                    }}},
                 )
             )
 
             output = export_content_pack(project, temp_dir)
             characters = json.loads((output / "code" / "characters.json").read_text(encoding="utf-8"))
-            patch = next(change for change in characters["Changes"] if change.get("Target") == "Data/animationDescriptions")
-            self.assertEqual(patch["Entries"], {"pufferbob_sleep": "50/50/50"})
+            sam_patch = next(change for change in characters["Changes"] if change.get("Entries", {}).get("sam_work"))
+            wave_patch = next(change for change in characters["Changes"] if change.get("Entries", {}).get("sam_wave"))
+            towel_patch = next(change for change in characters["Changes"] if change.get("Entries", {}).get("haley_beach_towel"))
+            self.assertEqual(sam_patch["Entries"]["sam_work"], "40/40 40 41 41 42 42 41 41/40/Strings\\\\animation\\\\Sam:sam_work")
+            self.assertEqual(wave_patch["Entries"]["sam_wave"], "16/16 17/16/Strings\\\\animation\\\\Sam:sam_wave")
+            self.assertEqual(towel_patch["Entries"]["haley_beach_towel"], "20 20/22/20//laying_down/offset 0 16")
+            string_patches = [change for change in characters["Changes"] if change.get("Target") == "Strings/animation/Sam"]
+            self.assertEqual(len(string_patches), 4)
+            self.assertEqual(string_patches[0]["When"], {"Hearts:Sam": "0, 1, 2, 3"})
+            self.assertEqual(string_patches[0]["Entries"], {
+                "sam_work": "{{i18n:Sam.Animation.sam_work.0123}}",
+                "sam_wave": "{{i18n:Sam.Animation.sam_wave.0123}}",
+            })
+            self.assertEqual(string_patches[3]["When"], {"Relationship:Sam": "Married"})
+            self.assertEqual(string_patches[3]["Entries"], {"sam_work": "{{i18n:Sam.Animation.sam_work.married}}"})
+            i18n = json.loads((output / "i18n" / "default.json").read_text(encoding="utf-8"))
+            self.assertEqual(i18n["Sam.Animation.sam_work.0123"], "Working hard.")
+            self.assertEqual(i18n["Sam.Animation.sam_wave.0123"], "Hey.")
+            self.assertEqual(i18n["Sam.Animation.sam_work.married"], "For us.")
             self.assertNotIn("StardewCPStudio", json.dumps(characters))
 
     def test_export_mail_newlines_and_trigger_actions_are_separate(self):

@@ -36,7 +36,7 @@ def export_content_pack(
     dialogue_files = _write_dialogue_files(project, target)
     schedule_files = _write_schedule_files(project, target, export_i18n)
     _write_json(target / "manifest.json", _manifest_json(project.manifest))
-    include_files = _write_code_files(project, target, dialogue_files, schedule_files)
+    include_files = _write_code_files(project, target, dialogue_files, schedule_files, export_i18n)
     _write_json(target / "content.json", _root_content_json(include_files))
     _write_json(target / "i18n" / "default.json", export_i18n)
     _write_json(target / "assets" / "blank.json", {})
@@ -80,8 +80,8 @@ def _root_content_json(include_files: list[str]) -> dict[str, Any]:
     }
 
 
-def _write_code_files(project: Project, target: Path, dialogue_files: list["DialogueFile"] | None = None, schedule_files: list["ScheduleFile"] | None = None) -> list[str]:
-    groups = _code_change_groups(project, dialogue_files or [], schedule_files or [])
+def _write_code_files(project: Project, target: Path, dialogue_files: list["DialogueFile"] | None = None, schedule_files: list["ScheduleFile"] | None = None, export_i18n: dict[str, str] | None = None) -> list[str]:
+    groups = _code_change_groups(project, dialogue_files or [], schedule_files or [], export_i18n if export_i18n is not None else dict(project.i18n))
     include_files: list[str] = []
     for filename in [
         "patches.json",
@@ -105,7 +105,8 @@ def _write_code_files(project: Project, target: Path, dialogue_files: list["Dial
     return include_files
 
 
-def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], schedule_files: list["ScheduleFile"] | None = None) -> dict[str, list[dict[str, Any]]]:
+def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], schedule_files: list["ScheduleFile"] | None = None, export_i18n: dict[str, str] | None = None) -> dict[str, list[dict[str, Any]]]:
+    export_i18n = export_i18n if export_i18n is not None else {}
     groups: dict[str, list[dict[str, Any]]] = {
         "patches.json": [],
         "characters.json": [],
@@ -136,15 +137,18 @@ def _code_change_groups(project: Project, dialogue_files: list["DialogueFile"], 
         if not _has_equivalent_patch(groups["mail.json"], patch):
             groups["mail.json"].append(patch)
 
+    animation_string_buckets: dict[tuple[str, str], dict[str, str]] = {}
     for entry in project.game_data:
         if _dialogue_entry_info(entry):
             continue
         if _schedule_entry_info(entry) and not entry.when:
             continue
         groups[_code_group_for_entry(entry)].append(_game_data_patch_json(entry))
+        _collect_animation_strings(entry, export_i18n, animation_string_buckets)
         special_order_strings = _special_order_strings_patch(entry)
         if special_order_strings:
             groups["special_orders.json"].append(special_order_strings)
+    groups["characters.json"].extend(_affinity_string_patches(animation_string_buckets, "Strings/animation"))
 
     return groups
 
@@ -239,6 +243,73 @@ def _game_data_entry_value(entry: GameDataEntry) -> Any:
     if special_order is not None:
         return special_order
     return entry.value
+
+
+AFFINITY_GROUPS: list[tuple[str, dict[str, str]]] = [
+    ("0123", {"Hearts:{npc}": "0, 1, 2, 3"}),
+    ("4567", {"Hearts:{npc}": "4, 5, 6, 7"}),
+    ("8910", {"Hearts:{npc}": "8, 9, 10"}),
+    ("married", {"Relationship:{npc}": "Married"}),
+]
+
+
+def _collect_animation_strings(entry: GameDataEntry, export_i18n: dict[str, str], buckets: dict[tuple[str, str], dict[str, str]]) -> None:
+    if entry.kind != "animation" and entry.target != "Data/animationDescriptions":
+        return
+    studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
+    meta = studio.get("animation") if isinstance(studio, dict) else None
+    if not isinstance(meta, dict):
+        return
+    npc = _normalize_internal_name(str(meta.get("npcName") or _npc_name_from_animation_key(entry.key) or "ExampleNPC"))
+    animation_key = _normalize_animation_key(str(meta.get("customKey") or entry.key or "CustomAnimation"))
+    variants = _affinity_variants(meta.get("messageVariants"), str(meta.get("messageText") or ""))
+    for group_id, text in variants.items():
+        if not text.strip():
+            continue
+        i18n_key = f"{npc}.Animation.{animation_key}.{group_id}"
+        export_i18n[i18n_key] = text
+        buckets.setdefault((npc, group_id), {})[animation_key] = f"{{{{i18n:{i18n_key}}}}}"
+
+
+def _affinity_variants(value: Any, legacy_text: str = "") -> dict[str, str]:
+    source = value if isinstance(value, dict) else {}
+    return {
+        "0123": str(source.get("0123") if isinstance(source, dict) and source.get("0123") is not None else legacy_text),
+        "4567": str(source.get("4567") if isinstance(source, dict) and source.get("4567") is not None else ""),
+        "8910": str(source.get("8910") if isinstance(source, dict) and source.get("8910") is not None else ""),
+        "married": str(source.get("married") if isinstance(source, dict) and source.get("married") is not None else ""),
+    }
+
+
+def _affinity_when(npc: str, group_id: str) -> dict[str, str]:
+    for candidate, template in AFFINITY_GROUPS:
+        if candidate == group_id:
+            return {key.format(npc=npc): value for key, value in template.items()}
+    return {}
+
+
+def _affinity_string_patches(buckets: dict[tuple[str, str], dict[str, str]], target_prefix: str) -> list[dict[str, Any]]:
+    patches: list[dict[str, Any]] = []
+    npcs = sorted({npc for npc, _group_id in buckets})
+    for npc in npcs:
+        for group_id, _template in AFFINITY_GROUPS:
+            entries = buckets.get((npc, group_id))
+            if not entries:
+                continue
+            patches.append({
+                "Action": "EditData",
+                "Target": f"{target_prefix}/{npc}",
+                "Entries": entries,
+                "When": _affinity_when(npc, group_id),
+            })
+    return patches
+
+
+def _animation_strings_patch(entry: GameDataEntry, export_i18n: dict[str, str]) -> dict[str, Any] | None:
+    buckets: dict[tuple[str, str], dict[str, str]] = {}
+    _collect_animation_strings(entry, export_i18n, buckets)
+    patches = _affinity_string_patches(buckets, "Strings/animation")
+    return patches[0] if patches else None
 
 
 def _special_order_entry_value(entry: GameDataEntry) -> Any | None:
@@ -374,6 +445,24 @@ def _special_order_strings_patch(entry: GameDataEntry) -> dict[str, Any] | None:
 
 def _sanitize_string_key(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value or "Example")
+
+
+def _normalize_internal_name(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_]+", "", value or "ExampleNPC")
+    return cleaned or "ExampleNPC"
+
+
+def _normalize_animation_key(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "", value or "CustomAnimation")
+    return cleaned or "CustomAnimation"
+
+
+def _npc_name_from_animation_key(key: str) -> str:
+    sleep = re.fullmatch(r"(.+)_sleep", key or "", flags=re.IGNORECASE)
+    if sleep:
+        return _normalize_internal_name(sleep.group(1))
+    custom = re.match(r"([A-Za-z0-9_]+?)[._-]", key or "")
+    return _normalize_internal_name(custom.group(1)) if custom else ""
 
 
 def _mail_entry_value(entry: GameDataEntry) -> Any:
@@ -815,15 +904,14 @@ def _write_dialogue_files(project: Project, target: Path) -> list[DialogueFile]:
 
 def _write_schedule_files(project: Project, target: Path, export_i18n: dict[str, str]) -> list[ScheduleFile]:
     grouped: dict[str, dict[str, Any]] = {}
-    dialogue_entries: dict[str, dict[str, str]] = {}
+    dialogue_buckets: dict[tuple[str, str], dict[str, str]] = {}
     for entry in project.game_data:
         info = _schedule_entry_info(entry)
         if not info or entry.when or not entry.key:
             continue
         bucket = grouped.setdefault(info["npc"], {"info": info, "entries": {}})
         bucket["entries"][entry.key] = entry.value
-        for dialogue_key, i18n_key in _schedule_dialogue_entries(entry, export_i18n).items():
-            dialogue_entries.setdefault(info["npc"], {})[dialogue_key] = f"{{{{i18n:{i18n_key}}}}}"
+        _collect_schedule_strings(entry, export_i18n, dialogue_buckets)
 
     schedule_files: list[ScheduleFile] = []
     for npc, bucket in grouped.items():
@@ -833,16 +921,16 @@ def _write_schedule_files(project: Project, target: Path, export_i18n: dict[str,
             continue
         _write_json(target / info["from_file"], entries)
         dialogue_file = None
-        if dialogue_entries.get(npc):
+        npc_dialogue_buckets = {
+            (bucket_npc, group_id): bucket_entries
+            for (bucket_npc, group_id), bucket_entries in dialogue_buckets.items()
+            if bucket_npc == npc
+        }
+        dialogue_changes = _affinity_string_patches(npc_dialogue_buckets, "Strings/schedules")
+        if dialogue_changes:
             dialogue_file = info["dialogue_file"]
             _write_json(target / dialogue_file, {
-                "Changes": [
-                    {
-                        "Action": "EditData",
-                        "Target": f"Strings/schedules/{npc}",
-                        "Entries": dialogue_entries[npc],
-                    }
-                ]
+                "Changes": dialogue_changes
             })
         schedule_files.append({
             "npc": npc,
@@ -853,39 +941,41 @@ def _write_schedule_files(project: Project, target: Path, export_i18n: dict[str,
     return schedule_files
 
 
-def _schedule_dialogue_entries(entry: GameDataEntry, export_i18n: dict[str, str]) -> dict[str, str]:
+def _collect_schedule_strings(entry: GameDataEntry, export_i18n: dict[str, str], buckets: dict[tuple[str, str], dict[str, str]]) -> None:
     studio = entry.advanced.get("StardewCPStudio") if isinstance(entry.advanced, dict) else None
     if not isinstance(studio, dict):
-        return {}
+        return
     schedule = studio.get("schedule")
     if not isinstance(schedule, dict):
-        return {}
-    rows = schedule.get("dialogueEntries")
-    if not isinstance(rows, list):
-        return {}
-    entries: dict[str, str] = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        key = str(row.get("key") or "").strip()
-        i18n_key = str(row.get("i18nKey") or "").strip()
-        if key and i18n_key:
-            entries[key] = i18n_key
-    points = schedule.get("points")
+        return
     info = _schedule_entry_info(entry)
     npc = str(schedule.get("npcName") or (info.get("npc") if info else "")).strip()
+    if not npc:
+        return
+    rows = schedule.get("dialogueEntries")
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            key = str(row.get("key") or "").strip()
+            i18n_key = str(row.get("i18nKey") or "").strip()
+            if key and i18n_key:
+                buckets.setdefault((npc, "0123"), {})[key] = f"{{{{i18n:{i18n_key}}}}}"
+    points = schedule.get("points")
     if isinstance(points, list) and npc:
         for index, point in enumerate(points):
             if not isinstance(point, dict):
                 continue
-            text = str(point.get("dialogueText") or "").strip()
-            if not text:
-                continue
             key = str(point.get("dialogueKey") or f"{entry.key}.{index:03d}").strip()
-            i18n_key = f"{npc}.Schedule.{key}"
-            entries[key] = i18n_key
-            export_i18n[i18n_key] = text
-    return entries
+            if not key:
+                continue
+            variants = _affinity_variants(point.get("dialogueVariants"), str(point.get("dialogueText") or ""))
+            for group_id, text in variants.items():
+                if not text.strip():
+                    continue
+                i18n_key = f"{npc}.Schedule.{key}.{group_id}"
+                export_i18n[i18n_key] = text
+                buckets.setdefault((npc, group_id), {})[key] = f"{{{{i18n:{i18n_key}}}}}"
 
 
 def _dialogue_bootstrap_patches(project: Project, dialogue_files: list[DialogueFile]) -> list[dict[str, Any]]:

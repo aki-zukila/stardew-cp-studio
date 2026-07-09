@@ -21,8 +21,11 @@ def find_free_port(start: int = 8877) -> int:
     while port < start + 100:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(0.2)
-            if sock.connect_ex(("127.0.0.1", port)) != 0:
+            try:
+                sock.bind(("0.0.0.0", port))
                 return port
+            except OSError:
+                pass
         port += 1
     raise RuntimeError("No free local port found.")
 
